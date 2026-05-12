@@ -1,26 +1,46 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* 1. Declaración de Colores Corporativos para Tailwind v4 */
+/* Al usar el prefijo --color-, Tailwind crea automáticamente las clases utilitarias:
+   bg-lgc-primary, text-lgc-primary, border-lgc-primary, etc. */
+@theme {
+  --color-lgc-primary: #007FA1; /* Turquesa institucional */
+  --color-lgc-accent: #90A224;  /* Verde oliva */
+  --color-lgc-tostado: #E0D6C4; /* Crema */
 }
 
+/* 2. Variables base de tu aplicación */
+:root {
+  --background: #f8fafc; /* Color slate-50 para un fondo de app suave */
+  --foreground: #1e293b; /* Color slate-800 para legibilidad máxima */
+}
+
+/* 3. Le decimos a Tailwind v4 que integre nuestras variables root a su tema base */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 4. UX Upgrade: Scrollbar personalizado y accesible */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* Gris suave (slate-300) */
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-lgc-primary); /* Turquesa interactivo */
 }

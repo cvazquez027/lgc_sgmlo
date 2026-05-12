@@ -8,7 +8,8 @@ frontend/.next/
 .env.development.local
 .env.test.local
 .env.production.local
-backend/config/database.php # Ocultaremos el archivo con las credenciales reales
+backend/config/database.php
+backend/config/config.php
 
 # Logs de error
 npm-debug.log*
