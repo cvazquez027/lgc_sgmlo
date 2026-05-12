@@ -149,7 +149,7 @@ export default function ClientesPage() {
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/clientes/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/guardar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(formData)

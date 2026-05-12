@@ -61,9 +61,9 @@ export default function NormativaOficialPage() {
   const fetchDiccionarios = useCallback(async (token: string) => {
     try {
       const [resTipos, resEmisores, resEstados] = await Promise.all([
-        fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=tipo_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=emisor_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=estado_norma`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=emisor_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_norma`, { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
       const [dataTipos, dataEmisores, dataEstados] = await Promise.all([
@@ -86,7 +86,7 @@ export default function NormativaOficialPage() {
       setLoading(true);
       await fetchDiccionarios(token);
       
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/normativa/leer.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();

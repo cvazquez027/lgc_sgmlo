@@ -59,7 +59,7 @@ export default function SeguridadPage() {
       setLoading(true);
       setError("");
       // Le pegamos a nuestro endpoint seguro con Lista Blanca
-      const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=${tablaActiva}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=${tablaActiva}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       

@@ -423,7 +423,7 @@ export default function WorkspaceMatrizPage() {
 
       const payload = newItems.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }));
       const token = localStorage.getItem("sgml_token");
-      fetch("http://localhost/lgc_sgmlo/backend/api/matriz/reordenar_items.php", {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/matriz/reordenar_items.php`, {
         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(payload)
       });

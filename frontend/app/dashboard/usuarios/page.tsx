@@ -69,21 +69,21 @@ export default function UsuariosPage() {
       setLoading(true);
       
       // 1. Cargar Usuarios
-      const resUser = await fetch("http://localhost/lgc_sgmlo/backend/api/usuarios/leer.php", {
+      const resUser = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataUser = await resUser.json();
       setUsuarios(dataUser.registros || []);
 
       // 2. Cargar Roles (para el select)
-      const resRoles = await fetch("http://localhost/lgc_sgmlo/backend/api/roles/leer.php", {
+      const resRoles = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataRoles = await resRoles.json();
       setRoles(dataRoles.registros || []);
 
       // 3. Cargar Clientes (para el select - Esto evitará el error de FK)
-      const resClientes = await fetch("http://localhost/lgc_sgmlo/backend/api/clientes/leer.php", {
+      const resClientes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataClientes = await resClientes.json();
@@ -138,7 +138,7 @@ export default function UsuariosPage() {
     const token = localStorage.getItem("sgml_token");
 
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/usuarios/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/guardar.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

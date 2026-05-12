@@ -17,7 +17,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost/lgc_sgmlo/backend/api/Login.php', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/Login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

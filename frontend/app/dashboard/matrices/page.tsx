@@ -85,7 +85,7 @@ export default function MatricesPage() {
   const fetchDiccionarios = useCallback(async (token: string) => {
     try {
       // Estados
-      const resEstados = await fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=estado_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
+      const resEstados = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataEstados = await resEstados.json();
       if (dataEstados.registros) {
         // Blindaje: Acepta tanto id_estado_matriz como un id genérico
@@ -93,7 +93,7 @@ export default function MatricesPage() {
       }
 
       // Tipos (ARREGLADO)
-      const resTipos = await fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=tipo_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
+      const resTipos = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataTipos = await resTipos.json();
       if (dataTipos.registros) {
         // Blindaje: Acepta tanto id_tipo_matriz como un id genérico
@@ -101,7 +101,7 @@ export default function MatricesPage() {
       }
 
       // Clientes
-      const resClientes = await fetch(`http://localhost/lgc_sgmlo/backend/api/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } });
+      const resClientes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataClientes = await resClientes.json();
       setClientes(dataClientes.registros || []);
     } catch (err) {
@@ -116,7 +116,7 @@ export default function MatricesPage() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/leer.php", { 
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer.php`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const data = await res.json();
@@ -142,7 +142,7 @@ export default function MatricesPage() {
       return;
     }
     const token = localStorage.getItem("sgml_token");
-    fetch(`http://localhost/lgc_sgmlo/backend/api/establecimientos/leer.php?id_cliente=${filtroCliente}`, { headers: { "Authorization": `Bearer ${token}` } })
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${filtroCliente}`, { headers: { "Authorization": `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => setEstablecimientosFiltro(data.registros || []))
       .catch(err => console.error(err));
@@ -156,7 +156,7 @@ export default function MatricesPage() {
     }
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/establecimientos/leer.php?id_cliente=${idCliente}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${idCliente}`, { headers: { "Authorization": `Bearer ${token}` } });
       const data = await res.json();
       setEstablecimientosForm(data.registros || []);
     } catch (error) {
@@ -217,7 +217,7 @@ export default function MatricesPage() {
     const token = localStorage.getItem("sgml_token");
     
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(formData)

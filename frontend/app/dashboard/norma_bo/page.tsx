@@ -58,7 +58,7 @@ export default function BoletinOficialPage() {
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/jurisdicciones/leer.php?niveles=1,2", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/jurisdicciones/leer.php?niveles=1,2`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -75,7 +75,7 @@ export default function BoletinOficialPage() {
     const token = localStorage.getItem("sgml_token");
     setLoadingData(true);
     try {
-      const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/boletin/leer_scraping.php`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/boletin/leer_scraping.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -144,7 +144,7 @@ export default function BoletinOficialPage() {
     setProcesando(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/boletin/procesar_scraping.php", {
+      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/boletin/procesar_scraping.php', {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ids_normas: selectedIds, accion })
