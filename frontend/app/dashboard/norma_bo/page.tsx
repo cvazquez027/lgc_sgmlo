@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { usePermissions } from "../../hooks/usePermissions";
+import Link from "next/link";
 
 interface Jurisdiccion {
   id_jurisdiccion: number;
@@ -47,6 +48,7 @@ export default function BoletinOficialPage() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [procesando, setProcesando] = useState<boolean>(false);
+  const [isScraping, setIsScraping] = useState<boolean>(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
@@ -132,6 +134,47 @@ export default function BoletinOficialPage() {
     );
   };
 
+  // 3. Ejecutar el script de Python en el Backend
+  const ejecutarScraper = async () => {
+    setIsScraping(true);
+    const token = localStorage.getItem("sgml_token");
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/boletin/ejecutar_scraper.php`, {
+        method: 'POST',
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      
+      // 1. En lugar de .json(), pedimos el texto crudo
+      const rawText = await res.text();
+      
+      // 2. Lo imprimimos en la consola para ver qué dice REALMENTE PHP
+      console.log("Respuesta cruda de PHP:", rawText);
+      
+      // 3. Ahora sí intentamos convertirlo a JSON
+      try {
+          const data = JSON.parse(rawText);
+          
+          if (data.status === 'success') {
+            alert('¡Boletín actualizado con éxito!');
+            fetchScrapingData();
+          } else {
+            alert('Error al raspar: ' + data.message);
+            console.error("Log de Python:", data.log);
+          }
+      } catch (parseError) {
+          console.error("No se pudo leer el JSON. El servidor devolvió esto:", rawText);
+          alert('Error del servidor: PHP no devolvió un JSON válido. Revisá la consola (F12).');
+      }
+
+    } catch (error) {
+      console.error("Error conectando con el backend:", error);
+      alert('Ocurrió un error al intentar actualizar.');
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
   const handleBulkAction = async (accion: 'promover' | 'descartar') => {
     if (!canEdit("boletin") || selectedIds.length === 0) return;
     
@@ -144,7 +187,7 @@ export default function BoletinOficialPage() {
     setProcesando(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_API_URL}/boletin/procesar_scraping.php', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/boletin/procesar_scraping.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ids_normas: selectedIds, accion })
@@ -172,9 +215,45 @@ export default function BoletinOficialPage() {
       
       {/* HEADER COMPACTO */}
       <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 flex flex-row justify-between items-center shrink-0">
-        <h1 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">BOLETINES OFICIALES</h1>
-        
+        <div className="flex items-center gap-3">
+          <Link 
+            href="/dashboard" 
+            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            title="Volver al inicio"
+          >
+            <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <h1 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">BOLETINES OFICIALES</h1>
+        </div>
         <div className="flex items-center gap-4">
+          
+          {/* NUEVO BOTÓN: Solo se muestra si la jurisdicción seleccionada tiene el flag "tiene_scraper" en 1 */}
+          {selectedJur && selectedJur.tiene_scraper === 1 && (
+            <button 
+              onClick={ejecutarScraper} 
+              disabled={isScraping}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors shadow-sm border ${
+                isScraping 
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
+                  : 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
+              }`}
+            >
+              {isScraping ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  Actualizando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  Actualizar
+                </>
+              )}
+            </button>
+          )}
+
           <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-200 hover:bg-orange-100 transition-colors">
             <input 
               type="checkbox" 
@@ -236,7 +315,7 @@ export default function BoletinOficialPage() {
         ) : paginatedNormas.length === 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-4">
             <span className="text-xs font-bold uppercase">No hay normativas pendientes</span>
-            {/* NUEVO BOTÓN PARA JURISDICCIONES SIN SCRAPER */}
+            {/* BOTÓN PARA JURISDICCIONES SIN SCRAPER */}
             {selectedJur && selectedJur.tiene_scraper === 0 && selectedJur.url_boletin && (
               <a 
                 href={selectedJur.url_boletin} 
@@ -301,7 +380,7 @@ export default function BoletinOficialPage() {
                       {norma.emisor_desc}
                     </td>
                     <td className="py-1.5 px-2 whitespace-nowrap text-slate-500">
-                      {new Date(norma.fecha_publicacion).toLocaleDateString('es-AR')}
+                      {norma.fecha_publicacion ? norma.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}
                     </td>
                     <td className="py-1.5 px-2 text-slate-600 leading-tight">
                       <div className="line-clamp-2 hover:line-clamp-none transition-all cursor-default">

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 // Importamos nuestro nuevo guardián de seguridad
 import { usePermissions } from "../../hooks/usePermissions";
+import Link from "next/link";
 
 interface Usuario {
   id_usuario: number;
@@ -180,9 +181,20 @@ export default function UsuariosPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        <div>
-          <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Gestión de Usuarios</h1>
-          <p className="text-slate-500 text-sm font-sans">Control de acceso y perfiles corporativos</p>
+        {/* BLOQUE NUEVO: Botón de Volver + Título Centrados */}
+        <div className="flex items-center gap-3">
+          <Link 
+            href="/dashboard" 
+            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            title="Volver al inicio"
+          >
+            <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
+            Gestión de Usuarios
+          </h1>
         </div>
         
         {/* Solo mostramos el botón si tiene permiso de escritura */}

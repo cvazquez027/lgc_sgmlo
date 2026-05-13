@@ -2,7 +2,13 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import sys
+import codecs
 
+# Forzar a Python a escupir los prints en UTF-8 sin importar lo que diga Windows
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+    
 # ==========================================
 # ⚙️ CONFIGURACIÓN DEL SISTEMA
 # ==========================================

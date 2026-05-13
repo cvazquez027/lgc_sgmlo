@@ -50,7 +50,7 @@ export default function PreviewMatrizPage() {
       if (dataH.registros && dataH.registros.length > 0) setHeaderInfo(dataH.registros[0]);
 
       // Traemos los Items y la Configuración de columnas
-      const resI = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/leer_items.php?id_matriz=${idMatriz}`, { 
+      const resI = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const dataI = await resI.json();

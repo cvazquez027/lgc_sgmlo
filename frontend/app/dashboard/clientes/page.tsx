@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // IMPORTANTE: Agregamos el import de Link
 import { usePermissions } from "../../hooks/usePermissions";
 
 interface DatoContacto {
@@ -14,7 +15,7 @@ interface Cliente {
   cuit: string;
   razon_social: string;
   nombre_fantasia: string;
-  logo_path?: string; // Nuevo campo agregado a la interfaz
+  logo_path?: string;
   vigente: number;
   contactos?: DatoContacto[];
 }
@@ -41,14 +42,14 @@ export default function ClientesPage() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false); // Estado de subida de imagen
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false); 
 
   const [formData, setFormData] = useState({ 
     id_cliente: "", 
     cuit: "", 
     razon_social: "", 
     nombre_fantasia: "", 
-    logo_path: "", // Estado del logo
+    logo_path: "", 
     vigente: 1,
     contactos: [] as DatoContacto[] 
   });
@@ -113,7 +114,6 @@ export default function ClientesPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error al subir logo");
 
-      // Guardamos la ruta relativa devuelta por PHP
       setFormData(prev => ({ ...prev, logo_path: data.logo_path }));
     } catch (error: any) {
       alert("Error: " + error.message);
@@ -173,7 +173,23 @@ export default function ClientesPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Clientes</h1>
+        
+        {/* BLOQUE NUEVO: Botón de Volver + Título Centrados */}
+        <div className="flex items-center gap-3">
+          <Link 
+            href="/dashboard" 
+            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            title="Volver al inicio"
+          >
+            <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
+            Gestión de Clientes
+          </h1>
+        </div>
+
         {canEdit("clientes") && (
           <button 
             onClick={() => { 
@@ -199,7 +215,6 @@ export default function ClientesPage() {
                 <span className={`h-2.5 w-2.5 rounded-full ${cliente.vigente ? 'bg-green-500' : 'bg-red-500'}`} title={cliente.vigente ? 'Vigente' : 'Baja'}></span>
               </div>
               
-              {/* HEADER DE LA CARD CON LOGO */}
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-14 h-14 rounded-lg border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                   {cliente.logo_path ? (
@@ -259,7 +274,6 @@ export default function ClientesPage() {
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b pb-2 mb-4">Datos Fiscales e Identidad</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   
-                  {/* SECTOR DE LOGO CORPORATIVO */}
                   <div className="col-span-1 md:col-span-2 bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-5">
                     <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-white overflow-hidden shadow-inner shrink-0">
                       {formData.logo_path ? (
@@ -299,7 +313,6 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* SECCIÓN 2: Contactos */}
               <div>
                 <div className="flex justify-between items-center border-b pb-2 mb-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Información de Contacto</h3>

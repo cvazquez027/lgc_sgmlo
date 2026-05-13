@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { usePermissions } from "../../hooks/usePermissions";
+import Link from "next/link";
 
 interface Norma {
   id_norma: number;
@@ -142,8 +143,18 @@ export default function NormativaOficialPage() {
       {/* Encabezado y Barra de Búsqueda */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
         <div>
-          <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Normativa Oficial</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Base depurada de leyes, decretos y resoluciones</p>
+          <div className="flex items-center gap-3">
+            <Link 
+              href="/dashboard" 
+              className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+              title="Volver al inicio"
+            >
+              <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </Link>
+            <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Base Actualizada de Normativa</h1>
+          </div>
         </div>
         
         <div className="flex gap-4 w-full md:w-auto">

@@ -71,7 +71,7 @@ export default function EstablecimientosPage() {
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${id}`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/jurisdicciones/leer.php`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_contacto`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
       const [dataEst, dataJur, dataTipos, dataClientes] = await Promise.all([

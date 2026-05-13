@@ -3,16 +3,6 @@ import Link from "next/link";
 export default function DashboardHome() {
   const modulos = [
     {
-      titulo: "Inicio",
-      descripcion: "Panel central y resumen operativo",
-      href: "/dashboard",
-      icono: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-      )
-    },
-    {
       titulo: "Clientes",
       descripcion: "Gestión de empresas y establecimientos",
       href: "/dashboard/clientes",
@@ -53,8 +43,18 @@ export default function DashboardHome() {
       )
     },
     {
-      titulo: "Usuarios y Seg.",
-      descripcion: "Control de accesos y roles del sistema",
+      titulo: "Reportes",
+      descripcion: "Exportables de matrices, vencimientos y seguimientos de trámites.",
+      href: "/dashboard",
+      icono: (
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      )
+    },
+    {
+      titulo: "Usuarios y Seguridad",
+      descripcion: "Control de accesos y asignación de roles del sistema",
       href: "/dashboard/usuarios",
       icono: (
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,8 +95,8 @@ export default function DashboardHome() {
           <Link 
             key={index}
             href={modulo.href}
-            // Ajustes Quirúrgicos: min-h para forzar cuadratura, flex-col clásico, y sombras elevadas (shadow-xl)
-            className="group flex flex-col justify-between p-6 sm:p-8 min-h-65 bg-lgc-primary rounded-3xl shadow-xl shadow-lgc-primary/20 border border-white/10 hover:bg-lgc-accent hover:shadow-2xl hover:shadow-lgc-accent/30 transition-all duration-500 transform hover:-translate-y-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-accent focus-visible:ring-offset-2"
+            // Ajustes Quirúrgicos: sombras más profundas (shadow-2xl shadow-black/20) y un glow premium en el hover
+            className="group flex flex-col justify-between p-6 sm:p-8 min-h-65 bg-lgc-primary rounded-3xl shadow-2xl shadow-black/20 border border-white/10 hover:bg-lgc-accent hover:shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-all duration-500 transform hover:-translate-y-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-accent focus-visible:ring-offset-2"
             aria-label={`Ir al módulo de ${modulo.titulo}`}
           >
             {/* Contenedor Superior: Icono y Titulo Apilados para formato más cuadrado */}
