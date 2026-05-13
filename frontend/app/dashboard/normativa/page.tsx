@@ -109,7 +109,7 @@ export default function NormativaOficialPage() {
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/normativa/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/guardar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(formData)

@@ -333,7 +333,7 @@ export default function MatricesPage() {
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           {matriz.logo_path ? (
-                            <img src={`http://localhost/lgc_sgmlo/backend/${matriz.logo_path}`} alt="Logo" className="w-8 h-8 object-contain rounded-sm" />
+                            <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${matriz.logo_path}`} alt="Logo" className="w-8 h-8 object-contain rounded-sm" />
                           ) : (
                             <div className="w-8 h-8 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500 font-bold">
                               {matriz.nombre_fantasia?.charAt(0) || 'C'}

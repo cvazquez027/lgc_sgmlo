@@ -78,7 +78,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
     const timeoutId = setTimeout(async () => {
       const token = localStorage.getItem("sgml_token");
       try {
-        let res = await fetch(`http://localhost/lgc_sgmlo/backend/api/normativa/leer.php?buscar=${query}`, { headers: { Authorization: `Bearer ${token}` } });
+        let res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer.php?buscar=${query}`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await res.json();
         
         // FILTRO DE SEGURIDAD FRONTEND: Por si el backend ignora el '?buscar='
@@ -322,7 +322,7 @@ export default function WorkspaceMatrizPage() {
   const fetchItems = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/matriz/leer_items.php?id_matriz=${idMatriz}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, { headers: { "Authorization": `Bearer ${token}` } });
       const data = await res.json();
       setConfigColumnas(data.config_columnas || []);
       setTempConfig(data.config_columnas || ['resumen_legal', 'normas', 'estado']); 
@@ -335,7 +335,7 @@ export default function WorkspaceMatrizPage() {
     const fetchEstados = async () => {
         const token = localStorage.getItem("sgml_token");
         try {
-            const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=estado_cumplimiento`, { headers: { "Authorization": `Bearer ${token}` } });
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_cumplimiento`, { headers: { "Authorization": `Bearer ${token}` } });
             const data = await res.json();
             const estados = data.registros.map((e:any) => ({ id: e.id_estado_cumplimiento || e.id, descripcion: e.descripcion }));
             setEstadosCumplimiento(estados);
@@ -348,7 +348,7 @@ export default function WorkspaceMatrizPage() {
   const guardarConfiguracion = async () => {
     const token = localStorage.getItem("sgml_token");
     try {
-      await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/guardar_config.php", {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config.php`, {
         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ id_matriz: idMatriz, columnas: tempConfig })
       });
@@ -375,7 +375,7 @@ export default function WorkspaceMatrizPage() {
     };
 
     const token = localStorage.getItem("sgml_token");
-    await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/guardar_item.php", {
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_item.php`, {
        method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
        body: JSON.stringify(payload)
     });
@@ -397,7 +397,7 @@ export default function WorkspaceMatrizPage() {
     };
 
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/guardar_item.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_item.php`, {
         method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(payload)
       });

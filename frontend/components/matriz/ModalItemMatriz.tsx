@@ -105,7 +105,7 @@ export default function ModalItemMatriz({
       setIsSearching(true);
       try {
         const token = localStorage.getItem("sgml_token");
-        const res = await fetch(`http://localhost/lgc_sgmlo/backend/api/matriz/buscar_normas.php?q=${encodeURIComponent(searchTerm)}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/buscar_normas.php?q=${encodeURIComponent(searchTerm)}`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await res.json();
@@ -149,7 +149,7 @@ export default function ModalItemMatriz({
     formDataUpload.append("archivo", file);
 
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/subir_documento.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/subir_documento.php`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` }, // FormData no necesita Content-Type, el browser lo pone solo con el boundary
         body: formDataUpload
@@ -191,7 +191,7 @@ export default function ModalItemMatriz({
 
   const saveItemData = async () => {
     const token = localStorage.getItem("sgml_token");
-    const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/guardar_item.php", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_item.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(formData)
@@ -203,7 +203,7 @@ export default function ModalItemMatriz({
 
   const publicarMatriz = async () => {
     const token = localStorage.getItem("sgml_token");
-    const res = await fetch("http://localhost/lgc_sgmlo/backend/api/matriz/cambiar_estado.php", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/cambiar_estado.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ id_matriz: idMatriz, id_estado_matriz: 1 }) 

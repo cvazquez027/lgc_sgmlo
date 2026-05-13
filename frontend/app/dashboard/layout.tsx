@@ -30,7 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Función para consultar al backend
     const checkNuevas = async () => {
       try {
-        const res = await fetch("http://localhost/lgc_sgmlo/backend/api/boletin/check_nuevas.php");
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/boletin/check_nuevas.php`);
         const data = await res.json();
         setHayNuevasNormas(data.hay_nuevas);
       } catch (e) {

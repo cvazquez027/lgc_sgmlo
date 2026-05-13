@@ -43,14 +43,14 @@ export default function PreviewMatrizPage() {
     try {
       setLoading(true);
       // Traemos el Header (Logo, Cliente, Establecimiento)
-      const resH = await fetch(`http://localhost/lgc_sgmlo/backend/api/matriz/leer.php?id_matriz=${idMatriz}`, { 
+      const resH = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer.php?id_matriz=${idMatriz}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const dataH = await resH.json();
       if (dataH.registros && dataH.registros.length > 0) setHeaderInfo(dataH.registros[0]);
 
       // Traemos los Items y la Configuración de columnas
-      const resI = await fetch(`http://localhost/lgc_sgmlo/backend/api/matriz/leer_items.php?id_matriz=${idMatriz}`, { 
+      const resI = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/leer_items.php?id_matriz=${idMatriz}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const dataI = await resI.json();
@@ -153,7 +153,7 @@ export default function PreviewMatrizPage() {
         <div className="p-8 border-b-4 border-lgc-primary flex flex-col md:flex-row justify-between items-center gap-6 bg-white">
           <div className="flex items-center gap-6">
             {headerInfo?.logo_path ? (
-              <img src={`http://localhost/lgc_sgmlo/backend/${headerInfo.logo_path}`} alt="Cliente Logo" className="h-20 w-auto object-contain" />
+              <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${headerInfo.logo_path}`} alt="Cliente Logo" className="h-20 w-auto object-contain" />
             ) : (
               <div className="h-20 w-20 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 font-bold text-2xl uppercase border-2 border-dashed border-slate-200">
                 LOGO

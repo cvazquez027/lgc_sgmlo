@@ -131,7 +131,7 @@ export default function EstablecimientosPage() {
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/establecimientos/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/guardar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ...formData, id_cliente: id }) 
@@ -167,7 +167,7 @@ export default function EstablecimientosPage() {
         <div className="flex items-center gap-4">
           {clienteActual?.logo_path ? (
             <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-              <img src={`http://localhost/lgc_sgmlo/backend/${clienteActual.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
+              <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${clienteActual.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
             </div>
           ) : (
             <div className="w-14 h-14 rounded-xl border border-slate-200 bg-slate-50 shadow-sm flex items-center justify-center shrink-0">

@@ -134,7 +134,7 @@ export default function SeguridadPage() {
     };
 
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/maestras/guardar.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/guardar.php`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

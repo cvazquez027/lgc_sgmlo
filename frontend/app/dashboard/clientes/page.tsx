@@ -55,7 +55,7 @@ export default function ClientesPage() {
 
   const fetchTiposContacto = useCallback(async (token: string) => {
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/maestras/leer.php?tabla=tipo_contacto", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_contacto`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -73,7 +73,7 @@ export default function ClientesPage() {
       setLoading(true);
       await fetchTiposContacto(token); 
 
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/clientes/leer.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
@@ -105,7 +105,7 @@ export default function ClientesPage() {
     formDataUpload.append("logo", file);
 
     try {
-      const res = await fetch("http://localhost/lgc_sgmlo/backend/api/clientes/subir_logo.php", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/subir_logo.php`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formDataUpload
@@ -203,7 +203,7 @@ export default function ClientesPage() {
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-14 h-14 rounded-lg border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                   {cliente.logo_path ? (
-                    <img src={`http://localhost/lgc_sgmlo/backend/${cliente.logo_path}`} alt={`Logo ${cliente.razon_social}`} className="w-full h-full object-contain p-1" />
+                    <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${cliente.logo_path}`} alt={`Logo ${cliente.razon_social}`} className="w-full h-full object-contain p-1" />
                   ) : (
                     <span className="text-xl font-heading font-bold text-slate-300 uppercase">{cliente.razon_social?.charAt(0)}</span>
                   )}
@@ -263,7 +263,7 @@ export default function ClientesPage() {
                   <div className="col-span-1 md:col-span-2 bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-5">
                     <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-white overflow-hidden shadow-inner shrink-0">
                       {formData.logo_path ? (
-                        <img src={`http://localhost/lgc_sgmlo/backend/${formData.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
+                        <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${formData.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
                       ) : (
                         <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       )}
