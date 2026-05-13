@@ -27,8 +27,9 @@ class Usuario {
                     u.apellido, 
                     u.email, 
                     u.password_hash, 
+                    u.id_cliente,
                     u.vigente, 
-                    ur.id_rol 
+                    ur.id_rol
                   FROM " . $this->table_name . " u
                   LEFT JOIN usuario_rol ur ON u.id_usuario = ur.id_usuario
                   WHERE u.email = ? 
@@ -52,11 +53,14 @@ class Usuario {
                     u.apellido, 
                     u.email, 
                     u.ultimo_login, 
+                    u.id_cliente,
+                    c.razon_social,
                     u.vigente,
                     r.descripcion as rol_nombre
                   FROM " . $this->table_name . " u
                   LEFT JOIN usuario_rol ur ON u.id_usuario = ur.id_usuario
                   LEFT JOIN rol r ON ur.id_rol = r.id_rol
+                  LEFT JOIN cliente c ON u.id_cliente = c.id_cliente
                   ORDER BY u.id_usuario DESC";
 
         $stmt = $this->conn->prepare($query);

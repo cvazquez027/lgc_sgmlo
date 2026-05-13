@@ -11,8 +11,8 @@ interface Usuario {
   nombre_completo: string;
   email: string;
   rol_nombre: string;
-  id_cliente: number;
-  razon_social: string;
+  id_cliente: number | null; // Puede ser null
+  razon_social: string | null; // Puede ser null
   vigente: number;
 }
 
@@ -34,19 +34,14 @@ export default function UsuariosPage() {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  // --- INTEGRACIÓN DE SEGURIDAD (CAPA UI) ---
   const { canRead, canEdit } = usePermissions();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
-  // Damos un pequeño respiro para que el hook lea el localStorage
-  // antes de decidir si bloqueamos o no la pantalla.
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
     return () => clearTimeout(timer);
   }, []);
-  // ------------------------------------------
 
-  // Estados del Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
   const [formLoading, setFormLoading] = useState(false);
@@ -58,7 +53,7 @@ export default function UsuariosPage() {
     email: "",
     password: "",
     id_rol: "",
-    id_cliente: "",
+    id_cliente: "", // Manejaremos "" como null en el backend
     vigente: 1
   });
 
@@ -69,21 +64,18 @@ export default function UsuariosPage() {
     try {
       setLoading(true);
       
-      // 1. Cargar Usuarios
       const resUser = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataUser = await resUser.json();
       setUsuarios(dataUser.registros || []);
 
-      // 2. Cargar Roles (para el select)
       const resRoles = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataRoles = await resRoles.json();
       setRoles(dataRoles.registros || []);
 
-      // 3. Cargar Clientes (para el select - Esto evitará el error de FK)
       const resClientes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -98,14 +90,12 @@ export default function UsuariosPage() {
   }, [router]);
 
   useEffect(() => {
-    // Solo traemos datos si pasó la barrera de seguridad visual
     if (!isCheckingPerms && canRead("usuarios")) {
       fetchData();
     }
   }, [fetchData, isCheckingPerms, canRead]);
 
   const openCrearModal = () => {
-    // Doble validación por si alguien manipula el DOM
     if (!canEdit("usuarios")) return; 
     setModalMode("crear");
     setFormData({ id_usuario: "", nombre: "", apellido: "", email: "", password: "", id_rol: "", id_cliente: "", vigente: 1 });
@@ -125,7 +115,7 @@ export default function UsuariosPage() {
       email: user.email,
       password: "", 
       id_rol: rolId,
-      id_cliente: user.id_cliente?.toString() || "",
+      id_cliente: user.id_cliente?.toString() || "", // Si es null, pasamos ""
       vigente: user.vigente
     });
     setIsModalOpen(true);
@@ -133,7 +123,7 @@ export default function UsuariosPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit("usuarios")) return; // Bloqueo de seguridad
+    if (!canEdit("usuarios")) return;
 
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
@@ -161,12 +151,10 @@ export default function UsuariosPage() {
     }
   };
 
-  // --- RENDERIZADO CONDICIONAL DE SEGURIDAD ---
   if (isCheckingPerms) {
     return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
   }
 
-  // Si no tiene el permiso explícito para leer, le bloqueamos la vista
   if (!canRead("usuarios")) {
     return (
       <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100">
@@ -176,12 +164,10 @@ export default function UsuariosPage() {
       </div>
     );
   }
-  // --------------------------------------------
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        {/* BLOQUE NUEVO: Botón de Volver + Título Centrados */}
         <div className="flex items-center gap-3">
           <Link 
             href="/dashboard" 
@@ -197,7 +183,6 @@ export default function UsuariosPage() {
           </h1>
         </div>
         
-        {/* Solo mostramos el botón si tiene permiso de escritura */}
         {canEdit("usuarios") && (
           <button 
             onClick={openCrearModal}
@@ -230,7 +215,12 @@ export default function UsuariosPage() {
                     <div className="text-xs text-slate-400">{user.email}</div>
                   </td>
                   <td className="p-5 text-sm text-slate-600 font-medium">
-                    {user.razon_social || "Sin asignar"}
+                    {/* Mostramos la razón social o un indicador de interno */}
+                    {user.razon_social ? (
+                       <span>{user.razon_social}</span>
+                    ) : (
+                       <span className="text-xs font-bold text-lgc-primary uppercase tracking-widest bg-lgc-primary/10 px-2 py-1 rounded">Usuario Interno</span>
+                    )}
                   </td>
                   <td className="p-5 text-xs">
                     <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-tighter">
@@ -243,7 +233,6 @@ export default function UsuariosPage() {
                     </span>
                   </td>
                   <td className="p-5 text-right">
-                    {/* Botón dinámico según permisos */}
                     {canEdit("usuarios") ? (
                       <button onClick={() => openEditarModal(user)} className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest">
                         Editar
@@ -261,7 +250,6 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* MODAL SISTEMA */}
       {isModalOpen && canEdit("usuarios") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
@@ -304,14 +292,14 @@ export default function UsuariosPage() {
 
               <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-5">
                 <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Asignar Cliente/Empresa *</label>
+                  {/* Le quitamos el required al select */}
+                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Asignar Cliente/Empresa</label>
                   <select 
-                    required 
                     value={formData.id_cliente} 
                     onChange={(e) => setFormData({...formData, id_cliente: e.target.value})}
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg outline-none focus:border-lgc-primary font-sans"
                   >
-                    <option value="">Seleccione Cliente...</option>
+                    <option value="">Seleccione Cliente (Opcional)...</option>
                     {clientes.map(c => (
                       <option key={c.id_cliente} value={c.id_cliente}>{c.razon_social}</option>
                     ))}

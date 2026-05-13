@@ -1,5 +1,4 @@
 <?php
-// Cabeceras de seguridad y CORS
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET");
@@ -10,7 +9,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Validación de Token
 $headers = apache_request_headers();
 if (!isset($headers['Authorization'])) {
     http_response_code(401);
@@ -38,8 +36,11 @@ if ($num > 0) {
             "id_usuario" => $id_usuario,
             "nombre_completo" => html_entity_decode($nombre . " " . $apellido),
             "email" => $email,
-            "rol_nombre" => $rol_nombre ? $rol_nombre : "Sin Rol",
-            "ultimo_login" => $ultimo_login,
+            "rol_nombre" => isset($rol_nombre) ? $rol_nombre : "Sin Rol",
+            // Agregamos estos dos campos (asegurate que tu SELECT los traiga)
+            "id_cliente" => isset($id_cliente) ? $id_cliente : null,
+            "razon_social" => isset($razon_social) ? $razon_social : null,
+            "ultimo_login" => isset($ultimo_login) ? $ultimo_login : null,
             "vigente" => $vigente
         );
         array_push($usuarios_arr["registros"], $usuario_item);
@@ -48,6 +49,6 @@ if ($num > 0) {
     http_response_code(200);
     echo json_encode($usuarios_arr);
 } else {
-    http_response_code(200); // 200 OK, pero array vacío es mejor para el frontend
+    http_response_code(200); 
     echo json_encode(["registros" => []]);
 }
