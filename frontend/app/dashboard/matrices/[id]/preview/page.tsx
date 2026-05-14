@@ -20,6 +20,11 @@ const COLUMN_LABELS: Record<string, string> = {
   'evidencia_cumplimiento': 'Evidencia',
   'verificacion_cumplimiento': 'Verificación',
   'interpretacion_aplicacion': 'Interpretación',
+  'editable1': 'Campo Editable 1',
+  'editable2': 'Campo Editable 2',
+  'editable3': 'Campo Editable 3',
+  'editable4': 'Campo Editable 4',
+  'editable5': 'Campo Editable 5',
 };
 
 export default function PreviewMatrizPage() {

@@ -16,16 +16,17 @@ try {
     $database = new Database();
     $db = $database->getConnection();
 
-    // Consulta optimizada con JOINs para traer la información legible
+    // CIRUGÍA: Agregamos el JOIN con jurisdiccion y el CONCAT
     $query = "SELECT 
                 n.id_norma, n.numero, n.anio, n.fecha_publicacion, 
                 n.sintesis, n.url_norma, n.origen_carga,
                 n.id_tipo_norma, tn.descripcion as tipo_norma_desc,
-                n.id_emisor_norma, en.descripcion as emisor_desc,
+                n.id_emisor_norma, CONCAT(COALESCE(j.descripcion, 'Sin Jurisdicción'), ' - ', en.descripcion) as emisor_desc,
                 n.id_estado_norma, esn.descripcion as estado_desc
               FROM norma n
               LEFT JOIN tipo_norma tn ON n.id_tipo_norma = tn.id_tipo_norma
               LEFT JOIN emisor_norma en ON n.id_emisor_norma = en.id_emisor_norma
+              LEFT JOIN jurisdiccion j ON en.id_jurisdiccion = j.id_jurisdiccion
               LEFT JOIN estado_norma esn ON n.id_estado_norma = esn.id_estado_norma
               ORDER BY n.anio DESC, n.numero DESC";
               

@@ -12,8 +12,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 include_once dirname(__FILE__) . '/../../config/Database.php';
 
-// 1. DICCIONARIO DE SEGURIDAD (Whitelist)
-// Solo se pueden consultar estas tablas exactas, y solo se devuelven estas columnas.
 $tablas_permitidas = [
     'rol' => ['id' => 'id_rol', 'cols' => 'id_rol, descripcion, vigente'],
     'permiso' => ['id' => 'id_permiso', 'cols' => 'id_permiso, descripcion, vigente'],
@@ -21,16 +19,15 @@ $tablas_permitidas = [
     'tipo_norma' => ['id' => 'id_tipo_norma', 'cols' => 'id_tipo_norma, descripcion, vigente'],
     'estado_norma' => ['id' => 'id_estado_norma', 'cols' => 'id_estado_norma, descripcion, vigente'],
     'estado_matriz' => ['id' => 'id_estado_matriz', 'cols' => 'id_estado_matriz, descripcion, vigente'],
-    'tipo_matriz' => ['id' => 'id_tipo_matriz', 'cols' => 'id_tipo_matriz, descripcion, vigente'], // <-- ¡AGREGADO AQUÍ!
+    'tipo_matriz' => ['id' => 'id_tipo_matriz', 'cols' => 'id_tipo_matriz, descripcion, vigente'],
     'estado_cumplimiento' => ['id' => 'id_estado_cumplimiento', 'cols' => 'id_estado_cumplimiento, descripcion, vigente'],
     'tipo_modalidad' => ['id' => 'id_tipo_modalidad', 'cols' => 'id_tipo_modalidad, descripcion'],
-    'nivel_jurisdiccion' => ['id' => 'id_nivel_jurisdiccion', 'cols' => 'id_nivel_jurisdiccion, descripcion, nivel, vigente']
+    'nivel_jurisdiccion' => ['id' => 'id_nivel_jurisdiccion', 'cols' => 'id_nivel_jurisdiccion, descripcion, nivel, vigente'],
+    'emisor_norma' => ['id' => 'id_emisor_norma', 'cols' => 'id_emisor_norma, descripcion'] 
 ];
 
-// Capturamos el parámetro sanitizado
 $tabla_solicitada = isset($_GET['tabla']) ? preg_replace('/[^a-zA-Z_]/', '', $_GET['tabla']) : '';
 
-// 2. VALIDACIÓN ESTRICTA
 if (!array_key_exists($tabla_solicitada, $tablas_permitidas)) {
     http_response_code(403);
     echo json_encode(["mensaje" => "Acceso denegado: Operación no permitida o tabla inexistente."]);
@@ -42,9 +39,15 @@ $db = $database->getConnection();
 $config = $tablas_permitidas[$tabla_solicitada];
 
 try {
-    // 3. CONSTRUCCIÓN SEGURA DE LA QUERY
-    // Como $tabla_solicitada y $config['cols'] vienen directo de nuestro código duro, es 100% seguro.
-    $query = "SELECT " . $config['cols'] . " FROM " . $tabla_solicitada . " ORDER BY descripcion ASC";
+    // CIRUGÍA: Si nos piden los emisores, cruzamos con jurisdicción
+    if ($tabla_solicitada === 'emisor_norma') {
+        $query = "SELECT en.id_emisor_norma, CONCAT(COALESCE(j.descripcion, 'Sin Jurisdicción'), ' - ', en.descripcion) AS descripcion 
+                  FROM emisor_norma en 
+                  LEFT JOIN jurisdiccion j ON en.id_jurisdiccion = j.id_jurisdiccion 
+                  ORDER BY j.descripcion ASC, en.descripcion ASC";
+    } else {
+        $query = "SELECT " . $config['cols'] . " FROM " . $tabla_solicitada . " ORDER BY descripcion ASC";
+    }
     
     $stmt = $db->prepare($query);
     $stmt->execute();

@@ -48,7 +48,7 @@ export default function NormativaOficialPage() {
     fecha_publicacion: "",
     sintesis: "",
     url_norma: "",
-    id_estado_norma: "1", // Generalmente 1 = Vigente
+    id_estado_norma: "1", 
     origen_carga: "Manual"
   };
 
@@ -128,7 +128,6 @@ export default function NormativaOficialPage() {
     }
   };
 
-  // Filtrado rápido en el cliente (Accesibilidad y UX)
   const normasFiltradas = normas.filter(n => 
     n.numero?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     n.sintesis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,7 +139,6 @@ export default function NormativaOficialPage() {
 
   return (
     <div className="space-y-6 font-sans animate-fade-in">
-      {/* Encabezado y Barra de Búsqueda */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -176,7 +174,6 @@ export default function NormativaOficialPage() {
         </div>
       </div>
 
-      {/* Grilla de Datos */}
       {loading ? (
         <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Cargando base normativa...</div>
       ) : (
@@ -257,7 +254,6 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* MODAL DE EDICIÓN / ALTA */}
       {isModalOpen && canEdit("normativa") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -291,12 +287,14 @@ export default function NormativaOficialPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
+              {/* CIRUGÍA DE GRILLA: Emisor ahora ocupa 2 columnas para no cortar el texto */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor / Jurisdicción *</label>
-                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm" value={formData.id_emisor_norma} onChange={e => setFormData({...formData, id_emisor_norma: e.target.value})}>
+                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-[11px] font-bold shadow-sm" value={formData.id_emisor_norma} onChange={e => setFormData({...formData, id_emisor_norma: e.target.value})}>
                     <option value="">Seleccione...</option>
-                    {emisores.map(e => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
+                    {/* CIRUGÍA: Agregamos title para accesibilidad hover */}
+                    {emisores.map(e => <option key={e.id} value={e.id} title={e.descripcion}>{e.descripcion}</option>)}
                   </select>
                 </div>
                 <div>

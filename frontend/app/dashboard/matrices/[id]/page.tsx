@@ -4,12 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../hooks/usePermissions"; 
-import ModalItemMatriz from "../../../../components/matriz/ModalItemMatriz"; 
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// DICCIONARIO MAESTRO
+// DICCIONARIO MAESTRO (Agregadas las 5 columnas nuevas)
 const TODAS_LAS_COLUMNAS = [
   { id: 'resumen_legal', label: 'Obligación / Resumen Legal' },
   { id: 'normas', label: 'Normativas (Tipo, Nro, Año)' },
@@ -24,11 +23,13 @@ const TODAS_LAS_COLUMNAS = [
   { id: 'evidencia_cumplimiento', label: 'Evidencia' },
   { id: 'verificacion_cumplimiento', label: 'Verificación' },
   { id: 'interpretacion_aplicacion', label: 'Interpretación' },
+  { id: 'editable1', label: 'Campo Editable 1' },
+  { id: 'editable2', label: 'Campo Editable 2' },
+  { id: 'editable3', label: 'Campo Editable 3' },
+  { id: 'editable4', label: 'Campo Editable 4' },
+  { id: 'editable5', label: 'Campo Editable 5' },
 ];
 
-// -------------------------------------------------------------
-// COMPONENTE: CELDA EXPANDIBLE (MAGIA UX - OPTIMIZADA)
-// -------------------------------------------------------------
 const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
   const [localValue, setLocalValue] = useState(value || '');
   const [isFocused, setIsFocused] = useState(false);
@@ -58,9 +59,6 @@ const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
   );
 };
 
-// -------------------------------------------------------------
-// COMPONENTE: BUSCADOR DE NORMATIVA INLINE (CON FILTRO FRONTEND)
-// -------------------------------------------------------------
 const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -80,8 +78,6 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
       try {
         let res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer.php?buscar=${query}`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await res.json();
-        
-        // FILTRO DE SEGURIDAD FRONTEND: Por si el backend ignora el '?buscar='
         const registrosBackend = data.registros || [];
         const qLower = query.toLowerCase();
         
@@ -93,7 +89,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
 
         setResults(registrosFiltrados);
       } catch (e) {
-        console.error("Error al buscar normativa:", e);
+        console.error(e);
       } finally {
         setIsSearching(false);
       }
@@ -117,10 +113,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
         placeholder={isSearching ? "Buscando..." : "+ Buscar N° o título..."}
         className="w-full text-[10px] p-1.5 border border-slate-300 rounded outline-none focus:border-lgc-primary bg-white shadow-sm"
         value={query}
-        onChange={e => {
-          setQuery(e.target.value);
-          setIsOpen(true);
-        }}
+        onChange={e => { setQuery(e.target.value); setIsOpen(true); }}
         onFocus={() => { if(query.length > 0) setIsOpen(true); }}
       />
       
@@ -156,9 +149,6 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
   );
 };
 
-// -------------------------------------------------------------
-// COMPONENTE: ITEM ORDENABLE PARA LA PANTALLA DE CONFIGURACIÓN
-// -------------------------------------------------------------
 const SortableConfigItem = ({ colId, title, onRemove }: { colId: string, title?: string, onRemove: (id:string)=>void }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: colId });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, opacity: isDragging ? 0.5 : 1, position: isDragging ? 'relative' as 'relative' : 'static' as 'static' };
@@ -178,10 +168,8 @@ const SortableConfigItem = ({ colId, title, onRemove }: { colId: string, title?:
   );
 };
 
-// -------------------------------------------------------------
-// COMPONENTE: FILA ARRASTRABLE PARA EL WORKSPACE (GRILLA)
-// -------------------------------------------------------------
-const SortableRow = ({ item, columnasVisibles, onUpdate, onEdit, canEdit, estadosCumplimiento }: any) => {
+// Removida la propiedad onEdit, ya no se usa el modal
+const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, estadosCumplimiento }: any) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id_item_matriz });
   
   const style = {
@@ -195,6 +183,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onEdit, canEdit, estado
 
   const renderCelda = (colId: string) => {
     switch(colId) {
+      // MAGIA: Habilitamos EditableCell para las 5 nuevas columnas
       case 'resumen_legal':
       case 'articulos_aplicables':
       case 'proceso_aplica':
@@ -203,6 +192,11 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onEdit, canEdit, estado
       case 'evidencia_cumplimiento':
       case 'verificacion_cumplimiento':
       case 'interpretacion_aplicacion':
+      case 'editable1':
+      case 'editable2':
+      case 'editable3':
+      case 'editable4':
+      case 'editable5':
         return <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} />;
       
       case 'vencimiento_plazo': 
@@ -265,13 +259,8 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onEdit, canEdit, estado
         <td key={col} className="p-2 align-top">{renderCelda(col)}</td>
       ))}
       
-      {canEdit && (
-        <td className="p-3 text-right">
-          <button onClick={() => onEdit(item)} className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-1.5 rounded transition-all shadow-sm" title="Edición Profunda (Archivos)">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-          </button>
-        </td>
-      )}
+      {/* Botón de edición del lapicito removido. Mantenemos el td vacío para no romper alineación con QuickAdd */}
+      {canEdit && <td className="p-3"></td>}
     </tr>
   );
 };
@@ -285,20 +274,15 @@ export default function WorkspaceMatrizPage() {
   const [items, setItems] = useState<any[]>([]);
   const [configColumnas, setConfigColumnas] = useState<string[] | null>(null);
   
-  // UI States
   const [loading, setLoading] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
   const [tempConfig, setTempConfig] = useState<string[]>([]);
   
-  // Modal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [itemAEditar, setItemAEditar] = useState<any | null>(null);
-
-  // Fila Rápida y Diccionarios
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [isSavingRow, setIsSavingRow] = useState(false);
   const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
 
+  // Agregamos los 5 campos en blanco
   const blankRowData = {
     resumen_legal: '',
     articulos_aplicables: '',
@@ -309,6 +293,11 @@ export default function WorkspaceMatrizPage() {
     evidencia_cumplimiento: '',
     verificacion_cumplimiento: '',
     interpretacion_aplicacion: '',
+    editable1: '',
+    editable2: '',
+    editable3: '',
+    editable4: '',
+    editable5: '',
     id_estado_cumplimiento: '',
     normas_vinculadas: [] 
   };
@@ -357,9 +346,6 @@ export default function WorkspaceMatrizPage() {
     } catch (err) { alert("Error al guardar config"); }
   };
 
-  // -------------------------------------------------------------
-  // GUARDADO MÁGICO (Auto-Save para Filas Existentes)
-  // -------------------------------------------------------------
   const handleUpdateExistingRow = async (itemId: number, field: string, value: any) => {
     const currentItem = items.find(i => i.id_item_matriz === itemId);
     if (!currentItem) return;
@@ -383,9 +369,6 @@ export default function WorkspaceMatrizPage() {
     if (field === 'id_estado_cumplimiento' || field === 'normas_vinculadas') fetchItems();
   };
 
-  // -------------------------------------------------------------
-  // GUARDADO DE LA FILA NUEVA
-  // -------------------------------------------------------------
   const handleSaveNewRow = async () => {
     setIsSavingRow(true);
     const token = localStorage.getItem("sgml_token");
@@ -539,12 +522,12 @@ export default function WorkspaceMatrizPage() {
                 {canEdit("matriz") && <th className="p-3 w-8"></th>}
                 <th className="p-3 w-12">ID</th>
                 {configColumnas?.map(colId => <th key={colId} className="p-3">{TODAS_LAS_COLUMNAS.find(c => c.id === colId)?.label}</th>)}
-                {canEdit("matriz") && <th className="p-3 text-right">Acción</th>}
+                {/* Mantenemos la cabecera de acción vacía para el botón de QuickAdd */}
+                {canEdit("matriz") && <th className="p-3 text-right"></th>}
               </tr>
             </thead>
             <tbody className="bg-white">
               
-              {/* FILA RÁPIDA (INLINE CREATION) */}
               {showQuickAdd && (
                 <tr className="bg-blue-50/40 border-b border-blue-100 animate-fade-in align-top shadow-inner">
                   {canEdit("matriz") && <td className="p-3 w-8"></td>}
@@ -566,7 +549,7 @@ export default function WorkspaceMatrizPage() {
                   <tr><td colSpan={15} className="p-10 text-center text-slate-400 font-bold uppercase text-[10px] tracking-widest">No hay filas en la matriz. Empezá agregando una.</td></tr>
                 ) : (
                   items.map(item => (
-                    <SortableRow key={item.id_item_matriz} item={item} columnasVisibles={configColumnas} canEdit={canEdit("matriz")} onUpdate={handleUpdateExistingRow} onEdit={(it: any) => { setItemAEditar(it); setIsModalOpen(true); }} estadosCumplimiento={estadosCumplimiento} />
+                    <SortableRow key={item.id_item_matriz} item={item} columnasVisibles={configColumnas} canEdit={canEdit("matriz")} onUpdate={handleUpdateExistingRow} estadosCumplimiento={estadosCumplimiento} />
                   ))
                 )}
               </SortableContext>
@@ -574,11 +557,6 @@ export default function WorkspaceMatrizPage() {
           </table>
         </DndContext>
       </div>
-
-      {/* MODAL DE EDICIÓN PROFUNDA (Para archivos) */}
-      {isModalOpen && (
-        <ModalItemMatriz isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} idMatriz={idMatriz} itemEdit={itemAEditar} onSaved={fetchItems} />
-      )}
     </div>
   );
 }
