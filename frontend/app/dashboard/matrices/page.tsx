@@ -9,12 +9,14 @@ interface Matriz {
   id_matriz: number;
   id_cliente_establecimiento: number;
   id_tipo_matriz: number;
+  id_especialidad_matriz: number;
   fecha_desde: string;
   version: number;
   id_estado_matriz: number;
   vigente: number;
   estado_matriz_desc?: string; 
   tipo_matriz_desc?: string; 
+  especialidad_matriz_desc?: string;
   establecimiento_desc?: string;
   id_cliente?: number;
   nombre_fantasia?: string;
@@ -42,15 +44,25 @@ export default function MatricesPage() {
   const { canRead, canEdit } = usePermissions();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
+  // ID de cliente del usuario logueado (null = usuario interno LGC, ve todo)
+  const [userClienteId, setUserClienteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("sgml_cliente_id"); // null si usuario interno
+    setUserClienteId(raw && raw !== "null" ? raw : null);
+  }, []);
+
   // Datos
   const [matrices, setMatrices] = useState<Matriz[]>([]);
   const [estadosMatriz, setEstadosMatriz] = useState<Maestra[]>([]);
   const [tiposMatriz, setTiposMatriz] = useState<Maestra[]>([]); 
+  const [especialidadesMatriz, setEspecialidadesMatriz] = useState<Maestra[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   
   // Filtros de tabla
   const [filtroCliente, setFiltroCliente] = useState<string>("");
   const [filtroEstablecimiento, setFiltroEstablecimiento] = useState<string>("");
+  const [filtroEspecialidad, setFiltroEspecialidad] = useState<string>("");
   const [filtroTipo, setFiltroTipo] = useState<string>("");
   const [filtroVigente, setFiltroVigente] = useState<boolean>(true);
   const [establecimientosFiltro, setEstablecimientosFiltro] = useState<Establecimiento[]>([]);
@@ -71,6 +83,7 @@ export default function MatricesPage() {
     id_matriz: "",
     id_cliente_establecimiento: "",
     id_tipo_matriz: "",
+    id_especialidad_matriz: "",
     fecha_desde: new Date().toISOString().split('T')[0], 
     version: 1,
     id_estado_matriz: "1", 
@@ -89,11 +102,19 @@ export default function MatricesPage() {
       if (dataEstados.registros) {
         setEstadosMatriz(dataEstados.registros.map((e: any) => ({ id: e.id_estado_matriz || e.id, descripcion: e.descripcion })));
       }
+      
       const resTipos = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataTipos = await resTipos.json();
       if (dataTipos.registros) {
         setTiposMatriz(dataTipos.registros.map((e: any) => ({ id: e.id_tipo_matriz || e.id, descripcion: e.descripcion })));
       }
+
+      const resEspecialidades = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=especialidad_matriz`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataEspecialidades = await resEspecialidades.json();
+      if (dataEspecialidades.registros) {
+        setEspecialidadesMatriz(dataEspecialidades.registros.map((e: any) => ({ id: e.id_especialidad_matriz || e.id, descripcion: e.descripcion })));
+      }
+
       const resClientes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataClientes = await resClientes.json();
       setClientes(dataClientes.registros || []);
@@ -167,6 +188,7 @@ export default function MatricesPage() {
       id_matriz: "",
       id_cliente_establecimiento: "",
       id_tipo_matriz: "",
+      id_especialidad_matriz: "",
       fecha_desde: new Date().toISOString().split('T')[0],
       version: 1,
       id_estado_matriz: "1",
@@ -185,6 +207,7 @@ export default function MatricesPage() {
       id_matriz: matriz.id_matriz.toString(),
       id_cliente_establecimiento: matriz.id_cliente_establecimiento.toString(),
       id_tipo_matriz: matriz.id_tipo_matriz?.toString() || "",
+      id_especialidad_matriz: matriz.id_especialidad_matriz?.toString() || "",
       fecha_desde: matriz.fecha_desde,
       version: matriz.version,
       id_estado_matriz: matriz.id_estado_matriz?.toString() || "1",
@@ -221,13 +244,19 @@ export default function MatricesPage() {
 
   const matricesFiltradas = useMemo(() => {
     return matrices.filter(m => {
+      // Usuarios externos (con id_cliente): solo ven sus matrices y solo las publicadas
+      if (userClienteId) {
+        if (m.id_cliente?.toString() !== userClienteId) return false;
+        if (m.id_estado_matriz !== 2) return false;
+      }
       const mCliente = filtroCliente === "" || m.id_cliente?.toString() === filtroCliente;
       const mEstablecimiento = filtroEstablecimiento === "" || m.id_cliente_establecimiento.toString() === filtroEstablecimiento;
+      const mEspecialidad = filtroEspecialidad === "" || m.id_especialidad_matriz?.toString() === filtroEspecialidad;
       const mTipo = filtroTipo === "" || m.id_tipo_matriz.toString() === filtroTipo;
       const mVigente = filtroVigente ? m.vigente === 1 : true;
-      return mCliente && mEstablecimiento && mTipo && mVigente;
+      return mCliente && mEstablecimiento && mEspecialidad && mTipo && mVigente;
     });
-  }, [matrices, filtroCliente, filtroEstablecimiento, filtroTipo, filtroVigente]);
+  }, [matrices, filtroCliente, filtroEstablecimiento, filtroEspecialidad, filtroTipo, filtroVigente, userClienteId]);
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales...</div>;
   if (!canRead("matriz")) return <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100"><div className="text-red-500 text-6xl mb-4">🔒</div><h2 className="text-2xl font-heading text-slate-800 uppercase tracking-tight mb-2">Acceso Denegado</h2></div>;
@@ -235,52 +264,57 @@ export default function MatricesPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       
-      {/* HEADER COMPACTO CON BOTÓN FLOTANTE EN LA LÍNEA */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col relative overflow-visible">
+      {/* HEADER PRINCIPAL Y FILTROS INTEGRADOS */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden">
         
-        {/* FILA SUPERIOR: TÍTULO Y BOTÓN DE ACCIÓN */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4">
-          <h1 className="text-xl font-heading font-bold text-lgc-primary uppercase tracking-tight m-0 leading-none">
-            Matrices Legales
-          </h1>
+        {/* RECUADRO DE TÍTULO AZUL CORPORATIVO Y BOTÓN VOLVER INTEGRADO */}
+        <div className="bg-[#005F78] text-white flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4 border-b border-[#004D62]">
+          <div className="flex items-center gap-4">
+            <Link 
+              href="/dashboard" 
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
+              title="Volver al inicio"
+            >
+              <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </Link>
+            <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+            <h1 className="text-xl font-heading font-bold uppercase tracking-tight m-0 leading-none">
+              Matrices Legales
+            </h1>
+          </div>
           {canEdit("matriz") && (
-            <button onClick={openCrearModal} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-5 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            <button onClick={openCrearModal} className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
               Crear Matriz
             </button>
           )}
         </div>
 
-        {/* BARRA DE FILTROS CON LÍNEA SUPERIOR Y BOTÓN DE VOLVER ABSOLUTO */}
-        <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-t border-slate-100 relative overflow-visible">
-          
-          {/* BOTÓN DE VOLVER: SITUADO EXACTAMENTE SOBRE LA LÍNEA GRIS */}
-          <Link 
-            href="/dashboard" 
-            className="absolute left-1/2 -translate-x-1/2 -top-4 flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-lgc-primary transition-all shadow-sm z-20 group"
-            title="Volver al inicio"
-          >
-            <svg className="w-4.5 h-4.5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </Link>
-
-          <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45">
+        {/* BARRA DE FILTROS EN BLANCO/GRIS CLARO PARA CONTRASTE */}
+        <div className="flex flex-wrap items-center gap-3 px-5 py-4 bg-slate-50">
+          <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm">
             <option value="">Todos los Clientes</option>
             {clientes.map(c => <option key={c.id_cliente} value={c.id_cliente}>{c.nombre_fantasia || c.razon_social}</option>)}
           </select>
           
-          <select value={filtroEstablecimiento} onChange={e => setFiltroEstablecimiento(e.target.value)} disabled={!filtroCliente} className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50">
+          <select value={filtroEstablecimiento} onChange={e => setFiltroEstablecimiento(e.target.value)} disabled={!filtroCliente} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50 shadow-sm">
             <option value="">Todos los Establecimientos</option>
             {establecimientosFiltro.map(e => <option key={e.id_cliente_establecimiento} value={e.id_cliente_establecimiento}>{e.descripcion}</option>)}
           </select>
 
-          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5">
+          <select value={filtroEspecialidad} onChange={e => setFiltroEspecialidad(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
+            <option value="">Todas las Especialidades</option>
+            {especialidadesMatriz.map(e => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
+          </select>
+
+          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
             <option value="">Todos los Tipos</option>
             {tiposMatriz.map(t => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
           </select>
 
-          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600 bg-slate-50 px-3 py-2 rounded border border-slate-200 hover:bg-slate-100">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600 bg-white px-3 py-2 rounded border border-slate-200 hover:bg-slate-50 shadow-sm">
             <input type="checkbox" checked={filtroVigente} onChange={(e) => setFiltroVigente(e.target.checked)} className="rounded text-lgc-primary focus:ring-lgc-primary" />
             <span>SOLO VIGENTES</span>
           </label>
@@ -289,16 +323,18 @@ export default function MatricesPage() {
 
       {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg text-sm border border-red-200 shadow-sm font-bold uppercase tracking-widest">Error: {error}</div>}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden min-h-100 flex flex-col">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-100 flex flex-col">
         {loading ? (
            <div className="flex-1 flex items-center justify-center py-20 text-slate-400 animate-pulse font-heading">Cargando información...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left font-sans">
-              <thead className="bg-slate-50 text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold border-b border-slate-200">
+              {/* FILA DE TÍTULOS DE LA GRILLA EN AZUL CORPORATIVO */}
+              <thead className="bg-lgc-primary text-[10px] uppercase tracking-[0.2em] text-white font-bold border-b border-lgc-primary">
                 <tr>
                   <th className="p-4">Cliente</th>
                   <th className="p-4">ID / Versión</th>
+                  <th className="p-4">Especialidad</th>
                   <th className="p-4">Tipo</th>
                   <th className="p-4">Establecimiento</th>
                   <th className="p-4">Inicio</th>
@@ -308,7 +344,7 @@ export default function MatricesPage() {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {matricesFiltradas.length === 0 ? (
-                  <tr><td colSpan={7} className="p-12 text-center text-slate-400 font-bold uppercase text-xs">No se encontraron matrices.</td></tr>
+                  <tr><td colSpan={8} className="p-12 text-center text-slate-400 font-bold uppercase text-xs">No se encontraron matrices.</td></tr>
                 ) : (
                   matricesFiltradas.map(matriz => (
                     <tr key={matriz.id_matriz} className="hover:bg-slate-50/50 transition-colors group">
@@ -326,7 +362,18 @@ export default function MatricesPage() {
                         <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">V{matriz.version}.0</div>
                       </td>
                       <td className="p-4 whitespace-nowrap">
-                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-sm border ${matriz.tipo_matriz_desc?.includes('Medio Ambiente') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>
+                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-sm border ${
+                           matriz.id_especialidad_matriz === 1
+                             ? 'bg-lgc-accent/10 text-[#6B7A1A] border-lgc-accent/30'
+                             : matriz.id_especialidad_matriz === 2
+                             ? 'bg-lgc-primary/10 text-[#005F78] border-lgc-primary/30'
+                             : 'bg-slate-100 text-slate-600 border-slate-200'
+                         }`}>
+                           {matriz.especialidad_matriz_desc || "No definido"}
+                         </span>
+                      </td>
+                      <td className="p-4 whitespace-nowrap">
+                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
                            {matriz.tipo_matriz_desc || "No definido"}
                          </span>
                       </td>
@@ -337,19 +384,31 @@ export default function MatricesPage() {
                         {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
                       </td>
                       <td className="p-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${matriz.vigente ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${matriz.vigente ? 'bg-green-500' : 'bg-slate-500'}`}></span>
+                        {/* LÓGICA DE ESTADOS POR COLORES */}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${
+                            matriz.id_estado_matriz === 1 ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                            matriz.id_estado_matriz === 2 ? 'bg-green-100 text-green-700 border-green-300' :
+                            matriz.id_estado_matriz === 3 ? 'bg-slate-100 text-slate-500 border-slate-300' :
+                            'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                              matriz.id_estado_matriz === 1 ? 'bg-amber-500' :
+                              matriz.id_estado_matriz === 2 ? 'bg-green-500' :
+                              matriz.id_estado_matriz === 3 ? 'bg-slate-400' :
+                              'bg-slate-500'
+                          }`}></span>
                           {matriz.estado_matriz_desc || "SIN ESTADO"}
                         </span>
                       </td>
                       <td className="p-4 text-right flex justify-end gap-2 items-center">
-                        {canEdit("matriz") && (
+                        {/* LAPIZ OCULTO SI ESTADO ES 2 (Publicada) O 3 (Archivada) */}
+                        {canEdit("matriz") && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
                           <button onClick={() => openEditarModal(matriz)} className="text-slate-400 hover:text-lgc-primary transition-colors p-2" title="Editar Propiedades">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                           </button>
                         )}
                         <Link href={`/dashboard/matrices/${matriz.id_matriz}`} className="bg-slate-100 hover:bg-lgc-primary text-slate-600 hover:text-white px-3 py-1.5 rounded border border-slate-200 hover:border-lgc-primary transition-all shadow-sm text-[10px] uppercase tracking-widest font-bold flex items-center gap-2">
-                          <span>Gestionar</span>
+                          <span>{matriz.id_estado_matriz === 3 ? "Visualizar" : "Gestionar"}</span>
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         </Link>
                       </td>
@@ -388,6 +447,13 @@ export default function MatricesPage() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Especialidad *</label>
+                  <select required value={formData.id_especialidad_matriz} onChange={e => setFormData({...formData, id_especialidad_matriz: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm cursor-pointer">
+                    <option value="">Seleccione especialidad...</option>
+                    {especialidadesMatriz.map(e => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Tipo de Matriz *</label>
                   <select required value={formData.id_tipo_matriz} onChange={e => setFormData({...formData, id_tipo_matriz: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm cursor-pointer">
                     <option value="">Seleccione tipo...</option>
                     {tiposMatriz.map(t => <option key={t.id} value={t.id}>{t.descripcion}</option>)}

@@ -1,11 +1,9 @@
 <?php
-// Cabeceras CORS estandarizadas
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
 
-// Responder al Preflight de los navegadores
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -13,7 +11,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 include_once '../../config/Database.php';
 
-// CIBERSEGURIDAD: Validación estricta
 $id_matriz = isset($_GET['id_matriz']) ? filter_var($_GET['id_matriz'], FILTER_VALIDATE_INT) : false;
 
 if (!$id_matriz) {
@@ -26,12 +23,10 @@ $database = new Database();
 $db = $database->getConnection();
 
 try {
-    // 1. LEER CABECERA (Para obtener la config de columnas)
     $stmt_matriz = $db->prepare("SELECT config_columnas FROM matriz WHERE id_matriz = :id");
     $stmt_matriz->execute([':id' => $id_matriz]);
     $matriz_info = $stmt_matriz->fetch(PDO::FETCH_ASSOC);
 
-    // 2. LEER ÍTEMS (Ordenados por la nueva columna 'orden')
     $query_items = "SELECT 
                         im.*, 
                         ec.descripcion as estado_cumplimiento_desc,
@@ -48,11 +43,9 @@ try {
 
     $items = [];
 
-    // MODIFICACIÓN: Expandimos la consulta para traer el Emisor y la Jurisdicción (Nivel)
+    // Ahora traemos síntesis y url_norma
     $query_normas = "SELECT 
-                        n.id_norma, 
-                        n.numero, 
-                        n.anio, 
+                        n.id_norma, n.numero, n.anio, n.sintesis, n.url_norma,
                         tn.descripcion as tipo_norma,
                         en.descripcion as emisor_desc,
                         j.descripcion as jurisdiccion_desc,
@@ -64,8 +57,13 @@ try {
                      LEFT JOIN jurisdiccion j ON en.id_jurisdiccion = j.id_jurisdiccion
                      LEFT JOIN nivel_jurisdiccion nj ON j.id_nivel_jurisdiccion = nj.id_nivel_jurisdiccion
                      WHERE imn.id_item_matriz = :id_item_matriz";
-    
     $stmt_normas = $db->prepare($query_normas);
+
+    // Consulta para traer las categorías etiquetadas de cada norma
+    $query_cat = "SELECT c.descripcion FROM categoria_norma cn 
+                  INNER JOIN categoria c ON cn.id_categoria = c.id_categoria 
+                  WHERE cn.id_norma = :id_norma";
+    $stmt_cat = $db->prepare($query_cat);
 
     $query_docs = "SELECT d.id_documentacion, d.nombre_original, d.path_archivos, d.tipo_mime, d.peso_bytes
                    FROM doc_item_matriz dim
@@ -76,15 +74,31 @@ try {
     while ($row = $stmt_items->fetch(PDO::FETCH_ASSOC)) {
         $id_item = $row['id_item_matriz'];
 
-        // Cargar Normas (Ahora con emisores y niveles)
+        // Cargar Normas y sus categorías
         $stmt_normas->execute([':id_item_matriz' => $id_item]);
-        $row['normas_vinculadas'] = $stmt_normas->fetchAll(PDO::FETCH_ASSOC);
-        $row['normas_ids'] = array_column($row['normas_vinculadas'], 'id_norma');
+        $normas_v = $stmt_normas->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($normas_v as &$n) {
+            $stmt_cat->execute([':id_norma' => $n['id_norma']]);
+            $n['categorias'] = $stmt_cat->fetchAll(PDO::FETCH_COLUMN);
+        }
+        $row['normas_vinculadas'] = $normas_v;
+        $row['normas_ids'] = array_column($normas_v, 'id_norma');
 
         // Cargar Documentos
         $stmt_docs->execute([':id_item_matriz' => $id_item]);
         $row['documentos_vinculados'] = $stmt_docs->fetchAll(PDO::FETCH_ASSOC);
         $row['documentos_ids'] = array_column($row['documentos_vinculados'], 'id_documentacion');
+
+        // MAGIA NO ESTRUCTURADA: Extraer JSON dinámico hacia la raíz del arreglo
+        if (!empty($row['datos_dinamicos'])) {
+            $dinamicos = json_decode($row['datos_dinamicos'], true);
+            if (is_array($dinamicos)) {
+                foreach ($dinamicos as $k => $v) {
+                    $row[$k] = $v;
+                }
+            }
+        }
+        unset($row['datos_dinamicos']); // Ocultamos el crudo
 
         $items[] = $row;
     }

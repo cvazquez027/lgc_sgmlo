@@ -37,7 +37,7 @@ try {
     $db->beginTransaction();
 
     // 2. Obtenemos los datos de la matriz que queremos publicar
-    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz FROM matriz WHERE id_matriz = :id_matriz FOR UPDATE";
+    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz FROM matriz WHERE id_matriz = :id_matriz FOR UPDATE";
     $stmt_info = $db->prepare($query_info);
     $stmt_info->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_info->execute();
@@ -48,17 +48,20 @@ try {
     }
 
     // 3. ARCHIVAMOS LA MATRIZ ANTERIOR (Si existe)
-    // Pasamos a id_estado_matriz = 3 (Archivada) y vigente = 0 a cualquier matriz del mismo tipo y sede que estuviera vigente (1)
+    // Archivamos solo matrices del mismo tipo, misma especialidad y misma sede que estuvieran publicadas (id_estado_matriz = 2)
     $query_archivar = "UPDATE matriz 
                        SET id_estado_matriz = 3, vigente = 0 
                        WHERE id_cliente_establecimiento = :est 
                          AND id_tipo_matriz = :tipo 
-                         AND id_estado_matriz = 1 
+                         AND id_especialidad_matriz = :especialidad
+                         AND id_estado_matriz = 2 
                          AND id_matriz != :id_matriz";
     
     $stmt_archivar = $db->prepare($query_archivar);
     $stmt_archivar->bindParam(":est", $matriz_actual['id_cliente_establecimiento'], PDO::PARAM_INT);
     $stmt_archivar->bindParam(":tipo", $matriz_actual['id_tipo_matriz'], PDO::PARAM_INT);
+    $stmt_archivar->bindParam(":especialidad", $matriz_actual['id_especialidad_matriz'], PDO::PARAM_INT);
+    $stmt_archivar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_archivar->execute();
 
     // 4. PUBLICAMOS LA NUEVA MATRIZ

@@ -3,6 +3,9 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { usePermissions } from "../../../hooks/usePermissions";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface DatoContacto {
   id_tipo_contacto: string;
@@ -28,6 +31,78 @@ interface TipoContacto {
   descripcion: string;
 }
 
+interface Categoria {
+  id_categoria: number;
+  descripcion: string;
+}
+
+interface Responsable {
+  id_responsable_establecimiento: number;
+  descripcion: string;
+  observacion: string;
+  vigente: number;
+}
+
+// Subcomponente para el Drag and Drop de las categorías asignadas
+const SortableCategoriaItem = ({ cat, onRemove }: { cat: Categoria, onRemove: (id: number) => void }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id_categoria });
+  const style = { 
+    transform: CSS.Transform.toString(transform), 
+    transition, 
+    zIndex: isDragging ? 50 : 1, 
+    opacity: isDragging ? 0.5 : 1, 
+    position: isDragging ? 'relative' as 'relative' : 'static' as 'static' 
+  };
+  
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm mb-2 group hover:border-lgc-primary transition-colors">
+       <div className="flex items-center gap-3">
+         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-lgc-primary touch-none">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+         </div>
+         <span className="text-xs font-bold text-slate-700">{cat.descripcion}</span>
+       </div>
+       <button onClick={() => onRemove(cat.id_categoria)} className="text-slate-300 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded" title="Quitar categoría">
+         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+       </button>
+    </div>
+  );
+};
+
+// Subcomponente para el Drag and Drop de los responsables
+const SortableResponsableItem = ({ resp, onEdit, onDelete }: { resp: Responsable, onEdit: (r: Responsable) => void, onDelete: (id: number) => void }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: resp.id_responsable_establecimiento });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 1,
+    opacity: isDragging ? 0.5 : 1,
+    position: isDragging ? 'relative' as 'relative' : 'static' as 'static'
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm mb-2 group hover:border-lgc-primary transition-colors">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-lgc-primary touch-none shrink-0">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+        </div>
+        <div className="min-w-0">
+          <span className="text-xs font-bold text-slate-700 block truncate">{resp.descripcion}</span>
+          {resp.observacion && <span className="text-[10px] text-slate-400 block truncate">{resp.observacion}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0 ml-2">
+        <button onClick={() => onEdit(resp)} className="text-slate-300 hover:text-lgc-primary transition-colors bg-slate-50 hover:bg-blue-50 p-1.5 rounded" title="Editar responsable">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+        </button>
+        <button onClick={() => onDelete(resp.id_responsable_establecimiento)} className="text-slate-300 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded" title="Eliminar responsable">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default function EstablecimientosPage() {
   const { id } = useParams(); 
   const router = useRouter();
@@ -44,7 +119,6 @@ export default function EstablecimientosPage() {
   const [jurisdicciones, setJurisdicciones] = useState<Jurisdiccion[]>([]);
   const [tiposContacto, setTiposContacto] = useState<TipoContacto[]>([]);
   
-  // Estado para la identidad corporativa del cliente
   const [clienteActual, setClienteActual] = useState<{ nombre_fantasia: string, logo_path: string | null } | null>(null);
   
   const [loading, setLoading] = useState(true);
@@ -59,6 +133,27 @@ export default function EstablecimientosPage() {
     contactos: [] as DatoContacto[]
   });
 
+  // --- NUEVOS ESTADOS PARA MODAL DE CATEGORÍAS ---
+  const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
+  const [establecimientoSeleccionado, setEstablecimientoSeleccionado] = useState<Establecimiento | null>(null);
+  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]);
+  const [categoriasAsignadas, setCategoriasAsignadas] = useState<Categoria[]>([]);
+  const [searchCat, setSearchCat] = useState("");
+  const [savingCategorias, setSavingCategorias] = useState(false);
+
+  // --- NUEVOS ESTADOS PARA MODAL DE RESPONSABLES ---
+  const [isResponsablesModalOpen, setIsResponsablesModalOpen] = useState(false);
+  const [establecimientoResponsables, setEstablecimientoResponsables] = useState<Establecimiento | null>(null);
+  const [responsables, setResponsables] = useState<Responsable[]>([]);
+  const [loadingResponsables, setLoadingResponsables] = useState(false);
+  const [savingResponsable, setSavingResponsable] = useState(false);
+  const [formResponsable, setFormResponsable] = useState<{ id_responsable_establecimiento: string; descripcion: string; observacion: string; vigente: number } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) { router.push("/"); return; }
@@ -66,7 +161,6 @@ export default function EstablecimientosPage() {
     try {
       setLoading(true);
       
-      // Añadimos el fetch de clientes para obtener la identidad de la cabecera
       const [resEst, resJur, resTipos, resClientes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${id}`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/jurisdicciones/leer.php`, { headers: { "Authorization": `Bearer ${token}` } }),
@@ -82,7 +176,6 @@ export default function EstablecimientosPage() {
       setJurisdicciones(dataJur.registros || []);
       setTiposContacto(dataTipos.registros || []);
       
-      // Filtramos para quedarnos con el nombre y logo del cliente actual
       if (dataClientes.registros) {
         const clienteFind = dataClientes.registros.find((c: any) => c.id_cliente.toString() === id);
         if (clienteFind) {
@@ -148,6 +241,198 @@ export default function EstablecimientosPage() {
       setFormLoading(false);
     }
   };
+
+  // --- LÓGICA DEL MODAL DE CATEGORÍAS ---
+  const abrirModalCategorias = async (est: Establecimiento) => {
+    setEstablecimientoSeleccionado(est);
+    setIsCategoriasModalOpen(true);
+    setSearchCat("");
+    
+    const token = localStorage.getItem("sgml_token");
+    if (!token) return;
+
+    try {
+      // 1. Cargamos TODAS las categorías maestras (asumimos que existe en maestras)
+      const resMaestras = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataMaestras = await resMaestras.json();
+      const todas = dataMaestras.registros?.map((c:any) => ({ id_categoria: c.id_categoria || c.id, descripcion: c.descripcion })) || [];
+      setTodasLasCategorias(todas);
+
+      // 2. Cargamos las categorías ya asignadas a este establecimiento
+      const resAsignadas = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer_categorias.php?id_cliente_establecimiento=${est.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataAsignadas = await resAsignadas.json();
+      
+      if (dataAsignadas.registros) {
+        // Mapeamos a nuestro objeto Categoria
+        const asignadas = dataAsignadas.registros.map((c: any) => ({
+          id_categoria: c.id_categoria,
+          descripcion: c.descripcion
+        }));
+        setCategoriasAsignadas(asignadas);
+      } else {
+        setCategoriasAsignadas([]);
+      }
+    } catch (err) {
+      console.error("Error al cargar categorías:", err);
+    }
+  };
+
+  const handleDragEndCategorias = (event: any) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = categoriasAsignadas.findIndex(c => c.id_categoria === active.id);
+      const newIndex = categoriasAsignadas.findIndex(c => c.id_categoria === over.id);
+      setCategoriasAsignadas(arrayMove(categoriasAsignadas, oldIndex, newIndex));
+    }
+  };
+
+  const moverADerecha = (cat: Categoria) => {
+    setCategoriasAsignadas(prev => [...prev, cat]);
+  };
+
+  const moverAIzquierda = (id_cat: number) => {
+    setCategoriasAsignadas(prev => prev.filter(c => c.id_categoria !== id_cat));
+  };
+
+  const moverTodasADerecha = (disponiblesFiltradas: Categoria[]) => {
+    setCategoriasAsignadas(prev => [...prev, ...disponiblesFiltradas]);
+  };
+
+  const moverTodasAIzquierda = () => {
+    setCategoriasAsignadas([]);
+  };
+
+  const guardarCategorias = async () => {
+    setSavingCategorias(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const payload = {
+        id_cliente_establecimiento: establecimientoSeleccionado?.id_cliente_establecimiento,
+        categorias: categoriasAsignadas.map(c => c.id_categoria)
+      };
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/guardar_categorias.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setIsCategoriasModalOpen(false);
+      } else {
+        alert("Error al guardar categorías.");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingCategorias(false);
+    }
+  };
+
+  // --- LÓGICA DEL MODAL DE RESPONSABLES ---
+  const abrirModalResponsables = async (est: Establecimiento) => {
+    setEstablecimientoResponsables(est);
+    setIsResponsablesModalOpen(true);
+    setFormResponsable(null);
+    await cargarResponsables(est.id_cliente_establecimiento);
+  };
+
+  const cargarResponsables = async (id_est: number) => {
+    setLoadingResponsables(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${id_est}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setResponsables(data.registros || []);
+    } catch (err) {
+      console.error("Error al cargar responsables:", err);
+    } finally {
+      setLoadingResponsables(false);
+    }
+  };
+
+  const handleDragEndResponsables = async (event: any) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = responsables.findIndex(r => r.id_responsable_establecimiento === active.id);
+    const newIndex = responsables.findIndex(r => r.id_responsable_establecimiento === over.id);
+    const reordenados = arrayMove(responsables, oldIndex, newIndex);
+    setResponsables(reordenados);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ accion: "reordenar", orden: reordenados.map(r => r.id_responsable_establecimiento) })
+      });
+    } catch (err) {
+      console.error("Error al reordenar:", err);
+    }
+  };
+
+  const handleEliminarResponsable = async (id: number) => {
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ accion: "borrar", id_responsable_establecimiento: id })
+      });
+      const data = await res.json();
+      if (res.status === 409) {
+        alert(`⚠️ ${data.mensaje}`);
+      } else if (res.ok) {
+        setResponsables(prev => prev.filter(r => r.id_responsable_establecimiento !== id));
+      } else {
+        alert("Error al eliminar el responsable.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleGuardarResponsable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formResponsable || !establecimientoResponsables) return;
+    setSavingResponsable(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const payload = {
+        accion: "guardar",
+        id_establecimiento: establecimientoResponsables.id_cliente_establecimiento,
+        id_responsable_establecimiento: formResponsable.id_responsable_establecimiento || undefined,
+        descripcion: formResponsable.descripcion,
+        observacion: formResponsable.observacion,
+        vigente: formResponsable.vigente
+      };
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setFormResponsable(null);
+        await cargarResponsables(establecimientoResponsables.id_cliente_establecimiento);
+      } else {
+        alert("Error al guardar el responsable.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingResponsable(false);
+    }
+  };
+
+  // Filtrar categorías que no estén ya asignadas
+  const IDsAsignados = categoriasAsignadas.map(c => c.id_categoria);
+  const categoriasDisponibles = todasLasCategorias.filter(c => !IDsAsignados.includes(c.id_categoria));
+  
+  // Aplicar buscador
+  const categoriasDisponiblesFiltradas = categoriasDisponibles.filter(c => 
+    c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
+  );
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
   if (!canRead("clientes")) return <div className="py-32 text-center text-red-500 font-bold text-2xl">Acceso Denegado</div>;
@@ -216,7 +501,7 @@ export default function EstablecimientosPage() {
                 </tr>
               ) : (
                 establecimientos.map(est => (
-                  <tr key={est.id_cliente_establecimiento} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={est.id_cliente_establecimiento} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="p-5 font-bold text-slate-700 text-sm">{est.descripcion}</td>
                     <td className="p-5 text-xs text-slate-500 font-medium uppercase tracking-widest">{est.jurisdiccion_nombre}</td>
                     <td className="p-5">
@@ -226,22 +511,38 @@ export default function EstablecimientosPage() {
                     </td>
                     <td className="p-5 text-right">
                       {canEdit("clientes") ? (
-                        <button 
-                          onClick={() => { 
-                            setFormData({
-                              id_cliente_establecimiento: est.id_cliente_establecimiento.toString(),
-                              descripcion: est.descripcion,
-                              id_jurisdiccion: est.id_jurisdiccion.toString(),
-                              vigente: est.vigente,
-                              contactos: est.contactos || [] 
-                            }); 
-                            setIsModalOpen(true); 
-                          }}
-                          className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm"
-                          title="Editar Sede"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => abrirModalCategorias(est)}
+                            className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
+                            title="Asignar Categorías y Rubros"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                          </button>
+                          <button
+                            onClick={() => abrirModalResponsables(est)}
+                            className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
+                            title="Gestionar Responsables"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => { 
+                              setFormData({
+                                id_cliente_establecimiento: est.id_cliente_establecimiento.toString(),
+                                descripcion: est.descripcion,
+                                id_jurisdiccion: est.id_jurisdiccion.toString(),
+                                vigente: est.vigente,
+                                contactos: est.contactos || [] 
+                              }); 
+                              setIsModalOpen(true); 
+                            }}
+                            className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm"
+                            title="Editar Sede"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest cursor-not-allowed">Solo Lectura</span>
                       )}
@@ -254,6 +555,7 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
+      {/* --- MODAL ESTÁNDAR DE EDICIÓN DE ESTABLECIMIENTO --- */}
       {isModalOpen && canEdit("clientes") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -332,6 +634,244 @@ export default function EstablecimientosPage() {
           </div>
         </div>
       )}
+
+      {/* --- NUEVO MODAL: ASIGNACIÓN DE CATEGORÍAS (DUAL LISTBOX) --- */}
+      {isCategoriasModalOpen && establecimientoSeleccionado && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
+              <div>
+                <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                  Categorización de Sede
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                  Definiendo perfil normativo para: <span className="text-slate-600">{establecimientoSeleccionado.descripcion}</span>
+                </p>
+              </div>
+              <button onClick={() => setIsCategoriasModalOpen(false)} className="text-slate-400 hover:text-red-500 text-2xl transition-colors">&times;</button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-hidden flex flex-col md:flex-row gap-6 bg-white min-h-100">
+              
+              {/* PANEL IZQUIERDO: DISPONIBLES */}
+              <div className="flex-1 flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Categorías Disponibles</h3>
+                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{categoriasDisponiblesFiltradas.length}</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Buscar rubro o categoría..." 
+                    value={searchCat}
+                    onChange={e => setSearchCat(e.target.value)}
+                    className="w-full text-xs p-2 border border-slate-300 rounded outline-none focus:border-lgc-primary bg-white"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50">
+                  {categoriasDisponiblesFiltradas.length === 0 ? (
+                    <div className="text-center text-xs text-slate-400 italic p-6">No hay categorías que coincidan.</div>
+                  ) : (
+                    categoriasDisponiblesFiltradas.map(cat => (
+                      <button 
+                        key={cat.id_categoria} 
+                        onClick={() => moverADerecha(cat)}
+                        className="w-full text-left p-2.5 bg-white border border-slate-200 rounded-lg hover:border-lgc-primary hover:text-lgc-primary transition-all text-xs font-bold text-slate-600 flex justify-between items-center group mb-2 shadow-sm"
+                      >
+                        {cat.descripcion}
+                        <svg className="w-4 h-4 text-slate-300 group-hover:text-lgc-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* BOTONERA CENTRAL (CONTROLES MASIVOS) */}
+              <div className="flex md:flex-col justify-center gap-3 shrink-0 py-4">
+                 <button 
+                   onClick={() => moverTodasADerecha(categoriasDisponiblesFiltradas)} 
+                   disabled={categoriasDisponiblesFiltradas.length === 0}
+                   className="bg-slate-100 hover:bg-[#006A8A] hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
+                   title="Mover todas a la derecha"
+                 >
+                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 13l-7 7-7-7m14-8l-7 7-7-7" /></svg>
+                 </button>
+                 <button 
+                   onClick={moverTodasAIzquierda} 
+                   disabled={categoriasAsignadas.length === 0}
+                   className="bg-slate-100 hover:bg-red-500 hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
+                   title="Quitar todas"
+                 >
+                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 11l7-7 7 7M5 19l7-7 7 7" /></svg>
+                 </button>
+              </div>
+
+              {/* PANEL DERECHO: ASIGNADAS (SORTABLE) */}
+              <div className="flex-1 flex flex-col border border-[#006A8A]/30 rounded-xl overflow-hidden shadow-sm bg-[#006A8A]/5">
+                <div className="bg-white p-3 border-b border-[#006A8A]/20">
+                  <div className="flex justify-between items-center mb-1">
+                    <h3 className="text-[10px] font-bold uppercase text-[#006A8A] tracking-widest">Asignadas a la Sede</h3>
+                    <span className="bg-[#006A8A] text-white text-[10px] font-bold px-2 py-0.5 rounded">{categoriasAsignadas.length}</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-widest">Arrastrá para ordenar por prioridad</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2">
+                  {categoriasAsignadas.length === 0 ? (
+                    <div className="text-center text-xs text-slate-400 italic p-6 flex flex-col items-center gap-2">
+                      <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                      Seleccioná categorías del panel izquierdo.
+                    </div>
+                  ) : (
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndCategorias}>
+                      <SortableContext items={categoriasAsignadas.map(c => c.id_categoria)} strategy={verticalListSortingStrategy}>
+                        {categoriasAsignadas.map(cat => (
+                           <SortableCategoriaItem key={cat.id_categoria} cat={cat} onRemove={moverAIzquierda} />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* PIE DEL MODAL */}
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0">
+               <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg">
+                 Cancelar
+               </button>
+               <button onClick={guardarCategorias} disabled={savingCategorias} className="px-8 py-2.5 bg-lgc-primary hover:bg-[#006A8A] text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors">
+                 {savingCategorias ? (
+                   <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...</>
+                 ) : (
+                   <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
+                 )}
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NUEVO MODAL: GESTIÓN DE RESPONSABLES --- */}
+      {isResponsablesModalOpen && establecimientoResponsables && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+
+            {/* CABECERA */}
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
+              <div>
+                <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  Responsables de Sede
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                  Sede: <span className="text-slate-600">{establecimientoResponsables.descripcion}</span>
+                </p>
+              </div>
+              <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="text-slate-400 hover:text-red-500 text-2xl transition-colors">&times;</button>
+            </div>
+
+            {/* CUERPO */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
+
+              {/* FORMULARIO INLINE PARA CREAR / EDITAR */}
+              {formResponsable !== null ? (
+                <form onSubmit={handleGuardarResponsable} className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4 animate-fade-in">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b pb-2">
+                    {formResponsable.id_responsable_establecimiento ? "Editar Responsable" : "Nuevo Responsable"}
+                  </h3>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Nombre / Cargo *</label>
+                    <input
+                      required
+                      className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm"
+                      placeholder="Ej: Gerencia de Sistemas"
+                      value={formResponsable.descripcion}
+                      onChange={e => setFormResponsable(prev => prev ? { ...prev, descripcion: e.target.value } : prev)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Observación</label>
+                    <input
+                      className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm"
+                      placeholder="Información adicional (opcional)"
+                      value={formResponsable.observacion}
+                      onChange={e => setFormResponsable(prev => prev ? { ...prev, observacion: e.target.value } : prev)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado</label>
+                    <select
+                      className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary text-sm cursor-pointer"
+                      value={formResponsable.vigente}
+                      onChange={e => setFormResponsable(prev => prev ? { ...prev, vigente: parseInt(e.target.value) } : prev)}
+                    >
+                      <option value={1}>ACTIVO</option>
+                      <option value={0}>INACTIVO</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setFormResponsable(null)} className="flex-1 py-2.5 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={savingResponsable} className="flex-1 bg-lgc-primary text-white py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-lgc-accent transition-all disabled:opacity-50">
+                      {savingResponsable ? 'Guardando...' : 'Guardar Responsable'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setFormResponsable({ id_responsable_establecimiento: "", descripcion: "", observacion: "", vigente: 1 })}
+                  className="w-full py-2.5 border border-dashed border-slate-300 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-lgc-primary hover:border-lgc-primary transition-colors flex items-center justify-center gap-2"
+                >
+                  <span className="text-lg leading-none">+</span> Agregar Responsable
+                </button>
+              )}
+
+              {/* LISTA ORDENABLE */}
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Responsables Asignados</h3>
+                  <span className="bg-lgc-primary text-white text-[10px] font-bold px-2 py-0.5 rounded">{responsables.length}</span>
+                </div>
+                {loadingResponsables ? (
+                  <div className="py-8 text-center text-lgc-primary font-heading text-sm animate-pulse">Cargando...</div>
+                ) : responsables.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400 italic border border-dashed border-slate-200 rounded-xl">
+                    No hay responsables registrados para esta sede.
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[9px] text-slate-400 uppercase tracking-widest mb-2">Arrastrá para ordenar por prioridad</p>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndResponsables}>
+                      <SortableContext items={responsables.map(r => r.id_responsable_establecimiento)} strategy={verticalListSortingStrategy}>
+                        {responsables.map(resp => (
+                          <SortableResponsableItem
+                            key={resp.id_responsable_establecimiento}
+                            resp={resp}
+                            onEdit={(r) => setFormResponsable({ id_responsable_establecimiento: r.id_responsable_establecimiento.toString(), descripcion: r.descripcion, observacion: r.observacion || "", vigente: r.vigente })}
+                            onDelete={handleEliminarResponsable}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* PIE DEL MODAL */}
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+              <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="px-8 py-2.5 bg-lgc-primary hover:bg-[#006A8A] text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

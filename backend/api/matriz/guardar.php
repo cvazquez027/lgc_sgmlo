@@ -13,8 +13,8 @@ include_once '../../config/Database.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
-// Ciberseguridad: Agregamos id_tipo_matriz a las validaciones obligatorias
-if (empty($data->id_cliente_establecimiento) || empty($data->fecha_desde) || empty($data->id_estado_matriz) || empty($data->id_tipo_matriz)) {
+// Ciberseguridad: Agregamos id_especialidad_matriz a las validaciones obligatorias
+if (empty($data->id_cliente_establecimiento) || empty($data->fecha_desde) || empty($data->id_estado_matriz) || empty($data->id_tipo_matriz) || empty($data->id_especialidad_matriz)) {
     http_response_code(400);
     echo json_encode(["mensaje" => "Faltan datos obligatorios para crear la cabecera."]);
     exit();
@@ -26,7 +26,8 @@ $db = $database->getConnection();
 $id_matriz = !empty($data->id_matriz) ? (int)$data->id_matriz : null;
 $id_cliente_establecimiento = (int)$data->id_cliente_establecimiento;
 $id_estado_matriz = (int)$data->id_estado_matriz;
-$id_tipo_matriz = (int)$data->id_tipo_matriz; // Nuevo campo sanitizado
+$id_tipo_matriz = (int)$data->id_tipo_matriz; 
+$id_especialidad_matriz = (int)$data->id_especialidad_matriz; // Nuevo campo capturado
 $version = !empty($data->version) ? (int)$data->version : 1;
 $vigente = isset($data->vigente) ? (int)$data->vigente : 1;
 
@@ -46,6 +47,7 @@ try {
         $query = "UPDATE matriz SET 
                     id_cliente_establecimiento = :id_cliente_establecimiento,
                     id_tipo_matriz = :id_tipo_matriz,
+                    id_especialidad_matriz = :id_especialidad_matriz,
                     fecha_desde = :fecha_desde,
                     version = :version,
                     id_estado_matriz = :id_estado_matriz,
@@ -56,14 +58,15 @@ try {
     } else {
         // CREAR NUEVA MATRIZ
         $query = "INSERT INTO matriz 
-                    (id_cliente_establecimiento, id_tipo_matriz, fecha_desde, version, id_estado_matriz, vigente) 
+                    (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, fecha_desde, version, id_estado_matriz, vigente) 
                   VALUES 
-                    (:id_cliente_establecimiento, :id_tipo_matriz, :fecha_desde, :version, :id_estado_matriz, :vigente)";
+                    (:id_cliente_establecimiento, :id_tipo_matriz, :id_especialidad_matriz, :fecha_desde, :version, :id_estado_matriz, :vigente)";
         $stmt = $db->prepare($query);
     }
 
     $stmt->bindParam(":id_cliente_establecimiento", $id_cliente_establecimiento, PDO::PARAM_INT);
     $stmt->bindParam(":id_tipo_matriz", $id_tipo_matriz, PDO::PARAM_INT);
+    $stmt->bindParam(":id_especialidad_matriz", $id_especialidad_matriz, PDO::PARAM_INT);
     $stmt->bindParam(":fecha_desde", $fecha_desde, PDO::PARAM_STR);
     $stmt->bindParam(":version", $version, PDO::PARAM_INT);
     $stmt->bindParam(":id_estado_matriz", $id_estado_matriz, PDO::PARAM_INT);

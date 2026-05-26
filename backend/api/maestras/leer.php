@@ -20,10 +20,12 @@ $tablas_permitidas = [
     'estado_norma' => ['id' => 'id_estado_norma', 'cols' => 'id_estado_norma, descripcion, vigente'],
     'estado_matriz' => ['id' => 'id_estado_matriz', 'cols' => 'id_estado_matriz, descripcion, vigente'],
     'tipo_matriz' => ['id' => 'id_tipo_matriz', 'cols' => 'id_tipo_matriz, descripcion, vigente'],
+    'especialidad_matriz' => ['id' => 'id_especialidad_matriz', 'cols' => 'id_especialidad_matriz, descripcion, vigente'],
     'estado_cumplimiento' => ['id' => 'id_estado_cumplimiento', 'cols' => 'id_estado_cumplimiento, descripcion, vigente'],
     'tipo_modalidad' => ['id' => 'id_tipo_modalidad', 'cols' => 'id_tipo_modalidad, descripcion'],
     'nivel_jurisdiccion' => ['id' => 'id_nivel_jurisdiccion', 'cols' => 'id_nivel_jurisdiccion, descripcion, nivel, vigente'],
-    'emisor_norma' => ['id' => 'id_emisor_norma', 'cols' => 'id_emisor_norma, descripcion'] 
+    'emisor_norma' => ['id' => 'id_emisor_norma', 'cols' => 'id_emisor_norma, descripcion'],
+    'categoria' => ['id' => 'id_categoria', 'cols' => 'id_categoria, descripcion']
 ];
 
 $tabla_solicitada = isset($_GET['tabla']) ? preg_replace('/[^a-zA-Z_]/', '', $_GET['tabla']) : '';

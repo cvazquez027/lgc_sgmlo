@@ -34,6 +34,7 @@ export default function Login() {
       localStorage.removeItem('sgml_token');
       localStorage.removeItem('sgml_usuario');
       localStorage.removeItem('sgml_permisos');
+      localStorage.removeItem('sgml_cliente_id');
 
       // 2. Guardamos el token criptográfico principal
       localStorage.setItem('sgml_token', data.token);
@@ -41,6 +42,8 @@ export default function Login() {
       // 3. Guardamos los datos básicos del usuario (útil para mostrar en el Navbar)
       if (data.usuario) {
           localStorage.setItem('sgml_usuario', JSON.stringify(data.usuario));
+          // id_cliente: null = usuario interno LGC (ve todo), número = usuario externo (ve solo sus matrices publicadas)
+          localStorage.setItem('sgml_cliente_id', data.usuario.id_cliente ?? 'null');
       }
       
       // 4. Guardamos la matriz de permisos para habilitar la protección UI en Next.js
@@ -83,7 +86,7 @@ export default function Login() {
         </div>
 
         {/* LADO DERECHO: TEXTOS ARRIBA, FORMULARIO ABAJO */}
-        <div className="w-full md:w-7/12 p-10 md:p-16 flex flex-col justify-center">
+        <div className="w-full md:w-7/12 p-10 md:p-16 flex flex-col justify-center bg-lgc-primary/9">
           
           {/* Encabezados (Arriba a la derecha) */}
           <div className="text-center md:text-left mb-10">

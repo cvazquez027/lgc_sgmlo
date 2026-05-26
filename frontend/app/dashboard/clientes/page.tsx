@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // IMPORTANTE: Agregamos el import de Link
+import Link from "next/link";
 import { usePermissions } from "../../hooks/usePermissions";
 
 interface DatoContacto {
@@ -54,6 +54,13 @@ export default function ClientesPage() {
     contactos: [] as DatoContacto[] 
   });
 
+  // ESTADOS DE FILTROS Y PAGINACIÓN
+  const [filtroEstado, setFiltroEstado] = useState<number | "todos">(1);
+  const [filtroNombre, setFiltroNombre] = useState("");
+  const [filtroCuit, setFiltroCuit] = useState("");
+  const [itemsPorPagina, setItemsPorPagina] = useState(10);
+  const [paginaActual, setPaginaActual] = useState(1);
+
   const fetchTiposContacto = useCallback(async (token: string) => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_contacto`, {
@@ -89,6 +96,36 @@ export default function ClientesPage() {
   useEffect(() => { 
     if (!isCheckingPerms && canRead("clientes")) fetchClientes(); 
   }, [fetchClientes, isCheckingPerms, canRead]);
+
+  // LÓGICA DE FILTRADO
+  const clientesFiltrados = clientes.filter(cliente => {
+    // Filtro por estado
+    if (filtroEstado !== "todos" && cliente.vigente !== filtroEstado) return false;
+    
+    // Filtro por nombre
+    if (filtroNombre.trim() !== "") {
+      const busqueda = filtroNombre.toLowerCase();
+      const matchRazon = cliente.razon_social?.toLowerCase().includes(busqueda);
+      const matchFantasia = cliente.nombre_fantasia?.toLowerCase().includes(busqueda);
+      if (!matchRazon && !matchFantasia) return false;
+    }
+    
+    // Filtro por CUIT
+    if (filtroCuit.trim() !== "" && !cliente.cuit?.includes(filtroCuit.trim())) return false;
+    
+    return true;
+  });
+
+  // LÓGICA DE PAGINACIÓN
+  const totalPaginas = Math.ceil(clientesFiltrados.length / itemsPorPagina);
+  const indiceInicio = (paginaActual - 1) * itemsPorPagina;
+  const indiceFin = indiceInicio + itemsPorPagina;
+  const clientesPaginados = clientesFiltrados.slice(indiceInicio, indiceFin);
+
+  // Resetear a página 1 cuando cambian los filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroEstado, filtroNombre, filtroCuit, itemsPorPagina]);
 
   // --- LÓGICA DE SUBIDA DE LOGO (Seguridad UX) ---
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,21 +208,21 @@ export default function ClientesPage() {
   if (!canRead("clientes")) return <div className="py-32 text-center text-red-500 font-bold text-2xl">Acceso Denegado</div>;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+    <div className="space-y-4 animate-fade-in">
+      {/* HEADER CON FONDO PRIMARY - RECUADRO SEPARADO */}
+      <div className="flex justify-between items-center bg-lgc-primary p-6 rounded-xl shadow-lg border border-lgc-primary/20">
         
-        {/* BLOQUE NUEVO: Botón de Volver + Título Centrados */}
         <div className="flex items-center gap-3">
           <Link 
             href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            className="flex items-center justify-center w-8 h-8 rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-all group"
             title="Volver al inicio"
           >
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
-          <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
+          <h1 className="text-xl font-bold text-white uppercase tracking-wide m-0 leading-none">
             Gestión de Clientes
           </h1>
         </div>
@@ -196,68 +233,221 @@ export default function ClientesPage() {
               setFormData({id_cliente: "", cuit: "", razon_social: "", nombre_fantasia: "", logo_path: "", vigente: 1, contactos: []}); 
               setIsModalOpen(true); 
             }}
-            className="bg-lgc-primary text-white py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-accent transition-all shadow-md flex items-center gap-2"
+            className="bg-lgc-tostado text-slate-800 py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-tostado/90 transition-all shadow-md flex items-center gap-2"
           >
             <span>+</span> Nuevo Cliente
           </button>
         )}
       </div>
 
+      {/* FILA DE FILTROS CON FONDO TOSTADO - RECUADRO SEPARADO */}
+      <div className="bg-lgc-tostado p-5 rounded-xl shadow-lg border border-lgc-tostado/30">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Filtro por Estado */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Estado</label>
+            <select 
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 font-medium shadow-sm"
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value === "todos" ? "todos" : parseInt(e.target.value))}
+            >
+              <option value={1}>Activos</option>
+              <option value={0}>Inactivos</option>
+              <option value="todos">Todos</option>
+            </select>
+          </div>
+
+          {/* Filtro por Nombre */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Buscar por Nombre</label>
+            <input 
+              type="text"
+              placeholder="Razón social o fantasía..."
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 shadow-sm"
+              value={filtroNombre}
+              onChange={(e) => setFiltroNombre(e.target.value)}
+            />
+          </div>
+
+          {/* Filtro por CUIT */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Buscar por CUIT</label>
+            <input 
+              type="text"
+              placeholder="Ingrese CUIT..."
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 shadow-sm"
+              value={filtroCuit}
+              onChange={(e) => setFiltroCuit(e.target.value)}
+            />
+          </div>
+
+          {/* Items por página */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Items por página</label>
+            <select 
+              className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 font-medium shadow-sm"
+              value={itemsPorPagina}
+              onChange={(e) => setItemsPorPagina(parseInt(e.target.value))}
+            >
+              <option value={10}>10</option>
+              <option value={30}>30</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Sincronizando base de datos...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {clientes.map(cliente => (
-            <div key={cliente.id_cliente} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:border-lgc-primary transition-all group flex flex-col h-full">
-              
-              <div className="flex justify-between items-start mb-4">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">CUIT: {cliente.cuit}</span>
-                <span className={`h-2.5 w-2.5 rounded-full ${cliente.vigente ? 'bg-green-500' : 'bg-red-500'}`} title={cliente.vigente ? 'Vigente' : 'Baja'}></span>
+        <>
+          {/* LISTA DE CLIENTES COMO FILAS HORIZONTALES */}
+          <div className="space-y-2 pt-6">
+            {clientesPaginados.length === 0 ? (
+              <div className="p-16 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border border-slate-200 shadow-sm border-dashed">
+                <svg className="w-12 h-12 mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="font-bold uppercase tracking-widest text-[11px]">No hay clientes que coincidan con los filtros.</span>
               </div>
-              
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 rounded-lg border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-                  {cliente.logo_path ? (
-                    <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${cliente.logo_path}`} alt={`Logo ${cliente.razon_social}`} className="w-full h-full object-contain p-1" />
-                  ) : (
-                    <span className="text-xl font-heading font-bold text-slate-300 uppercase">{cliente.razon_social?.charAt(0)}</span>
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-heading text-lg text-slate-800 leading-tight group-hover:text-lgc-primary transition-colors">{cliente.razon_social}</h3>
-                  <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{cliente.nombre_fantasia || "Sin nombre fantasía"}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2 mt-auto pt-4">
-                {canEdit("clientes") && (
-                  <button 
-                    onClick={() => { 
-                      setFormData({
-                        ...cliente, 
-                        id_cliente: cliente.id_cliente.toString(),
-                        logo_path: cliente.logo_path || "",
-                        contactos: cliente.contactos || [] 
-                      }); 
-                      setIsModalOpen(true); 
-                    }}
-                    className="flex-1 text-[10px] text-lgc-primary font-bold uppercase tracking-widest py-2.5 border border-lgc-primary/30 rounded-lg hover:bg-lgc-primary hover:text-white transition-all text-center"
+            ) : (
+              clientesPaginados.map((cliente, index) => {
+                const esVerde = index % 2 === 0;
+                const bgColor = esVerde ? "bg-lgc-accent" : "bg-lgc-primary";
+                
+                return (
+                  <div 
+                    key={cliente.id_cliente} 
+                    className={`${bgColor} p-4 rounded-xl shadow-sm border border-white/10 hover:shadow-md transition-all group flex items-center gap-4`}
                   >
-                    Editar Perfil
-                  </button>
-                )}
+                    {/* Logo */}
+                    <div className="w-14 h-14 rounded-lg border-2 border-white/30 bg-white/95 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+                      {cliente.logo_path ? (
+                        <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${cliente.logo_path}`} alt={`Logo ${cliente.razon_social}`} className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <span className="text-xl font-heading font-bold text-slate-300 uppercase">{cliente.razon_social?.charAt(0)}</span>
+                      )}
+                    </div>
+
+                    {/* CUIT */}
+                    <div className="w-32 shrink-0">
+                      <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">CUIT</span>
+                      <span className="text-sm font-bold text-white">{cliente.cuit}</span>
+                    </div>
+
+                    {/* Razón Social */}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">Razón Social</span>
+                      <span className="text-sm font-bold text-white truncate block">{cliente.razon_social}</span>
+                    </div>
+
+                    {/* Nombre Fantasía */}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">Nombre Fantasía</span>
+                      <span className="text-sm font-medium text-white/90 truncate block">{cliente.nombre_fantasia || "Sin nombre fantasía"}</span>
+                    </div>
+
+                    {/* Estado */}
+                    <div className="w-20 shrink-0 flex items-center justify-center">
+                      <span className={`text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full ${cliente.vigente ? 'bg-green-500/20 text-green-100 border border-green-400/30' : 'bg-red-500/20 text-red-100 border border-red-400/30'}`}>
+                        {cliente.vigente ? 'Activo' : 'Baja'}
+                      </span>
+                    </div>
+
+                    {/* Botones */}
+                    <div className="flex gap-2 shrink-0">
+                      {canEdit("clientes") && (
+                        <button 
+                          onClick={() => { 
+                            setFormData({
+                              ...cliente, 
+                              id_cliente: cliente.id_cliente.toString(),
+                              logo_path: cliente.logo_path || "",
+                              contactos: cliente.contactos || [] 
+                            }); 
+                            setIsModalOpen(true); 
+                          }}
+                          className="text-[10px] text-white font-bold uppercase tracking-widest py-2 px-4 border border-white/30 rounded-lg hover:bg-white/10 transition-all"
+                        >
+                          Editar
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => router.push(`/dashboard/clientes/${cliente.id_cliente}`)}
+                        className="text-[10px] font-bold uppercase tracking-widest py-2 px-4 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-all border border-white/10"
+                      >
+                        Establecimientos
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* CONTROLES DE PAGINACIÓN */}
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between pt-6 pb-2">
+              <div className="text-sm text-slate-600">
+                Mostrando <span className="font-bold text-lgc-primary">{indiceInicio + 1}</span> a <span className="font-bold text-lgc-primary">{Math.min(indiceFin, clientesFiltrados.length)}</span> de <span className="font-bold text-lgc-primary">{clientesFiltrados.length}</span> clientes
+              </div>
+              
+              <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => router.push(`/dashboard/clientes/${cliente.id_cliente}`)}
-                  className="flex-1 text-[10px] font-bold uppercase tracking-widest py-2.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-all text-center"
+                  onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                  disabled={paginaActual === 1}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  Establecimientos
+                  Anterior
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPaginas }, (_, i) => i + 1).map(numPagina => {
+                    // Mostrar solo algunas páginas alrededor de la actual
+                    if (
+                      numPagina === 1 || 
+                      numPagina === totalPaginas || 
+                      (numPagina >= paginaActual - 1 && numPagina <= paginaActual + 1)
+                    ) {
+                      return (
+                        <button
+                          key={numPagina}
+                          onClick={() => setPaginaActual(numPagina)}
+                          className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${
+                            paginaActual === numPagina 
+                              ? 'bg-lgc-primary text-white shadow-md' 
+                              : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {numPagina}
+                        </button>
+                      );
+                    } else if (
+                      numPagina === paginaActual - 2 || 
+                      numPagina === paginaActual + 2
+                    ) {
+                      return <span key={numPagina} className="text-slate-400 px-1">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+                
+                <button 
+                  onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                  disabled={paginaActual === totalPaginas}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  Siguiente
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
+      {/* MODAL DE EDICIÓN/CREACIÓN (SIN CAMBIOS) */}
       {isModalOpen && canEdit("clientes") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">

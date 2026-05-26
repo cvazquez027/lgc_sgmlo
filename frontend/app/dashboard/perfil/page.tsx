@@ -139,76 +139,85 @@ export default function MiPerfilPage() {
     }
   };
 
-  if (loading) return <div className="py-20 text-center text-lgc-primary animate-pulse font-bold">Cargando perfil...</div>;
+  if (loading) return <div className="py-20 text-center text-lgc-accent animate-pulse font-bold">Cargando perfil...</div>;
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in p-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+    <div className="h-[calc(100vh-80px)] flex items-center justify-center animate-fade-in px-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full max-w-3xl">
         
-        {/* CABECERA AZUL MODIFICADA */}
-        <div className="bg-lgc-primary p-6 text-white flex items-center gap-4">
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold uppercase shadow-inner shrink-0">
+        {/* CABECERA ACCENT */}
+        <div className="bg-lgc-accent p-5 text-white flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-xl font-bold uppercase shadow-inner shrink-0">
             {formData.nombre ? formData.nombre.charAt(0) : "U"}
           </div>
           <div>
-            <h1 className="text-2xl font-heading font-bold">Mi Perfil</h1>
-            <p className="text-white/80 text-sm">Gestioná tus datos personales</p>
+            <h1 className="text-xl font-heading font-bold leading-tight">Mi Perfil</h1>
+            <p className="text-white/80 text-xs">Gestioná tus datos personales</p>
           </div>
-
-          {/* BOTÓN VOLVER (Alineado a la derecha con ml-auto) */}
           <Link 
             href="/dashboard" 
-            className="ml-auto flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all group"
+            className="ml-auto flex items-center justify-center w-9 h-9 rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all group"
             title="Volver al inicio"
           >
-            <svg className="w-6 h-6 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-5 md:p-6">
           {mensaje.texto && mensaje.tipo === 'error' && (
-            <div className="p-4 rounded-lg text-sm font-bold border bg-red-50 text-red-700 border-red-200">
+            <div className="mb-4 p-3 rounded-lg text-sm font-bold border bg-red-50 text-red-700 border-red-200">
               {mensaje.texto}
             </div>
           )}
 
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-slate-700 border-b border-slate-100 pb-2">Datos Personales</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* DOS COLUMNAS EN DESKTOP, UNA EN MOBILE */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
+
+            {/* COLUMNA IZQUIERDA: Datos personales */}
+            <div className="space-y-3">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-3">Datos Personales</h2>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre</label>
-                <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 focus:border-lgc-primary transition-colors" />
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nombre</label>
+                <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Apellido</label>
-                <input type="text" name="apellido" value={formData.apellido} onChange={handleChange} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 focus:border-lgc-primary transition-colors" />
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Apellido</label>
+                <input type="text" name="apellido" value={formData.apellido} onChange={handleChange} required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</label>
+                <input type="email" name="email" value={formData.email} onChange={handleChange} required
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
               </div>
             </div>
-            
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 focus:border-lgc-primary transition-colors" />
+
+            {/* COLUMNA DERECHA: Seguridad */}
+            <div className="space-y-3 mt-5 md:mt-0">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-3">Seguridad</h2>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nueva Clave</label>
+                <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Dejar en blanco para no cambiar"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Confirmar Clave</label>
+                <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repetir nueva clave"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+              </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
+                Si no querés cambiar tu contraseña, dejá los campos en blanco. La clave actual seguirá siendo válida.
+              </p>
             </div>
+
           </div>
 
-          <div className="space-y-4 pt-4">
-            <h2 className="text-lg font-bold text-slate-700 border-b border-slate-100 pb-2">Seguridad</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nueva Clave</label>
-                <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="********" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 focus:border-lgc-primary transition-colors" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Confirmar Clave</label>
-                <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="********" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 focus:border-lgc-primary transition-colors" />
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-6 flex justify-end">
-            <button type="submit" disabled={saving || showToast} className="bg-lgc-primary hover:bg-lgc-accent text-white font-bold py-3 px-8 rounded-lg shadow-md transition-all disabled:opacity-50">
+          <div className="pt-5 flex justify-end border-t border-slate-100 mt-5">
+            <button type="submit" disabled={saving || showToast}
+              className="bg-lgc-accent hover:bg-[#7A8A1E] text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all disabled:opacity-50 text-sm uppercase tracking-widest">
               {saving ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </div>

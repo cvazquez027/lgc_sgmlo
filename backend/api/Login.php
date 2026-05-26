@@ -42,6 +42,12 @@ if (!empty($data->email) && !empty($data->password)) {
         // Magia de seguridad: verificamos el hash de la contraseña
         if (password_verify($data->password, $row['password_hash'])) {
             
+            // Actualizar último login
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+                $stmt_login = $db->prepare("UPDATE usuario SET ultimo_login = NOW(), ultimo_login_ip = :ip WHERE id_usuario = :id");
+                $stmt_login->execute([':ip' => $ip, ':id' => $row['id_usuario']]);
+            } catch (Exception $e) { /* No bloqueamos el login si esto falla */ }
             // --- NUEVO: GESTIÓN DE PERMISOS DINÁMICOS ---
             $id_rol = $row['id_rol']; 
             $permisos_array = [];
@@ -89,9 +95,11 @@ if (!empty($data->email) && !empty($data->password)) {
                 "mensaje" => "Login exitoso.",
                 "token" => $token,
                 "usuario" => [
-                    "id_usuario" => $row['id_usuario'],
-                    "nombre" => $row['nombre'] ?? '', 
-                    "id_rol" => $id_rol
+                    "id_usuario"  => $row['id_usuario'],
+                    "nombre"      => $row['nombre'] ?? '',
+                    "apellido"    => $row['apellido'] ?? '',
+                    "id_rol"      => $id_rol,
+                    "id_cliente"  => $row['id_cliente'] ?? null  // null = usuario interno LGC
                 ],
                 "permisos" => $permisos_array
             ]);

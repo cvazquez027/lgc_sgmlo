@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface Norma {
   id_norma: number;
@@ -18,12 +21,165 @@ interface Norma {
   emisor_desc: string;
   id_estado_norma: number;
   estado_desc: string;
+  nivel_jurisdiccion_desc?: string;
+  jurisdiccion_desc?: string;
+  categorias?: string[];
 }
 
 interface Diccionario {
   id: string | number;
   descripcion: string;
 }
+
+interface Categoria {
+  id_categoria: number;
+  descripcion: string;
+}
+
+// --- NANO-COMPONENTES PARA FILTROS AVANZADOS ---
+
+// 1. Combo Buscable con Texto Libre (Reutilizable para Emisor, Nivel, Jur)
+const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
+  const [query, setQuery] = useState(value || "");
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Sincronizar estado local si el filtro se limpia desde afuera
+  useEffect(() => { setQuery(value || ""); }, [value]);
+
+  const filtered = options.filter((o: any) => 
+    o.descripcion?.toLowerCase().includes(query.toLowerCase())
+  );
+
+  return (
+    <div className="relative w-full">
+      <input
+        className="w-full text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors"
+        placeholder={placeholder}
+        value={query}
+        onFocus={() => setIsOpen(true)}
+        // Pequeño timeout para permitir que el clic en la opción se registre antes de cerrar
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value); // Permitimos texto libre al escribir
+        }}
+      />
+      {isOpen && filtered.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
+          {filtered.map((o: any) => (
+            <div 
+              key={o.id} 
+              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
+              onMouseDown={(e) => {
+                 // Prevenimos el blur del input principal para que registre el clic
+                 e.preventDefault();
+                 setQuery(o.descripcion);
+                 onChange(o.descripcion);
+                 setIsOpen(false);
+              }}
+            >
+              {o.descripcion}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 2. Selector Múltiple con Tags (Cuadraditos)
+const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Filtrar opciones: buscable y que no estén ya seleccionadas
+  const filtered = options.filter((o: any) => 
+    o.descripcion?.toLowerCase().includes(query.toLowerCase()) &&
+    !selected.includes(o.descripcion)
+  );
+
+  const addTag = (tag: string) => {
+    if (!selected.includes(tag)) {
+        onChange([...selected, tag]);
+    }
+    setQuery("");
+    setIsOpen(false);
+  };
+
+  const removeTag = (tag: string) => {
+    onChange(selected.filter((t: string) => t !== tag));
+  };
+
+  return (
+    <div className="relative w-full col-span-1 md:col-span-2">
+      {/* Contenedor de Tags seleccionados (arriba del input) */}
+      <div className="flex flex-wrap gap-1 mb-1.5 min-h-[25px]">
+        {selected.map((tag: string, idx: number) => (
+          <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold shadow-sm uppercase tracking-widest animate-fade-in">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="text-blue-400 hover:text-red-500 font-bold ml-1 transition-colors text-xs">
+               &times;
+            </button>
+          </span>
+        ))}
+      </div>
+      
+      {/* Input Buscador */}
+      <input
+        className="w-full text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors"
+        placeholder={selected.length === 0 ? placeholder : "+ Buscar y agregar más..."}
+        value={query}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      
+      {/* Lista Desplegable de Categorías */}
+      {isOpen && filtered.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
+          {filtered.map((o: any) => (
+            <div 
+              key={o.id} 
+              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
+              onMouseDown={(e) => {
+                 e.preventDefault();
+                 addTag(o.descripcion);
+              }}
+            >
+              {o.descripcion}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Subcomponente para el Drag and Drop de las categorías en el Modal de Asignación
+const SortableCategoriaItem = ({ cat, onRemove }: { cat: Categoria, onRemove: (id: number) => void }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id_categoria });
+  const style = { 
+    transform: CSS.Transform.toString(transform), 
+    transition, 
+    zIndex: isDragging ? 50 : 1, 
+    opacity: isDragging ? 0.5 : 1, 
+    position: isDragging ? 'relative' as 'relative' : 'static' as 'static' 
+  };
+  
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm mb-2 group hover:border-lgc-primary transition-colors animate-fade-in">
+       <div className="flex items-center gap-3">
+         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-lgc-primary touch-none">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+         </div>
+         <span className="text-xs font-bold text-slate-700">{cat.descripcion}</span>
+       </div>
+       <button onClick={() => onRemove(cat.id_categoria)} className="text-slate-300 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded" title="Quitar categoría">
+         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+       </button>
+    </div>
+  );
+};
 
 export default function NormativaOficialPage() {
   const { canRead, canEdit } = usePermissions();
@@ -34,10 +190,22 @@ export default function NormativaOficialPage() {
   const [emisores, setEmisores] = useState<Diccionario[]>([]);
   const [estados, setEstados] = useState<Diccionario[]>([]);
   
+  // Guardamos las categorías maestras para los tags de filtros
+  const [categoriasGlobales, setCategoriasGlobales] = useState<Diccionario[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  
+  // Búsqueda Rápida
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Filtros Avanzados - Implementación del MultiSelect de Categorías
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filtros, setFiltros] = useState({
+    tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', 
+    categorias: [] as string[] // Multi selección de tags
+  });
 
   const defaultForm = {
     id_norma: "",
@@ -54,6 +222,19 @@ export default function NormativaOficialPage() {
 
   const [formData, setFormData] = useState(defaultForm);
 
+  // --- ESTADOS PARA MODAL DE CATEGORÍAS (Asignación) ---
+  const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
+  const [normaSeleccionada, setNormaSeleccionada] = useState<Norma | null>(null);
+  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]);
+  const [categoriasAsignadas, setCategoriasAsignadas] = useState<Categoria[]>([]);
+  const [searchCat, setSearchCat] = useState("");
+  const [savingCategorias, setSavingCategorias] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
     return () => clearTimeout(timer);
@@ -61,19 +242,25 @@ export default function NormativaOficialPage() {
 
   const fetchDiccionarios = useCallback(async (token: string) => {
     try {
-      const [resTipos, resEmisores, resEstados] = await Promise.all([
+      const [resTipos, resEmisores, resEstados, resCat] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=emisor_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_norma`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
-      const [dataTipos, dataEmisores, dataEstados] = await Promise.all([
-        resTipos.json(), resEmisores.json(), resEstados.json()
+      const [dataTipos, dataEmisores, dataEstados, dataCat] = await Promise.all([
+        resTipos.json(), resEmisores.json(), resEstados.json(), resCat.json()
       ]);
 
-      setTipos(dataTipos.registros?.map((e:any) => ({ id: e.id_tipo_norma, descripcion: e.descripcion })) || []);
-      setEmisores(dataEmisores.registros?.map((e:any) => ({ id: e.id_emisor_norma, descripcion: e.descripcion })) || []);
-      setEstados(dataEstados.registros?.map((e:any) => ({ id: e.id_estado_norma, descripcion: e.descripcion })) || []);
+      // Adaptamos IDs porque a veces vienen como id_tipo_norma, etc.
+      setTipos(dataTipos.registros?.map((e:any) => ({ id: e.id_tipo_norma || e.id, descripcion: e.descripcion })) || []);
+      setEmisores(dataEmisores.registros?.map((e:any) => ({ id: e.id_emisor_norma || e.id, descripcion: e.descripcion })) || []);
+      setEstados(dataEstados.registros?.map((e:any) => ({ id: e.id_estado_norma || e.id, descripcion: e.descripcion })) || []);
+      
+      // Categorías maestras para los tags de filtros
+      setCategoriasGlobales(dataCat.registros?.map((c:any) => ({ id: c.id_categoria || c.id, descripcion: c.descripcion })) || []);
+
     } catch (err) {
       console.error("Error cargando diccionarios", err);
     }
@@ -128,45 +315,178 @@ export default function NormativaOficialPage() {
     }
   };
 
-  const normasFiltradas = normas.filter(n => 
-    n.numero?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    n.sintesis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    n.emisor_desc?.toLowerCase().includes(searchTerm.toLowerCase())
+  // --- LÓGICA DEL MODAL DE CATEGORÍAS (Asignación) ---
+  const abrirModalCategorias = async (norma: Norma) => {
+    setNormaSeleccionada(norma);
+    setIsCategoriasModalOpen(true);
+    setSearchCat("");
+    
+    const token = localStorage.getItem("sgml_token");
+    if (!token) return;
+
+    try {
+      const resMaestras = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataMaestras = await resMaestras.json();
+      const todas = dataMaestras.registros?.map((c:any) => ({ id_categoria: c.id_categoria || c.id, descripcion: c.descripcion })) || [];
+      setTodasLasCategorias(todas);
+
+      const resAsignadas = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer_categorias.php?id_norma=${norma.id_norma}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataAsignadas = await resAsignadas.json();
+      
+      if (dataAsignadas.registros) {
+        const asignadas = dataAsignadas.registros.map((c: any) => ({
+          id_categoria: c.id_categoria,
+          descripcion: c.descripcion
+        }));
+        setCategoriasAsignadas(asignadas);
+      } else {
+        setCategoriasAsignadas([]);
+      }
+    } catch (err) {
+      console.error("Error al cargar categorías:", err);
+    }
+  };
+
+  const handleDragEndCategorias = (event: any) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = categoriasAsignadas.findIndex(c => c.id_categoria === active.id);
+      const newIndex = categoriasAsignadas.findIndex(c => c.id_categoria === over.id);
+      setCategoriasAsignadas(arrayMove(categoriasAsignadas, oldIndex, newIndex));
+    }
+  };
+
+  const moverADerecha = (cat: Categoria) => {
+    setCategoriasAsignadas(prev => [...prev, cat]);
+  };
+
+  const moverAIzquierda = (id_cat: number) => {
+    setCategoriasAsignadas(prev => prev.filter(c => c.id_categoria !== id_cat));
+  };
+
+  const moverTodasADerecha = (disponiblesFiltradas: Categoria[]) => {
+    setCategoriasAsignadas(prev => [...prev, ...disponiblesFiltradas]);
+  };
+
+  const moverTodasAIzquierda = () => {
+    setCategoriasAsignadas([]);
+  };
+
+  const guardarCategorias = async () => {
+    setSavingCategorias(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const payload = {
+        id_norma: normaSeleccionada?.id_norma,
+        categorias: categoriasAsignadas.map(c => c.id_categoria)
+      };
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/guardar_categorias.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setIsCategoriasModalOpen(false);
+        fetchData(); // Recargamos para ver los tags en la tabla principal
+      } else {
+        alert("Error al guardar categorías.");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingCategorias(false);
+    }
+  };
+
+  const IDsAsignados = categoriasAsignadas.map(c => c.id_categoria);
+  const categoriasDisponibles = todasLasCategorias.filter(c => !IDsAsignados.includes(c.id_categoria));
+  const categoriasDisponiblesFiltradas = categoriasDisponibles.filter(c => 
+    c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
   );
+
+  // Derivar niveles y jurisdicciones únicos de los datos cargados para los combos de filtros
+  const nivelesDisponibles = useMemo(() => {
+    const setNiveles = new Set(normas.map(n => n.nivel_jurisdiccion_desc).filter(Boolean));
+    return Array.from(setNiveles).map((desc, i) => ({ id: desc, descripcion: desc }));
+  }, [normas]);
+
+  const jurisdiccionesDisponibles = useMemo(() => {
+    const setJur = new Set(normas.map(n => n.jurisdiccion_desc).filter(Boolean));
+    return Array.from(setJur).map((desc, i) => ({ id: desc, descripcion: desc }));
+  }, [normas]);
+
+  // MOTOR DE FILTRADO (General + Avanzado)
+  const normasFiltradas = useMemo(() => {
+    return normas.filter(n => {
+      // 1. Filtro General (Búsqueda Rápida)
+      const matchesSearch = searchTerm === "" || 
+        n.numero?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        n.sintesis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        n.emisor_desc?.toLowerCase().includes(searchTerm.toLowerCase());
+        
+      if (!matchesSearch) return false;
+
+      // 2. Filtros Avanzados (Coincidencia exacta/texto libre)
+      if (filtros.tipo && !n.tipo_norma_desc?.toLowerCase().includes(filtros.tipo.toLowerCase())) return false;
+      if (filtros.nro && !n.numero?.toString().toLowerCase().includes(filtros.nro.toLowerCase())) return false;
+      if (filtros.anio && !n.anio?.toString().includes(filtros.anio)) return false;
+      if (filtros.sintesis && !n.sintesis?.toLowerCase().includes(filtros.sintesis.toLowerCase())) return false;
+      if (filtros.emisor && !n.emisor_desc?.toLowerCase().includes(filtros.emisor.toLowerCase())) return false;
+      if (filtros.nivel && !n.nivel_jurisdiccion_desc?.toLowerCase().includes(filtros.nivel.toLowerCase())) return false;
+      if (filtros.jurisdiccion && !n.jurisdiccion_desc?.toLowerCase().includes(filtros.jurisdiccion.toLowerCase())) return false;
+      
+      // Filtro de Categorías Múltiples (Todas las seleccionadas deben coincidir)
+      if (filtros.categorias.length > 0) {
+         if (!n.categorias || n.categorias.length === 0) return false;
+         const hasAll = filtros.categorias.every(catFilter => 
+            n.categorias!.some((c:string) => c.toLowerCase().includes(catFilter.toLowerCase()))
+         );
+         if (!hasAll) return false;
+      }
+
+      return true;
+    });
+  }, [normas, searchTerm, filtros]);
+
+  const hasActiveFilters = Object.values(filtros).some(v => typeof v === 'string' ? v !== '' : v.length > 0);
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary animate-pulse">Verificando credenciales...</div>;
   if (!canRead("normativa")) return <div className="py-32 text-center text-red-500 font-bold text-2xl">Acceso Denegado</div>;
 
   return (
-    <div className="space-y-6 font-sans animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
+    <div className="space-y-6 font-sans animate-fade-in relative z-10">
+      
+      {/* HEADER PRINCIPAL AZUL CORPORATIVO (Fondo Azul) */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-lgc-primary text-white p-6 rounded-2xl shadow-lg border border-lgc-primary gap-4">
         <div>
           <div className="flex items-center gap-3">
             <Link 
               href="/dashboard" 
-              className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+              className="flex items-center justify-center w-8 h-8 rounded-full text-white/70 hover:bg-white/10 hover:text-white transition-all group"
               title="Volver al inicio"
             >
               <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </Link>
-            <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Base Actualizada de Normativa</h1>
+            <h1 className="text-2xl font-heading uppercase tracking-tight">Base Actualizada de Normativa</h1>
           </div>
         </div>
         
-        <div className="flex gap-4 w-full md:w-auto">
+        <div className="flex gap-3 w-full md:w-auto shrink-0">
           <input 
             type="text" 
-            placeholder="Buscar por número, emisor o síntesis..." 
-            className="w-full md:w-64 p-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none transition-all"
+            placeholder="Búsqueda rápida..." 
+            className="w-full md:w-72 p-2.5 text-sm bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-lg focus:ring-2 focus:ring-white outline-none transition-all shadow-inner"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
           {canEdit("normativa") && (
             <button 
                 onClick={() => { setFormData(defaultForm); setIsModalOpen(true); }}
-                className="bg-lgc-primary text-white py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#006A8A] transition-all shadow-md shrink-0 whitespace-nowrap"
+                className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-slate-100 transition-all shadow-md shrink-0 whitespace-nowrap"
             >
               + Alta Manual
             </button>
@@ -174,26 +494,76 @@ export default function NormativaOficialPage() {
         </div>
       </div>
 
+      {/* PANEL DE FILTROS AVANZADOS (Desplegable - Fondo original claro) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 transition-all overflow-hidden relative z-20">
+         <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
+            <div className="flex items-center gap-3">
+               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+               <span className="font-bold uppercase text-xs tracking-widest text-slate-600">Búsqueda y Filtros Avanzados</span>
+               {hasActiveFilters && <span className="bg-lgc-accent text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase shadow-sm">Filtros Activos</span>}
+            </div>
+            <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+         </button>
+         
+         {isFilterOpen && (
+            <div className="p-6 border-t border-slate-200 bg-white space-y-6">
+                <div>
+                  <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest mb-4 border-b border-blue-100 pb-2">Configuración de Filtros</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                    
+                    {/* IMPLEMENTACIÓN DE COMBOS BUSCABLES CON TEXTO LIBRE */}
+                    <SearchableSelect label="Emisor" options={emisores} value={filtros.emisor} onChange={(val:string) => setFiltros({...filtros, emisor: val})} placeholder="Emisor Normativo..." />
+                    <SearchableSelect label="Nivel" options={nivelesDisponibles} value={filtros.nivel} onChange={(val:string) => setFiltros({...filtros, nivel: val})} placeholder="Nivel Jurisdiccional..." />
+                    <SearchableSelect label="Jurisdicción" options={jurisdiccionesDisponibles} value={filtros.jurisdiccion} onChange={(val:string) => setFiltros({...filtros, jurisdiccion: val})} placeholder="Jurisdicción..." />
+                    
+                    {/* Tipo de Norma (Combo Clásico solicitado) */}
+                    <select className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" value={filtros.tipo} onChange={e => setFiltros({...filtros, tipo: e.target.value})}>
+                       <option value="">Tipo Norma (Todos)</option>
+                       {tipos.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
+                    </select>
+
+                    <input type="text" placeholder="Nro de Norma" className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.nro} onChange={e => setFiltros({...filtros, nro: e.target.value})} />
+                    <input type="text" placeholder="Año" className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.anio} onChange={e => setFiltros({...filtros, anio: e.target.value})} />
+                    
+                    {/* IMPLEMENTACIÓN DE TAGS MÚLTIPLES DE CATEGORÍAS */}
+                    <MultiSelectTags options={categoriasGlobales} selected={filtros.categorias} onChange={(arr:string[]) => setFiltros({...filtros, categorias: arr})} placeholder="Filtrar por categorías..." />
+                  </div>
+                </div>
+
+                {/* BOTONERA FILTROS */}
+                <div className="flex justify-between items-center pt-2 gap-4">
+                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded border border-slate-200 whitespace-nowrap shadow-inner">
+                     Resultados: <span className="text-lgc-primary font-black text-xs">{normasFiltradas.length}</span> normas encontradas
+                   </div>
+                   <button onClick={() => setFiltros({ tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] })} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors shadow-sm whitespace-nowrap">
+                      Limpiar Filtros
+                   </button>
+                </div>
+            </div>
+         )}
+      </div>
+
       {loading ? (
         <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">Cargando base normativa...</div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative z-10">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold border-b border-slate-200">
+            {/* CABECERA DE LA GRILLA AZUL CORPORATIVO (Fondo Azul) */}
+            <thead className="bg-lgc-primary text-white text-[10px] uppercase tracking-[0.2em] font-bold border-b border-lgc-primary sticky top-0 z-10">
               <tr>
                 <th className="p-5">Norma</th>
                 <th className="p-5">Emisor / Fecha</th>
-                <th className="p-5 w-1/3">Síntesis</th>
+                <th className="p-5 w-1/3">Síntesis y Categorías</th>
                 <th className="p-5">Estado</th>
                 <th className="p-5 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-100">
               {normasFiltradas.length === 0 ? (
-                <tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">No se encontraron normativas.</td></tr>
+                <tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">No se encontraron normativas con los filtros aplicados.</td></tr>
               ) : (
                 normasFiltradas.map(norma => (
-                  <tr key={norma.id_norma} className="hover:bg-slate-50/50 transition-colors align-top group">
+                  <tr key={norma.id_norma} className="hover:bg-slate-50/80 transition-colors align-top group">
                     <td className="p-5">
                       <div className="font-bold text-slate-700 text-sm group-hover:text-lgc-primary transition-colors">
                         {norma.tipo_norma_desc} {norma.numero}
@@ -204,46 +574,68 @@ export default function NormativaOficialPage() {
                       )}
                     </td>
                     <td className="p-5">
-                      <div className="text-xs font-bold text-slate-600 uppercase tracking-widest">{norma.emisor_desc}</div>
+                      <div className="text-xs font-bold text-slate-600 uppercase tracking-widest leading-tight">{norma.emisor_desc}</div>
                       <div className="text-[10px] text-slate-500 mt-1">{norma.fecha_publicacion ? new Date(norma.fecha_publicacion).toLocaleDateString('es-AR') : '-'}</div>
                     </td>
                     <td className="p-5">
-                      <p className="text-xs text-slate-600 line-clamp-2" title={norma.sintesis}>{norma.sintesis || 'Sin síntesis registrada.'}</p>
+                      <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed" title={norma.sintesis}>{norma.sintesis || 'Sin síntesis registrada.'}</p>
+                      
+                      {/* RENDERIZADO DE CUADRADITOS DE CATEGORÍAS (TAGS) */}
+                      {norma.categorias && norma.categorias.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                           {norma.categorias.map((c, idx) => (
+                             <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm tracking-widest animate-fade-in">
+                               {c}
+                             </span>
+                           ))}
+                        </div>
+                      )}
+
                       {norma.url_norma && (
-                        <a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2 text-[10px] text-lgc-accent font-bold uppercase tracking-widest hover:underline">
+                        <a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-[10px] text-lgc-accent font-bold uppercase tracking-widest hover:underline">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                           Ver Doc. Original
                         </a>
                       )}
                     </td>
                     <td className="p-5">
-                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${norma.estado_desc?.includes('Vigente') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border shadow-inner ${norma.estado_desc?.includes('Vigente') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                             {norma.estado_desc || 'SIN ESTADO'}
                         </span>
                     </td>
                     <td className="p-5 text-right">
                       {canEdit("normativa") && (
-                        <button 
-                          onClick={() => { 
-                            setFormData({
-                              id_norma: norma.id_norma.toString(),
-                              id_tipo_norma: norma.id_tipo_norma?.toString() || "",
-                              id_emisor_norma: norma.id_emisor_norma?.toString() || "",
-                              numero: norma.numero || "",
-                              anio: norma.anio,
-                              fecha_publicacion: norma.fecha_publicacion || "",
-                              sintesis: norma.sintesis || "",
-                              url_norma: norma.url_norma || "",
-                              id_estado_norma: norma.id_estado_norma?.toString() || "1",
-                              origen_carga: norma.origen_carga
-                            }); 
-                            setIsModalOpen(true); 
-                          }}
-                          className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm"
-                          aria-label={`Editar norma ${norma.numero}`}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => abrirModalCategorias(norma)}
+                            className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md"
+                            title="Asignar Categorías"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => { 
+                              setFormData({
+                                id_norma: norma.id_norma.toString(),
+                                id_tipo_norma: norma.id_tipo_norma?.toString() || "",
+                                id_emisor_norma: norma.id_emisor_norma?.toString() || "",
+                                numero: norma.numero || "",
+                                anio: norma.anio,
+                                fecha_publicacion: norma.fecha_publicacion || "",
+                                sintesis: norma.sintesis || "",
+                                url_norma: norma.url_norma || "",
+                                id_estado_norma: norma.id_estado_norma?.toString() || "1",
+                                origen_carga: norma.origen_carga
+                              }); 
+                              setIsModalOpen(true); 
+                            }}
+                            className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md"
+                            aria-label={`Editar norma ${norma.numero}`}
+                            title="Editar Norma"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -254,8 +646,9 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
+      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA (Mantiene igual) */}
       {isModalOpen && canEdit("normativa") && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
             <div className="p-6 bg-slate-50 border-b flex justify-between items-center sticky top-0 z-10">
               <div>
@@ -272,7 +665,7 @@ export default function NormativaOficialPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Tipo de Norma *</label>
-                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm" value={formData.id_tipo_norma} onChange={e => setFormData({...formData, id_tipo_norma: e.target.value})}>
+                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm cursor-pointer" value={formData.id_tipo_norma} onChange={e => setFormData({...formData, id_tipo_norma: e.target.value})}>
                     <option value="">Seleccione...</option>
                     {tipos.map(t => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
                   </select>
@@ -287,19 +680,17 @@ export default function NormativaOficialPage() {
                 </div>
               </div>
 
-              {/* CIRUGÍA DE GRILLA: Emisor ahora ocupa 2 columnas para no cortar el texto */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div className="md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor / Jurisdicción *</label>
-                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-[11px] font-bold shadow-sm" value={formData.id_emisor_norma} onChange={e => setFormData({...formData, id_emisor_norma: e.target.value})}>
+                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-[11px] font-bold shadow-sm cursor-pointer" value={formData.id_emisor_norma} onChange={e => setFormData({...formData, id_emisor_norma: e.target.value})}>
                     <option value="">Seleccione...</option>
-                    {/* CIRUGÍA: Agregamos title para accesibilidad hover */}
                     {emisores.map(e => <option key={e.id} value={e.id} title={e.descripcion}>{e.descripcion}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado Normativo *</label>
-                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm" value={formData.id_estado_norma} onChange={e => setFormData({...formData, id_estado_norma: e.target.value})}>
+                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm cursor-pointer" value={formData.id_estado_norma} onChange={e => setFormData({...formData, id_estado_norma: e.target.value})}>
                     {estados.map(e => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
                   </select>
                 </div>
@@ -313,7 +704,7 @@ export default function NormativaOficialPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Fecha de Publicación BO</label>
-                  <input type="date" className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm text-slate-600" value={formData.fecha_publicacion} onChange={e => setFormData({...formData, fecha_publicacion: e.target.value})} />
+                  <input type="date" className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm shadow-sm text-slate-600 cursor-pointer" value={formData.fecha_publicacion} onChange={e => setFormData({...formData, fecha_publicacion: e.target.value})} />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">URL Documento Original</label>
@@ -323,7 +714,7 @@ export default function NormativaOficialPage() {
 
               <div className="flex gap-4 pt-6 mt-6 border-t border-slate-100">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Cancelar</button>
-                <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-[#006A8A] transition-all">
+                <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">
                   {formLoading ? 'Guardando...' : 'Confirmar y Guardar'}
                 </button>
               </div>
@@ -331,6 +722,126 @@ export default function NormativaOficialPage() {
           </div>
         </div>
       )}
+
+      {/* --- MODAL: ASIGNACIÓN DE CATEGORÍAS (DUAL LISTBOX - Mantiene igual) --- */}
+      {isCategoriasModalOpen && normaSeleccionada && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
+              <div>
+                <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                  Categorización de Norma
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                  Definiendo perfil para: <span className="text-slate-600">{normaSeleccionada.tipo_norma_desc} {normaSeleccionada.numero}</span>
+                </p>
+              </div>
+              <button onClick={() => setIsCategoriasModalOpen(false)} className="text-slate-400 hover:text-red-500 text-2xl transition-colors">&times;</button>
+            </div>
+
+            <div className="p-6 flex-1 overflow-hidden flex flex-col md:flex-row gap-6 bg-white min-h-[400px]">
+              
+              {/* PANEL IZQUIERDO: DISPONIBLES */}
+              <div className="flex-1 flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Categorías Disponibles</h3>
+                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded shadow-inner">{categoriasDisponiblesFiltradas.length}</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Buscar categoría..." 
+                    value={searchCat}
+                    onChange={e => setSearchCat(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-lgc-primary bg-white shadow-sm"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50 scrollbar-thin">
+                  {categoriasDisponiblesFiltradas.length === 0 ? (
+                    <div className="text-center text-xs text-slate-400 italic p-6">No hay categorías que coincidan.</div>
+                  ) : (
+                    categoriasDisponiblesFiltradas.map(cat => (
+                      <button 
+                        key={cat.id_categoria} 
+                        onClick={() => moverADerecha(cat)}
+                        className="w-full text-left p-2.5 bg-white border border-slate-200 rounded-lg hover:border-lgc-primary hover:text-lgc-primary transition-all text-xs font-bold text-slate-600 flex justify-between items-center group mb-2 shadow-sm"
+                      >
+                        {cat.descripcion}
+                        <svg className="w-4 h-4 text-slate-300 group-hover:text-lgc-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* BOTONERA CENTRAL (CONTROLES MASIVOS) */}
+              <div className="flex md:flex-col justify-center gap-3 shrink-0 py-4">
+                 <button 
+                   onClick={() => moverTodasADerecha(categoriasDisponiblesFiltradas)} 
+                   disabled={categoriasDisponiblesFiltradas.length === 0}
+                   className="bg-slate-100 hover:bg-[#006A8A] hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm disabled:cursor-not-allowed"
+                   title="Mover todas a la derecha"
+                 >
+                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 13l-7 7-7-7m14-8l-7 7-7-7" /></svg>
+                 </button>
+                 <button 
+                   onClick={moverTodasAIzquierda} 
+                   disabled={categoriasAsignadas.length === 0}
+                   className="bg-slate-100 hover:bg-red-500 hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm disabled:cursor-not-allowed"
+                   title="Quitar todas"
+                 >
+                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 11l7-7 7 7M5 19l7-7 7 7" /></svg>
+                 </button>
+              </div>
+
+              {/* PANEL DERECHO: ASIGNADAS (SORTABLE) */}
+              <div className="flex-1 flex flex-col border border-[#006A8A]/30 rounded-xl overflow-hidden shadow-sm bg-[#006A8A]/5">
+                <div className="bg-white p-3 border-b border-[#006A8A]/20">
+                  <div className="flex justify-between items-center mb-1">
+                    <h3 className="text-[10px] font-bold uppercase text-[#006A8A] tracking-widest">Asignadas a la Norma</h3>
+                    <span className="bg-[#006A8A] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-inner">{categoriasAsignadas.length}</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-widest">Arrastrá para ordenar por prioridad</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
+                  {categoriasAsignadas.length === 0 ? (
+                    <div className="text-center text-xs text-slate-400 italic p-6 flex flex-col items-center gap-2">
+                      <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                      Seleccioná categorías del panel izquierdo.
+                    </div>
+                  ) : (
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndCategorias}>
+                      <SortableContext items={categoriasAsignadas.map(c => c.id_categoria)} strategy={verticalListSortingStrategy}>
+                        {categoriasAsignadas.map(cat => (
+                           <SortableCategoriaItem key={cat.id_categoria} cat={cat} onRemove={moverAIzquierda} />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* PIE DEL MODAL */}
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0 relative z-10">
+               <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg shadow-sm">
+                 Cancelar
+               </button>
+               <button onClick={guardarCategorias} disabled={savingCategorias} className="px-8 py-2.5 bg-lgc-primary hover:bg-[#006A8A] text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors disabled:cursor-not-allowed">
+                 {savingCategorias ? (
+                   <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...</>
+                 ) : (
+                   <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
+                 )}
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

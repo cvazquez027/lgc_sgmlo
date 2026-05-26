@@ -18,18 +18,19 @@ $id_cliente_establecimiento = isset($_GET['id_cliente_establecimiento']) ? filte
 $id_matriz = isset($_GET['id_matriz']) ? filter_var($_GET['id_matriz'], FILTER_VALIDATE_INT) : null;
 
 try {
-    // MODIFICADO: Agregamos LEFT JOIN con cliente_establecimiento y cliente
-    // para traer descripción, nombre de fantasía y logo.
+    // MODIFICADO: Sumamos id_especialidad_matriz y su join.
     $query = "SELECT 
                 m.id_matriz, 
                 m.id_cliente_establecimiento, 
                 m.id_tipo_matriz,
+                m.id_especialidad_matriz,
                 m.fecha_desde, 
                 m.version, 
                 m.id_estado_matriz, 
                 m.vigente,
                 em.descripcion as estado_matriz_desc,
                 tm.descripcion as tipo_matriz_desc,
+                esp.descripcion as especialidad_matriz_desc,
                 ce.descripcion as establecimiento_desc,
                 c.id_cliente,
                 c.nombre_fantasia,
@@ -37,6 +38,7 @@ try {
               FROM matriz m
               LEFT JOIN estado_matriz em ON m.id_estado_matriz = em.id_estado_matriz
               LEFT JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
+              LEFT JOIN especialidad_matriz esp ON m.id_especialidad_matriz = esp.id_especialidad_matriz
               LEFT JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
               LEFT JOIN cliente c ON ce.id_cliente = c.id_cliente
               WHERE 1=1";
