@@ -13,7 +13,6 @@ include_once '../../config/Database.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
-// Ciberseguridad: Agregamos id_especialidad_matriz a las validaciones obligatorias
 if (empty($data->id_cliente_establecimiento) || empty($data->fecha_desde) || empty($data->id_estado_matriz) || empty($data->id_tipo_matriz) || empty($data->id_especialidad_matriz)) {
     http_response_code(400);
     echo json_encode(["mensaje" => "Faltan datos obligatorios para crear la cabecera."]);
@@ -27,8 +26,7 @@ $id_matriz = !empty($data->id_matriz) ? (int)$data->id_matriz : null;
 $id_cliente_establecimiento = (int)$data->id_cliente_establecimiento;
 $id_estado_matriz = (int)$data->id_estado_matriz;
 $id_tipo_matriz = (int)$data->id_tipo_matriz; 
-$id_especialidad_matriz = (int)$data->id_especialidad_matriz; // Nuevo campo capturado
-$version = !empty($data->version) ? (int)$data->version : 1;
+$id_especialidad_matriz = (int)$data->id_especialidad_matriz; 
 $vigente = isset($data->vigente) ? (int)$data->vigente : 1;
 
 $fecha_desde = null;
@@ -42,33 +40,47 @@ if ($date_obj && $date_obj->format('Y-m-d') === $data->fecha_desde) {
 }
 
 try {
+    $db->beginTransaction();
+
     if ($id_matriz) {
-        // ACTUALIZAR MATRIZ EXISTENTE
+        // Edición: no se modifica la versión
         $query = "UPDATE matriz SET 
                     id_cliente_establecimiento = :id_cliente_establecimiento,
                     id_tipo_matriz = :id_tipo_matriz,
                     id_especialidad_matriz = :id_especialidad_matriz,
                     fecha_desde = :fecha_desde,
-                    version = :version,
                     id_estado_matriz = :id_estado_matriz,
                     vigente = :vigente
                   WHERE id_matriz = :id_matriz";
         $stmt = $db->prepare($query);
         $stmt->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     } else {
-        // CREAR NUEVA MATRIZ
+        // Creación: calcular próxima versión para esta combinación
+        $query_ver = "SELECT COALESCE(MAX(version), 0) + 1 AS siguiente
+                      FROM matriz
+                      WHERE id_cliente_establecimiento = :est
+                        AND id_tipo_matriz = :tipo
+                        AND id_especialidad_matriz = :esp";
+        $stmt_ver = $db->prepare($query_ver);
+        $stmt_ver->execute([
+            ':est' => $id_cliente_establecimiento,
+            ':tipo' => $id_tipo_matriz,
+            ':esp' => $id_especialidad_matriz
+        ]);
+        $version = (int)$stmt_ver->fetchColumn();
+
         $query = "INSERT INTO matriz 
                     (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, fecha_desde, version, id_estado_matriz, vigente) 
                   VALUES 
                     (:id_cliente_establecimiento, :id_tipo_matriz, :id_especialidad_matriz, :fecha_desde, :version, :id_estado_matriz, :vigente)";
         $stmt = $db->prepare($query);
+        $stmt->bindParam(":version", $version, PDO::PARAM_INT);
     }
 
     $stmt->bindParam(":id_cliente_establecimiento", $id_cliente_establecimiento, PDO::PARAM_INT);
     $stmt->bindParam(":id_tipo_matriz", $id_tipo_matriz, PDO::PARAM_INT);
     $stmt->bindParam(":id_especialidad_matriz", $id_especialidad_matriz, PDO::PARAM_INT);
     $stmt->bindParam(":fecha_desde", $fecha_desde, PDO::PARAM_STR);
-    $stmt->bindParam(":version", $version, PDO::PARAM_INT);
     $stmt->bindParam(":id_estado_matriz", $id_estado_matriz, PDO::PARAM_INT);
     $stmt->bindParam(":vigente", $vigente, PDO::PARAM_INT);
 
@@ -78,6 +90,25 @@ try {
         $id_matriz = $db->lastInsertId();
     }
 
+    // Lógica de publicación y auto-archivo (si se publica)
+    if ($id_estado_matriz === 2) {
+        $query_archive = "UPDATE matriz 
+                          SET id_estado_matriz = 3 
+                          WHERE id_cliente_establecimiento = :est 
+                            AND id_tipo_matriz = :tipo 
+                            AND id_especialidad_matriz = :esp 
+                            AND id_matriz != :id_mat";
+        $stmt_arc = $db->prepare($query_archive);
+        $stmt_arc->execute([
+            ':est' => $id_cliente_establecimiento,
+            ':tipo' => $id_tipo_matriz,
+            ':esp' => $id_especialidad_matriz,
+            ':id_mat' => $id_matriz
+        ]);
+    }
+
+    $db->commit();
+
     http_response_code(200);
     echo json_encode([
         "mensaje" => "Cabecera guardada exitosamente.",
@@ -85,17 +116,18 @@ try {
     ]);
 
 } catch (PDOException $e) {
-    // CIBERSEGURIDAD / UX: Capturamos violaciones de índices únicos (Código 23000)
+    if ($db->inTransaction()) $db->rollBack();
     if ($e->getCode() == 23000) {
-        http_response_code(409); // 409 Conflict
+        http_response_code(409);
         echo json_encode([
-            "mensaje" => "Error: Ya existe una Matriz con esta Versión para la especialidad y sede seleccionada. Por favor, asigne un número de versión superior (ej: Versión " . ($version + 1) . ")."
+            "mensaje" => "Error: Ya existe una Matriz con esta combinación para la especialidad y sede seleccionada. Por favor, asigne un número de versión superior (el sistema lo hace automáticamente)."
         ]);
     } else {
         http_response_code(500);
         echo json_encode(["mensaje" => "Error de base de datos.", "error" => $e->getMessage()]);
     }
 } catch (Exception $e) {
+    if ($db->inTransaction()) $db->rollBack();
     http_response_code(500);
     echo json_encode(["mensaje" => "Error interno.", "error" => $e->getMessage()]);
 }

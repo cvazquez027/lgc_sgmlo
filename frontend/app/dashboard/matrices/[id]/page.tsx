@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../hooks/usePermissions"; 
@@ -8,7 +8,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// DICCIONARIOS DE COLUMNAS POR TIPO
+// DICCIONARIOS DE COLUMNAS POR TIPO (sin cambios)
 const COLUMNAS_REGULATORIAS = [
   { id: 'normas', label: 'Normativas (Tipo, Nro, Año)', custom: false },
   { id: 'norma_nivel_jur', label: 'Nivel Jurisdiccional (Norma)', custom: false },
@@ -33,8 +33,64 @@ const COLUMNAS_CUMPLIMIENTO = [
   { id: 'adjuntos', label: 'Evidencia (Archivos)', custom: false }
 ];
 
-// COMPONENTES AUXILIARES
+// COMPONENTES AUXILIARES (se mantienen igual, solo se renombra MultiSelectTags si es necesario)
+const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
+  // ... (código existente, sin cambios)
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filtered = options.filter((o: any) => 
+    o.descripcion?.toLowerCase().includes(query.toLowerCase()) &&
+    !selected.includes(o.descripcion)
+  );
+
+  const addTag = (tag: string) => {
+    if (!selected.includes(tag)) onChange([...selected, tag]);
+    setQuery("");
+    setIsOpen(false);
+  };
+
+  const removeTag = (tag: string) => {
+    onChange(selected.filter((t: string) => t !== tag));
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className="flex flex-wrap gap-1 mb-1.5 min-h-6.25">
+        {selected.map((tag: string, idx: number) => (
+          <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold shadow-sm uppercase tracking-widest">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="text-blue-400 hover:text-red-500 font-bold ml-1 transition-colors text-xs">&times;</button>
+          </span>
+        ))}
+      </div>
+      <input
+        className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none focus:border-lgc-primary bg-white transition-colors"
+        placeholder={selected.length === 0 ? placeholder : "+ Buscar y agregar más..."}
+        value={query}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {isOpen && filtered.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
+          {filtered.map((o: any) => (
+            <div 
+              key={o.id} 
+              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
+              onMouseDown={(e) => { e.preventDefault(); addTag(o.descripcion); }}
+            >
+              {o.descripcion}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
+  // ... (código existente, sin cambios)
   const [localValue, setLocalValue] = useState(value || '');
   const [isFocused, setIsFocused] = useState(false);
   useEffect(() => { setLocalValue(value || ''); }, [value]);
@@ -60,6 +116,7 @@ const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
 };
 
 const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
+  // ... (código existente, sin cambios)
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -83,7 +140,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
       <div className="flex flex-col gap-1 mb-2">
         {selectedNormas.map((n: any, idx: number) => (
           <span key={idx} className="bg-slate-100 text-slate-700 border border-slate-200 text-[10px] px-2 py-1.5 rounded flex justify-between items-center font-bold tracking-widest w-full">
-            <span>{n.tipo_norma} {n.numero}</span>
+            <span>{n.tipo_norma_desc || n.tipo_norma} {n.numero}</span>
             <button type="button" onClick={() => onChange(selectedNormas.filter((_:any, i:number) => i !== idx))} className="text-red-400 hover:text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-2">×</button>
           </span>
         ))}
@@ -93,7 +150,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
         <div className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 shadow-2xl rounded-xl z-50 max-h-48 overflow-y-auto">
           <div className="flex justify-end p-2 bg-slate-50 border-b sticky top-0"><button type="button" onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-red-500 text-[10px] font-bold uppercase tracking-widest">Cerrar</button></div>
           {results.map((r: any) => (
-            <div key={r.id_norma} className="p-3 text-[11px] hover:bg-slate-50 cursor-pointer border-b last:border-0" onMouseDown={() => { onChange([...selectedNormas, { id_norma: r.id_norma, tipo_norma: r.tipo_norma_desc || 'NORMA', numero: r.numero, anio: r.anio, emisor_desc: r.emisor_desc, nivel_jurisdiccion_desc: r.nivel_jurisdiccion_desc, jurisdiccion_desc: r.jurisdiccion_desc }]); setIsOpen(false); setQuery(''); setResults([]); }}>
+            <div key={r.id_norma} className="p-3 text-[11px] hover:bg-slate-50 cursor-pointer border-b last:border-0" onMouseDown={() => { onChange([...selectedNormas, { id_norma: r.id_norma, tipo_norma: r.tipo_norma_desc || 'NORMA', numero: r.numero, anio: r.anio, emisor_desc: r.emisor_desc, nivel_jurisdiccion_desc: r.nivel_jurisdiccion_desc, jurisdiccion_desc: r.jurisdiccion_desc, sintesis: r.sintesis, categorias: r.categorias, url_norma: r.url_norma }]); setIsOpen(false); setQuery(''); setResults([]); }}>
               <span className="font-bold text-lgc-primary tracking-wider">{r.tipo_norma_desc} {r.numero}/{r.anio}</span>
             </div>
           ))}
@@ -104,6 +161,7 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
 };
 
 const SortableConfigItem = ({ col, onRemove }: any) => {
+  // ... (código existente, sin cambios)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, opacity: isDragging ? 0.5 : 1, position: isDragging ? 'relative' as 'relative' : 'static' as 'static' };
   return (
@@ -119,22 +177,30 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
   );
 };
 
-// TARJETA DESPLEGABLE DE ÍTEM
+// COMPONENTE SORTABLE ROW CON SLIDE DE PÁGINAS
 const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, estadosCumplimiento, responsables, tiposModalidad, onOpenEvidencia, forceExpand, isDragDisabled }: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [paginaActual, setPaginaActual] = useState(0);
+  const POR_PAGINA = 3;
+  const totalPaginas = Math.ceil(columnasVisibles.length / POR_PAGINA);
+  const columnasPagina = columnasVisibles.slice(paginaActual * POR_PAGINA, (paginaActual + 1) * POR_PAGINA);
+  const hayPaginacion = totalPaginas > 1;
+
   useEffect(() => { setIsExpanded(forceExpand); }, [forceExpand]);
+  // Resetear página al colapsar/expandir
+  useEffect(() => { if (!isExpanded) setPaginaActual(0); }, [isExpanded]);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id_item_matriz });
   const style = { transform: isDragging && transform ? CSS.Transform.toString(transform) : undefined, transition, opacity: isDragging ? 0.7 : 1, zIndex: isDragging ? 40 : 1 };
 
-  let summary = "Ítem sin resumen cargado";
-  if (item.resumen_legal) { summary = item.resumen_legal; }
-  else if (item.normas_vinculadas && item.normas_vinculadas.length > 0) { summary = item.normas_vinculadas.map((n:any) => `${n.tipo_norma} ${n.numero}`).join(' - '); }
+  // Resumen: mostrar las normas como badges
+  const resumenNormas = item.normas_vinculadas?.map((n:any) => `${n.tipo_norma_desc || n.tipo_norma} ${n.numero}`).join(', ') || "Ítem sin normas vinculadas";
 
-  const renderCelda = (colId: string) => {
+  const renderCelda = (colId: string, isReadOnly: boolean) => {
     if (colId.startsWith('custom_')) {
-        return <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} placeholder="Valor personalizado..." />;
+        return isReadOnly 
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 wrap-break-words">{item[colId] || <span className="italic text-slate-300">—</span>}</div>
+          : <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} placeholder="Valor personalizado..." />;
     }
 
     switch(colId) {
@@ -145,12 +211,21 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
       case 'evidencia_cumplimiento':
       case 'verificacion_cumplimiento':
       case 'obs_estado_cumplimiento':
-        return <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} />;
+        return isReadOnly 
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 wrap-break-words">{item[colId] || <span className="italic text-slate-300">—</span>}</div>
+          : <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} />;
+      
       case 'vencimiento_plazo': 
       case 'fecha_cumplimiento':
-        return <input type="date" className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 hover:bg-white bg-slate-50 rounded-lg outline-none transition-colors" value={item[colId] || ''} onChange={(e) => onUpdate(item.id_item_matriz, colId, e.target.value)} />;
+        return isReadOnly
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{item[colId] ? new Date(item[colId]).toLocaleDateString('es-AR') : <span className="italic text-slate-300">—</span>}</div>
+          : <input type="date" className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 hover:bg-white bg-slate-50 rounded-lg outline-none transition-colors" value={item[colId] || ''} onChange={(e) => onUpdate(item.id_item_matriz, colId, e.target.value)} />;
+      
       case 'normas': 
-        return <InlineNormSelector selectedNormas={item.normas_vinculadas || []} onChange={(normas:any) => onUpdate(item.id_item_matriz, 'normas_vinculadas', normas)} />;
+        return isReadOnly
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 flex flex-col gap-1">{item.normas_vinculadas?.length > 0 ? item.normas_vinculadas.map((n:any, i:number) => <span key={i} className="font-bold">{n.tipo_norma_desc || n.tipo_norma} {n.numero}/{n.anio}</span>) : <span className="italic text-slate-300">—</span>}</div>
+          : <InlineNormSelector selectedNormas={item.normas_vinculadas || []} onChange={(normas:any) => onUpdate(item.id_item_matriz, 'normas_vinculadas', normas)} />;
+      
       case 'norma_sintesis':
         return (
           <div className="flex flex-col gap-2">
@@ -166,20 +241,23 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
             ))}
           </div>
         );
+      
       case 'id_tipo_modalidad':
-        return (
-          <select className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white rounded-lg outline-none cursor-pointer transition-colors" value={item.id_tipo_modalidad || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_tipo_modalidad', e.target.value)}>
-            <option value="">Sin Asignar</option>
-            {tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
-          </select>
-        );
+        return isReadOnly
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{tiposModalidad.find((t:any) => t.id == item.id_tipo_modalidad)?.descripcion || <span className="italic text-slate-300">—</span>}</div>
+          : <select className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white rounded-lg outline-none cursor-pointer transition-colors" value={item.id_tipo_modalidad || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_tipo_modalidad', e.target.value)}>
+              <option value="">Sin Asignar</option>
+              {tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
+            </select>;
+      
       case 'id_responsable_establecimiento':
-        return (
-          <select className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white rounded-lg outline-none cursor-pointer transition-colors" value={item.id_responsable_establecimiento || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_responsable_establecimiento', e.target.value)}>
-            <option value="">Sin Asignar</option>
-            {responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
-          </select>
-        );
+        return isReadOnly
+          ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{responsables.find((r:any) => r.id_responsable_establecimiento == item.id_responsable_establecimiento)?.descripcion || <span className="italic text-slate-300">—</span>}</div>
+          : <select className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white rounded-lg outline-none cursor-pointer transition-colors" value={item.id_responsable_establecimiento || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_responsable_establecimiento', e.target.value)}>
+              <option value="">Sin Asignar</option>
+              {responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
+            </select>;
+      
       case 'adjuntos':
         return (
           <button onClick={() => onOpenEvidencia(item)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-lg border border-slate-300 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors w-max shadow-sm">
@@ -187,22 +265,35 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
             {item.documentos_vinculados?.length || 0} Archivos Cargados
           </button>
         );
+      
       case 'norma_emisor':
         const emisores_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.emisor_desc).filter(Boolean)));
-        return <div className="flex flex-col gap-1 w-full">{emisores_unicos.length > 0 ? emisores_unicos.map((emi: any, i: number) => <span key={i} className="text-slate-600 text-[11px] font-bold uppercase truncate" title={emi as string}>• {emi}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+        return <div className="flex flex-col gap-1 w-full p-1.5">{emisores_unicos.length > 0 ? emisores_unicos.map((emi: any, i: number) => <span key={i} className="text-slate-600 text-[11px] font-bold uppercase truncate" title={emi as string}>• {emi}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+      
       case 'norma_nivel_jur':
         const niveles_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.nivel_jurisdiccion_desc || n.jurisdiccion_desc).filter(Boolean)));
-        return <div className="flex flex-wrap gap-1.5 w-full">{niveles_unicos.length > 0 ? niveles_unicos.map((niv: any, i: number) => <span key={i} className="bg-white border border-slate-200 text-slate-600 text-[10px] font-bold uppercase px-2 py-1 rounded-md shadow-sm">{niv}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+        return <div className="flex flex-wrap gap-1.5 w-full p-1.5">{niveles_unicos.length > 0 ? niveles_unicos.map((niv: any, i: number) => <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold uppercase px-2 py-1 rounded-md shadow-sm">{niv}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+      
       case 'estado':
         const color = item.color_hex ? `#${item.color_hex}` : '#cbd5e1';
-        return (
-          <select className="w-full text-[10px] font-bold uppercase p-2.5 rounded-lg outline-none shadow-sm cursor-pointer border transition-colors" style={{ backgroundColor: `${color}10`, color: color, borderColor: `${color}40` }} value={item.id_estado_cumplimiento || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_estado_cumplimiento', e.target.value)}>
-            <option value="" disabled>Seleccione...</option>
-            {estadosCumplimiento.map((est: any) => <option key={est.id} value={est.id}>{est.descripcion}</option>)}
-          </select>
-        );
+        return isReadOnly
+          ? <div className="text-[10px] font-bold uppercase p-2.5 rounded-lg border min-h-12 flex items-center" style={{ backgroundColor: `${color}10`, color: color, borderColor: `${color}40` }}>{estadosCumplimiento.find((e:any) => e.id == item.id_estado_cumplimiento)?.descripcion || <span className="italic text-slate-300">—</span>}</div>
+          : <select className="w-full text-[10px] font-bold uppercase p-2.5 rounded-lg outline-none shadow-sm cursor-pointer border transition-colors" style={{ backgroundColor: `${color}10`, color: color, borderColor: `${color}40` }} value={item.id_estado_cumplimiento || ''} onChange={e => onUpdate(item.id_item_matriz, 'id_estado_cumplimiento', e.target.value)}>
+              <option value="" disabled>Seleccione...</option>
+              {estadosCumplimiento.map((est: any) => <option key={est.id} value={est.id}>{est.descripcion}</option>)}
+            </select>;
+      
       default: return '-';
     }
+  };
+
+  const irPaginaAnterior = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPaginaActual(prev => Math.max(0, prev - 1));
+  };
+  const irPaginaSiguiente = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPaginaActual(prev => Math.min(totalPaginas - 1, prev + 1));
   };
 
   return (
@@ -221,11 +312,18 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
             )
           )}
           <span className="bg-slate-100 text-slate-500 font-bold text-[10px] px-2.5 py-1.5 rounded-md border border-slate-200 shrink-0">
-            ID: {item.id_item_matriz}
+            #{(item.orden !== undefined && item.orden !== null) ? item.orden + 1 : item.id_item_matriz}
           </span>
-          <span className="text-[12px] text-slate-700 font-semibold truncate">
-            {summary}
-          </span>
+          <div className="flex flex-wrap gap-1.5 flex-1">
+            {item.normas_vinculadas?.map((n:any, idx:number) => (
+              <span key={idx} className="bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm">
+                {n.tipo_norma_desc || n.tipo_norma} {n.numero}
+              </span>
+            ))}
+            {(!item.normas_vinculadas || item.normas_vinculadas.length === 0) && (
+              <span className="text-[12px] text-slate-500 truncate">{item.resumen_legal || "Ítem sin resumen cargado"}</span>
+            )}
+          </div>
         </div>
         
         <div className="flex items-center gap-4 shrink-0 pl-2 border-l border-slate-100">
@@ -244,24 +342,36 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
         </div>
       </div>
       
-      <div className={`transition-all duration-300 overflow-visible ${isExpanded ? 'opacity-100 max-h-1250 border-t border-slate-100' : 'opacity-0 max-h-0 hidden'}`}>
-        <div className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 bg-slate-50/30 rounded-b-xl">
-          {columnasVisibles.map((col: any) => (
-            <div key={col.id} className="flex flex-col gap-2 group/field">
-               <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-1.5 ml-1">
-                  {col.label} 
-                  {col.custom && <span className="bg-orange-100 text-orange-600 text-[8px] px-1.5 py-0.5 rounded ml-1">CUSTOM</span>}
-               </label>
-               <div className="relative w-full z-10 hover:z-40 focus-within:z-50">
-                  {canEditField && !canEditField(col.id)
-                    ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 wrap-break-words">{item[col.id] || <span className="italic text-slate-300">—</span>}</div>
-                    : renderCelda(col.id)
-                  }
-               </div>
+      {isExpanded && (
+        <div className="transition-all duration-300 overflow-visible border-t border-slate-100">
+          <div className="p-5 md:p-6 bg-slate-50/30 rounded-b-xl">
+            {hayPaginacion && (
+              <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-200">
+                <button onClick={irPaginaAnterior} disabled={paginaActual === 0} className="text-lgc-primary disabled:opacity-30 p-1 rounded hover:bg-white transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <span className="text-[10px] font-bold text-slate-400">Página {paginaActual+1} de {totalPaginas}</span>
+                <button onClick={irPaginaSiguiente} disabled={paginaActual === totalPaginas-1} className="text-lgc-primary disabled:opacity-30 p-1 rounded hover:bg-white transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {columnasPagina.map((col: any) => (
+                <div key={col.id} className="flex flex-col gap-2 group/field">
+                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-1.5 ml-1">
+                    {col.label} 
+                    {col.custom && <span className="bg-orange-100 text-orange-600 text-[8px] px-1.5 py-0.5 rounded ml-1">CUSTOM</span>}
+                  </label>
+                  <div className="relative w-full z-10 hover:z-40 focus-within:z-50">
+                    {renderCelda(col.id, canEditField ? !canEditField(col.id) : false)}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -273,8 +383,9 @@ export default function WorkspaceMatrizPage() {
   const { canRead, canEdit } = usePermissions();
   
   const [items, setItems] = useState<any[]>([]);
+  const [headerInfo, setHeaderInfo] = useState<any>(null); 
   const [tipoMatriz, setTipoMatriz] = useState<number>(1);
-  const [estadoMatriz, setEstadoMatriz] = useState<number>(1); // 1=Borrador, 2=Publicada, 3=Archivada
+  const [estadoMatriz, setEstadoMatriz] = useState<number>(1);
   const [configColumnas, setConfigColumnas] = useState<any[]>([]);
   const [tempConfig, setTempConfig] = useState<any[]>([]);
   const [nuevaColumna, setNuevaColumna] = useState("");
@@ -284,10 +395,17 @@ export default function WorkspaceMatrizPage() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [isSavingRow, setIsSavingRow] = useState(false);
   const [expandAll, setExpandAll] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // DICCIONARIOS
   const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
   const [tiposModalidad, setTiposModalidad] = useState<any[]>([]);
   const [responsables, setResponsables] = useState<any[]>([]);
+  
+  const [tiposNorma, setTiposNorma] = useState<any[]>([]);
+  const [emisoresNorma, setEmisoresNorma] = useState<any[]>([]);
+  const [categoriasGlobales, setCategoriasGlobales] = useState<any[]>([]);
 
   // MODAL EVIDENCIAS
   const [itemEvidencia, setItemEvidencia] = useState<any>(null);
@@ -299,7 +417,7 @@ export default function WorkspaceMatrizPage() {
   // FILTROS AVANZADOS
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filtros, setFiltros] = useState<any>({
-    norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categoria: '' },
+    norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] as string[] },
     evidencia: '', 
     dinamicos: {} 
   });
@@ -317,6 +435,7 @@ export default function WorkspaceMatrizPage() {
       const info = dataH.registros[0];
       setTipoMatriz(info.id_tipo_matriz);
       setEstadoMatriz(info.id_estado_matriz || 1);
+      setHeaderInfo(info);
 
       const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${info.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataR = await resR.json();
@@ -325,52 +444,93 @@ export default function WorkspaceMatrizPage() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, { headers: { "Authorization": `Bearer ${token}` } });
       const data = await res.json();
       
-      let configParsed = data.config_columnas || [];
+      let configParsed = data.config_columnas;
+      if (typeof configParsed === 'string') {
+          try { configParsed = JSON.parse(configParsed); } catch(e) { configParsed = []; }
+      }
+      if (!Array.isArray(configParsed)) configParsed = [];
+      
       const ALL_COLS = info.id_tipo_matriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
       
-      if (configParsed.length > 0 && typeof configParsed[0] === 'string') {
-          configParsed = configParsed.map((idStr:string) => {
-             const match = ALL_COLS.find(c => c.id === idStr);
-             return { id: idStr, label: match?.label || idStr, custom: idStr.startsWith('custom_') };
-          });
+      if (configParsed.length > 0) {
+          if (typeof configParsed[0] === 'string') {
+              configParsed = configParsed.map((idStr:string) => {
+                 const match = ALL_COLS.find(c => c.id === idStr);
+                 return { 
+                     id: idStr, 
+                     label: match?.label || (idStr.startsWith('custom_') ? 'Columna Personalizada' : idStr), 
+                     custom: idStr.startsWith('custom_') 
+                 };
+              });
+          }
       }
       
       const configFinal = configParsed.length > 0 ? configParsed : ALL_COLS;
       setConfigColumnas(configFinal);
       setTempConfig(configFinal); 
       setItems(data.registros || []);
-      if (!data.config_columnas) setShowConfig(true); 
+      
+      if (configFinal.length === 0) setShowConfig(true); 
     } catch (err) {} finally { setLoading(false); }
   }, [idMatriz]);
 
   useEffect(() => {
     const fetchDiccionarios = async () => {
         const token = localStorage.getItem("sgml_token");
-        const resE = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_cumplimiento`, { headers: { "Authorization": `Bearer ${token}` } });
+        const headers = { "Authorization": `Bearer ${token}` };
+
+        const resE = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_cumplimiento`, { headers });
         const dataE = await resE.json();
         setEstadosCumplimiento(dataE.registros?.map((e:any) => ({ id: e.id_estado_cumplimiento || e.id, descripcion: e.descripcion })) || []);
 
-        const resM = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_modalidad`, { headers: { "Authorization": `Bearer ${token}` } });
+        const resM = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_modalidad`, { headers });
         const dataM = await resM.json();
         setTiposModalidad(dataM.registros?.map((e:any) => ({ id: e.id_tipo_modalidad || e.id, descripcion: e.descripcion })) || []);
+
+        const resTN = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_norma`, { headers });
+        const dataTN = await resTN.json();
+        setTiposNorma(dataTN.registros?.map((e:any) => ({ id: e.id_tipo_norma || e.id, descripcion: e.descripcion })) || []);
+
+        const resEN = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=emisor_norma`, { headers });
+        const dataEN = await resEN.json();
+        setEmisoresNorma(dataEN.registros?.map((e:any) => ({ id: e.id_emisor_norma || e.id, descripcion: e.descripcion })) || []);
+
+        const resCat = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers });
+        const dataCat = await resCat.json();
+        setCategoriasGlobales(dataCat.registros?.map((e:any) => ({ id: e.id_categoria || e.id, descripcion: e.descripcion })) || []);
     };
     if (canRead("matriz")) { fetchItems(); fetchDiccionarios(); }
   }, [fetchItems, canRead]);
 
-  // MOTOR DE FILTRADO INTELIGENTE
+  const nivelesDisponibles = useMemo(() => {
+    const setNiveles = new Set(items.flatMap(i => (i.normas_vinculadas || []).map((n:any) => n.nivel_jurisdiccion_desc)).filter(Boolean));
+    return Array.from(setNiveles).map(desc => ({ id: desc, descripcion: desc }));
+  }, [items]);
+
+  const jurisdiccionesDisponibles = useMemo(() => {
+    const setJur = new Set(items.flatMap(i => (i.normas_vinculadas || []).map((n:any) => n.jurisdiccion_desc)).filter(Boolean));
+    return Array.from(setJur).map(desc => ({ id: desc, descripcion: desc }));
+  }, [items]);
+
   const itemsFiltrados = useMemo(() => {
     return items.filter(item => {
-      if (Object.values(filtros.norma).some(v => v !== '')) {
+      // Filtros (sin cambios)
+      if (Object.values(filtros.norma).some(v => typeof v === 'string' ? v !== '' : (v as string[]).length > 0)) {
          const matchNorma = item.normas_vinculadas?.some((n:any) => {
-            if (filtros.norma.tipo && !n.tipo_norma?.toLowerCase().includes(filtros.norma.tipo.toLowerCase())) return false;
-            if (filtros.norma.nro && !n.numero?.toString().includes(filtros.norma.nro)) return false;
-            if (filtros.norma.anio && !n.anio?.toString().includes(filtros.norma.anio)) return false;
-            if (filtros.norma.sintesis && !n.sintesis?.toLowerCase().includes(filtros.norma.sintesis.toLowerCase())) return false;
-            if (filtros.norma.emisor && !n.emisor_desc?.toLowerCase().includes(filtros.norma.emisor.toLowerCase())) return false;
-            if (filtros.norma.nivel && !n.nivel_jurisdiccion_desc?.toLowerCase().includes(filtros.norma.nivel.toLowerCase())) return false;
-            if (filtros.norma.jurisdiccion && !n.jurisdiccion_desc?.toLowerCase().includes(filtros.norma.jurisdiccion.toLowerCase())) return false;
-            if (filtros.norma.categoria) {
-               if (!n.categorias || !n.categorias.some((c:string) => c.toLowerCase().includes(filtros.norma.categoria.toLowerCase()))) return false;
+            if (filtros.norma.tipo && !((n.tipo_norma_desc || n.tipo_norma || '').toLowerCase().includes(filtros.norma.tipo.toLowerCase()))) return false;
+            if (filtros.norma.nro && !(n.numero?.toString().includes(filtros.norma.nro))) return false;
+            if (filtros.norma.anio && !(n.anio?.toString().includes(filtros.norma.anio))) return false;
+            if (filtros.norma.sintesis && !(n.sintesis?.toLowerCase().includes(filtros.norma.sintesis.toLowerCase()))) return false;
+            if (filtros.norma.emisor && !(n.emisor_desc?.toLowerCase().includes(filtros.norma.emisor.toLowerCase()))) return false;
+            if (filtros.norma.nivel && !(n.nivel_jurisdiccion_desc?.toLowerCase().includes(filtros.norma.nivel.toLowerCase()))) return false;
+            if (filtros.norma.jurisdiccion && !(n.jurisdiccion_desc?.toLowerCase().includes(filtros.norma.jurisdiccion.toLowerCase()))) return false;
+            
+            if (filtros.norma.categorias && filtros.norma.categorias.length > 0) {
+               if (!n.categorias) return false;
+               const hasAll = filtros.norma.categorias.every((catFilter: string) => 
+                  n.categorias.some((c:string) => c.toLowerCase().includes(catFilter.toLowerCase()))
+               );
+               if (!hasAll) return false;
             }
             return true;
          });
@@ -398,15 +558,13 @@ export default function WorkspaceMatrizPage() {
     });
   }, [items, filtros]);
 
-  const hasActiveFilters = Object.values(filtros.norma).some(v => v !== '') || Object.values(filtros.dinamicos).some(v => v !== '') || filtros.evidencia !== '';
+  const hasActiveFilters = Object.values(filtros.norma).some(v => typeof v === 'string' ? v !== '' : (v as string[]).length > 0) || Object.values(filtros.dinamicos).some(v => v !== '') || filtros.evidencia !== '';
 
-  // MÉTRICAS DEL DASHBOARD — calculadas en cliente desde items ya cargados
   const dashboardMetrics = useMemo(() => {
     const totalNormas = new Set(
       items.flatMap(i => (i.normas_vinculadas || []).map((n: any) => n.id_norma))
     ).size;
 
-    // Distribución por jurisdicción
     const jurMap: Record<string, number> = {};
     items.forEach(item => {
       (item.normas_vinculadas || []).forEach((n: any) => {
@@ -418,7 +576,6 @@ export default function WorkspaceMatrizPage() {
       .map(([nombre, cantidad]) => ({ nombre, cantidad }))
       .sort((a, b) => b.cantidad - a.cantidad);
 
-    // Ranking de categorías
     const catMap: Record<string, number> = {};
     items.forEach(item => {
       (item.normas_vinculadas || []).forEach((n: any) => {
@@ -432,7 +589,6 @@ export default function WorkspaceMatrizPage() {
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 10);
 
-    // Cumplimiento (solo matrices tipo 2)
     const cumplimientoMap: Record<string, { label: string; color: string; cantidad: number }> = {};
     items.forEach(item => {
       const id = item.id_estado_cumplimiento?.toString() || '';
@@ -483,46 +639,100 @@ export default function WorkspaceMatrizPage() {
   };
 
   const handleUploadEvidencia = async () => {
-    if(!evidenciaFile || !itemEvidencia) return;
+    if (!evidenciaFile || !itemEvidencia) return;
     setIsUploading(true);
     const token = localStorage.getItem("sgml_token");
     const formData = new FormData();
     formData.append("archivo", evidenciaFile);
     formData.append("id_item_matriz", itemEvidencia.id_item_matriz);
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/upload_evidencia.php`, { method: "POST", headers: { "Authorization": `Bearer ${token}` }, body: formData });
-    setEvidenciaFile(null); fetchItems(); setItemEvidencia(null); setIsUploading(false);
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/upload_evidencia.php`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      });
+      // Recargar el ítem específico para actualizar la lista de evidencias en el modal
+      await recargarItemEvidencia();
+      // Recargar todos los items para mantener la tabla general actualizada
+      await fetchItems();
+      // Limpiar el file input y el estado local
+      setEvidenciaFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err) {
+      console.error(err);
+      alert("Error al subir el archivo.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleBorrarEvidencia = async (id_doc: number) => {
     const token = localStorage.getItem("sgml_token");
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/delete_evidencia.php`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify({ id_documentacion: id_doc }) });
-    fetchItems(); setItemEvidencia(null);
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/delete_evidencia.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ id_documentacion: id_doc })
+      });
+      // Recargar el ítem específico para actualizar la lista de evidencias en el modal
+      await recargarItemEvidencia();
+      // Recargar todos los items para mantener la tabla general actualizada
+      await fetchItems();
+      // No cerramos el modal
+    } catch (err) {
+      console.error(err);
+      alert("Error al eliminar el archivo.");
+    }
   };
 
-  const handleDragEndItems = (e: any) => {
+  const recargarItemEvidencia = async () => {
+    if (!itemEvidencia) return;
+    const token = localStorage.getItem("sgml_token");
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    const data = await res.json();
+    const itemActualizado = data.registros?.find((i: any) => i.id_item_matriz === itemEvidencia.id_item_matriz);
+    if (itemActualizado) {
+      setItemEvidencia(itemActualizado);
+    }
+  };
+
+  const handleDragEndItems = async (e: any) => {
     const { active, over } = e;
     if (over && active.id !== over.id) {
       const oldIndex = items.findIndex(i => i.id_item_matriz === active.id);
       const newIndex = items.findIndex(i => i.id_item_matriz === over.id);
+      // Reordenar el array
       const newItems = arrayMove(items, oldIndex, newIndex);
-      setItems(newItems);
+      // Asignar el nuevo orden a cada item según su posición en el array
+      const itemsConNuevoOrden = newItems.map((item, idx) => ({ ...item, orden: idx }));
+      setItems(itemsConNuevoOrden);
       const token = localStorage.getItem("sgml_token");
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/matriz/reordenar_items.php`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(newItems.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }))) });
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/reordenar_items.php`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify(itemsConNuevoOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx })))
+        });
+        if (!res.ok) throw new Error("Error al reordenar en el servidor");
+        // Opcional: refrescar los items para tener datos consistentes
+        await fetchItems();
+      } catch (err) {
+        console.error("Error al reordenar:", err);
+        // Si falla, revertimos al estado anterior
+        setItems(items);
+      }
     }
   };
 
-  // NUEVO: Función para reordenar por jerarquía de jurisdicción
   const handleSortByJurisdiccion = () => {
     if (!confirm("¿Desea reordenar todos los ítems por Nivel Jurisdiccional (Nacional > Provincial > Municipal)? Esto modificará el orden actual de manera permanente.")) return;
     
-    // Función auxiliar para determinar el peso de la jurisdicción de un ítem
     const getJurStr = (item: any) => {
        if (item.normas_vinculadas && item.normas_vinculadas.length > 0) {
-          // Tomamos la jurisdicción de la primera norma asociada
           let nivel = item.normas_vinculadas[0].nivel_jurisdiccion_desc || item.normas_vinculadas[0].jurisdiccion_desc || "";
           nivel = nivel.toLowerCase();
-          
-          // Asignamos prefijos numéricos para forzar el orden deseado
           if (nivel.includes('nacional')) return "1_" + nivel;
           if (nivel.includes('provincial')) return "2_" + nivel;
           if (nivel.includes('municipal')) return "3_" + nivel;
@@ -531,19 +741,17 @@ export default function WorkspaceMatrizPage() {
        return "5_sin_norma";
     };
 
-    // Ordenamos una copia de los items originales (no los filtrados, sino toda la matriz)
     const sortedItems = [...items].sort((a, b) => getJurStr(a).localeCompare(getJurStr(b)));
+    const itemsConOrden = sortedItems.map((it, idx) => ({ ...it, orden: idx }));
+    setItems(itemsConOrden);
     
-    // Actualizamos la vista local
-    setItems(sortedItems);
-    
-    // Guardamos el nuevo ordenamiento en la base de datos
     const token = localStorage.getItem("sgml_token");
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/matriz/reordenar_items.php`, { 
+    // CORRECCIÓN: ruta correcta
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/reordenar_items.php`, { 
        method: "POST", 
        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
-       body: JSON.stringify(sortedItems.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }))) 
-    });
+       body: JSON.stringify(itemsConOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }))) 
+    }).catch(err => console.error("Error al ordenar por jurisdicción:", err));
   };
 
   const renderQuickAddCell = (colId: string) => {
@@ -561,13 +769,10 @@ export default function WorkspaceMatrizPage() {
 
   if (loading) return <div className="py-20 flex flex-col items-center justify-center text-lgc-primary font-bold tracking-widest uppercase"><div className="w-10 h-10 border-4 border-lgc-primary border-t-transparent rounded-full animate-spin mb-4"></div>Preparando Workspace...</div>;
 
-  // PERMISOS DE EDICIÓN POR ESTADO
-  // Borrador (1): todo editable. Publicada (2): solo cumplimiento + custom. Archivada (3): nada.
   const COLS_CUMPLIMIENTO_IDS = ['evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'];
   const puedeEditarCampo = (colId: string): boolean => {
-    if (estadoMatriz === 3) return false;                            // Archivada: nada
-    if (estadoMatriz === 1) return true;                             // Borrador: todo
-    // Publicada (2): solo cumplimiento + custom
+    if (estadoMatriz === 3) return false;                            
+    if (estadoMatriz === 1) return true;                             
     return COLS_CUMPLIMIENTO_IDS.includes(colId) || colId.startsWith('custom_');
   };
   const puedeAgregarFilas = estadoMatriz === 1;
@@ -614,7 +819,6 @@ export default function WorkspaceMatrizPage() {
     );
   }
 
-  // Agrupación de columnas para los filtros
   const colsRegulatorias = configColumnas.filter(c => !c.custom && ['resumen_legal', 'articulos_aplicables', 'interpretacion_aplicacion', 'id_tipo_modalidad', 'obs_modalidad'].includes(c.id));
   const colsCumplimiento = configColumnas.filter(c => !c.custom && ['evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'].includes(c.id));
   const colsCustom = configColumnas.filter(c => c.custom);
@@ -622,17 +826,27 @@ export default function WorkspaceMatrizPage() {
   return (
     <div className="space-y-4 animate-fade-in flex flex-col h-[calc(100vh-100px)]">
       
-      {/* HEADER VERDE (EDICIÓN) */}
-      <div className="bg-emerald-600 px-6 py-4 rounded-xl shadow-md flex justify-between items-center shrink-0 border border-emerald-700/50 bg-[url('/pattern.png')] bg-blend-overlay">
+      {/* HEADER DINÁMICO CON MISMO AZUL QUE LISTADO DE MATRICES */}
+      <div className="bg-[#005F78] px-6 py-4 rounded-xl shadow-md flex justify-between items-center shrink-0 border border-[#004D62]">
         <div className="flex items-center gap-5">
-          <Link href="/dashboard/matrices" className="text-emerald-100 hover:text-white transition-colors bg-emerald-700/50 hover:bg-emerald-700 p-2.5 rounded-xl border border-emerald-500 shadow-inner">
+          <Link href="/dashboard/matrices" className="text-white/80 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2.5 rounded-xl border border-white/20 shadow-inner">
              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
           </Link>
+          
+          {headerInfo?.logo_path ? (
+            <div className="bg-white p-1.5 rounded-lg shadow-sm">
+              <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${headerInfo.logo_path}`} alt="Cliente Logo" className="h-10 w-auto object-contain" />
+            </div>
+          ) : (
+            <div className="h-12 w-12 bg-white/20 rounded-lg flex items-center justify-center text-white font-bold text-xl uppercase border border-white/30 shrink-0 shadow-sm">
+              {headerInfo?.nombre_fantasia?.substring(0, 2) || 'M'}
+            </div>
+          )}
+          
           <div className="flex flex-col">
             <h1 className="text-xl font-heading text-white uppercase tracking-tight flex items-center gap-3">
-              WORKSPACE MATRIZ
-              <span className="bg-emerald-800 text-emerald-100 px-3 py-1 rounded-md text-[11px] tracking-widest font-bold shadow-inner border border-emerald-900/50"># {idMatriz}</span>
-              {/* BADGE DE ESTADO */}
+              {headerInfo?.nombre_fantasia || 'WORKSPACE MATRIZ'}
+              <span className="bg-white/20 text-white px-3 py-1 rounded-md text-[11px] tracking-widest font-bold shadow-inner border border-white/30"># {idMatriz}</span>
               <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase shadow-inner border flex items-center gap-1.5 ${
                 estadoMatriz === 2 ? 'bg-emerald-900/60 text-emerald-200 border-emerald-700' :
                 estadoMatriz === 3 ? 'bg-slate-700/60 text-slate-300 border-slate-600' :
@@ -642,26 +856,31 @@ export default function WorkspaceMatrizPage() {
                 {estadoMatriz === 1 ? 'Borrador' : estadoMatriz === 2 ? 'Publicada' : 'Archivada'}
               </span>
             </h1>
-            <p className="text-emerald-200 text-[10px] font-bold tracking-widest uppercase mt-0.5">
-              {estadoMatriz === 3 ? 'Solo Visualización — No se permite edición' :
-               estadoMatriz === 2 ? 'Publicada — Solo campos de cumplimiento editables' :
-               'Workspace Configurable'}
+            <p className="text-white/80 text-[10px] font-bold tracking-widest uppercase mt-0.5 flex items-center gap-2">
+              <span className="truncate max-w-50" title={headerInfo?.establecimiento_desc}>{headerInfo?.establecimiento_desc || 'Sede Principal'}</span>
+              <span>•</span>
+              <span>{headerInfo?.especialidad_matriz_desc || 'Especialidad'}</span>
+              <span>•</span>
+              <span>Tipo: {headerInfo?.tipo_matriz_desc || 'Regulatoria'}</span>
+              <span>•</span>
+              <span>V{headerInfo?.version || 1}.0</span>
+              {estadoMatriz === 3 && <><span>•</span><span className="text-white">SOLO LECTURA</span></>}
             </p>
           </div>
         </div>
         <div className="flex gap-3">
           {canEdit("matriz") && puedeConfigurar && (
-            <button onClick={() => setShowConfig(true)} className="bg-emerald-700/40 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-emerald-500/50 shadow-sm flex items-center gap-2">
+            <button onClick={() => setShowConfig(true)} className="bg-white/10 hover:bg-white/20 text-white font-bold py-2 px-4 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-white/20 shadow-sm flex items-center gap-2">
                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                Configurar
             </button>
           )}
-          <Link href={`/dashboard/matrices/${idMatriz}/preview`} className="bg-emerald-700/40 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-emerald-500/50 flex items-center gap-2 shadow-sm">
+          <Link href={`/dashboard/matrices/${idMatriz}/preview`} className="bg-white/10 hover:bg-white/20 text-white font-bold py-2 px-4 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-white/20 flex items-center gap-2 shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             Vista Previa
           </Link>
           {canEdit("matriz") && puedeAgregarFilas && (
-            <button onClick={() => setShowQuickAdd(true)} className="bg-white hover:bg-emerald-50 text-emerald-700 font-bold py-2 px-5 rounded-xl shadow-lg text-[10px] uppercase tracking-widest flex items-center gap-2 transform hover:-translate-y-0.5 transition-all">
+            <button onClick={() => setShowQuickAdd(true)} className="bg-white hover:bg-slate-100 text-[#005F78] font-bold py-2 px-5 rounded-xl shadow-lg text-[10px] uppercase tracking-widest flex items-center gap-2 transform hover:-translate-y-0.5 transition-all">
                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
                Fila Nueva
             </button>
@@ -669,10 +888,7 @@ export default function WorkspaceMatrizPage() {
         </div>
       </div>
 
-      {/* ÁREA DE TRABAJO (Cuerpo scrollable) */}
       <div className="flex-1 overflow-auto custom-scrollbar pb-10 px-1 relative">
-        
-        {/* PANEL DASHBOARD DE MÉTRICAS */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-4 transition-all overflow-hidden relative z-20">
           <button
             onClick={() => setIsDashboardOpen(!isDashboardOpen)}
@@ -688,18 +904,12 @@ export default function WorkspaceMatrizPage() {
 
           {isDashboardOpen && (
             <div className="p-5 border-t border-slate-200 bg-white space-y-6">
-
-              {/* FILA SUPERIOR: KPIs + TORTA (solo cumplimiento) */}
               <div className={`grid gap-5 ${tipoMatriz === 2 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
-
-                {/* KPI: Normativas */}
                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Total Normativas</span>
                   <span className="text-3xl font-heading text-lgc-primary">{dashboardMetrics.totalNormas}</span>
                   <span className="text-[10px] text-slate-400">normas únicas vinculadas a la matriz</span>
                 </div>
-
-                {/* KPI: Jurisdicciones por norma */}
                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
                   <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Normas por Jurisdicción</span>
                   {dashboardMetrics.porJurisdiccion.length === 0 ? (
@@ -707,17 +917,16 @@ export default function WorkspaceMatrizPage() {
                   ) : (
                     <div className="flex flex-col gap-2">
                       {dashboardMetrics.porJurisdiccion.map(jur => {
-                        const pct = dashboardMetrics.totalNormas > 0
-                          ? Math.round((jur.cantidad / dashboardMetrics.totalNormas) * 100)
-                          : 0;
+                        const total = dashboardMetrics.totalNormas;
+                        const pct = total > 0 ? Math.round((jur.cantidad / total) * 100) : 0;
                         return (
                           <div key={jur.nombre} className="flex flex-col gap-1">
                             <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-slate-600 truncate max-w-[70%]" title={jur.nombre}>{jur.nombre}</span>
+                              <span className="text-[10px] font-bold text-slate-600 truncate max-w-[60%]" title={jur.nombre}>{jur.nombre}</span>
                               <span className="text-[10px] font-bold text-slate-500">{jur.cantidad} <span className="text-slate-300 font-normal">({pct}%)</span></span>
                             </div>
-                            <div className="w-full bg-slate-200 rounded-full h-1.5">
-                              <div className="bg-lgc-primary h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }}></div>
+                            <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-lgc-primary h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }}></div>
                             </div>
                           </div>
                         );
@@ -725,8 +934,6 @@ export default function WorkspaceMatrizPage() {
                     </div>
                   )}
                 </div>
-
-                {/* TORTA DE CUMPLIMIENTO (solo tipo 2) */}
                 {tipoMatriz === 2 && (
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
                     <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Estado de Cumplimiento</span>
@@ -734,7 +941,6 @@ export default function WorkspaceMatrizPage() {
                       <span className="text-[11px] text-slate-400 italic">Sin datos</span>
                     ) : (
                       <>
-                        {/* SVG Donut Chart */}
                         <div className="flex items-center gap-4">
                           <div className="shrink-0">
                             {(() => {
@@ -787,7 +993,6 @@ export default function WorkspaceMatrizPage() {
                             })}
                           </div>
                         </div>
-                        {/* Porcentaje de cumplimiento destacado */}
                         {(() => {
                           const cumple = dashboardMetrics.porCumplimiento.find(s =>
                             s.label.toLowerCase().includes('cumple') && !s.label.toLowerCase().includes('no') && !s.label.toLowerCase().includes('parcial')
@@ -810,7 +1015,6 @@ export default function WorkspaceMatrizPage() {
                 )}
               </div>
 
-              {/* RANKING DE CATEGORÍAS */}
               {dashboardMetrics.rankingCategorias.length > 0 && (
                 <div>
                   <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-3 border-b border-slate-100 pb-1.5">Ranking de Categorías incluidas en las Normas</h3>
@@ -841,7 +1045,6 @@ export default function WorkspaceMatrizPage() {
           )}
         </div>
 
-        {/* PANEL DE FILTROS AVANZADOS */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-4 transition-all overflow-hidden relative z-20">
            <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
               <div className="flex items-center gap-3">
@@ -854,22 +1057,36 @@ export default function WorkspaceMatrizPage() {
            
            {isFilterOpen && (
               <div className="p-5 border-t border-slate-200 bg-white space-y-6">
-                  {/* SECCIÓN NORMATIVA */}
                   <div>
                     <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest mb-3 border-b border-blue-100 pb-1">Sección Normativa</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <input type="text" placeholder="Tipo (Ej: Ley)" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.tipo} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, tipo: e.target.value}})} />
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.tipo} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, tipo: e.target.value}})}>
+                         <option value="">Tipo (Todos)</option>
+                         {tiposNorma.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
+                      </select>
+                      <input type="text" placeholder="Año (4 dígitos)" maxLength={4} onInput={e => e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '')} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.anio} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, anio: e.target.value}})} />
                       <input type="text" placeholder="Nro" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.nro} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, nro: e.target.value}})} />
-                      <input type="text" placeholder="Año" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.anio} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, anio: e.target.value}})} />
-                      <input type="text" placeholder="Síntesis..." className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, sintesis: e.target.value}})} />
-                      <input type="text" placeholder="Emisor..." className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.emisor} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, emisor: e.target.value}})} />
-                      <input type="text" placeholder="Nivel Jurisd..." className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.nivel} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, nivel: e.target.value}})} />
-                      <input type="text" placeholder="Jurisdicción..." className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.jurisdiccion} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, jurisdiccion: e.target.value}})} />
-                      <input type="text" placeholder="Categoría (Ej: Residuos)" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.categoria} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, categoria: e.target.value}})} />
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.emisor} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, emisor: e.target.value}})}>
+                         <option value="">Emisor (Todos)</option>
+                         {emisoresNorma.map(e => <option key={e.id} value={e.descripcion}>{e.descripcion}</option>)}
+                      </select>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.nivel} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, nivel: e.target.value}})}>
+                         <option value="">Nivel Jurisd. (Todos)</option>
+                         {nivelesDisponibles.map(n => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
+                      </select>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.jurisdiccion} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, jurisdiccion: e.target.value}})}>
+                         <option value="">Jurisdicción (Todas)</option>
+                         {jurisdiccionesDisponibles.map(j => <option key={j.id} value={j.descripcion}>{j.descripcion}</option>)}
+                      </select>
+                      <div className="col-span-2">
+                        <input type="text" placeholder="Buscar por síntesis..." className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={e => setFiltros({...filtros, norma: {...filtros.norma, sintesis: e.target.value}})} />
+                      </div>
+                      <div className="col-span-2 md:col-span-4">
+                         <MultiSelectTags options={categoriasGlobales} selected={filtros.norma.categorias} onChange={(arr:any) => setFiltros({...filtros, norma: {...filtros.norma, categorias: arr}})} placeholder="Filtrar por categorías (agrega varias)..." />
+                      </div>
                     </div>
                   </div>
 
-                  {/* SECCIÓN REGULATORIA */}
                   {colsRegulatorias.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mb-3 border-b border-orange-100 pb-1">Sección Regulatoria</h3>
@@ -877,7 +1094,7 @@ export default function WorkspaceMatrizPage() {
                         {colsRegulatorias.map(c => {
                            if (c.id === 'id_tipo_modalidad') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
                                    <option value="">Modalidad (Todas)</option>
                                    {tiposModalidad.map((t:any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
                                 </select>
@@ -889,12 +1106,11 @@ export default function WorkspaceMatrizPage() {
                     </div>
                   )}
 
-                  {/* SECCIÓN CUMPLIMIENTO */}
                   {colsCumplimiento.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-emerald-600 tracking-widest mb-3 border-b border-emerald-100 pb-1">Sección De Cumplimiento</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600" value={filtros.evidencia} onChange={e => setFiltros({...filtros, evidencia: e.target.value})}>
+                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600 cursor-pointer bg-white" value={filtros.evidencia} onChange={e => setFiltros({...filtros, evidencia: e.target.value})}>
                            <option value="">Evidencia (Todas)</option>
                            <option value="con">Con Evidencia Cargada</option>
                            <option value="sin">Sin Evidencia</option>
@@ -902,7 +1118,7 @@ export default function WorkspaceMatrizPage() {
                         {colsCumplimiento.map(c => {
                            if (c.id === 'estado') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
                                    <option value="">Estado (Todos)</option>
                                    {estadosCumplimiento.map((e:any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
                                 </select>
@@ -910,21 +1126,22 @@ export default function WorkspaceMatrizPage() {
                            }
                            if (c.id === 'id_responsable_establecimiento') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
                                    <option value="">Responsable (Todos)</option>
                                    {responsables.map((r:any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
                                 </select>
                               );
                            }
-                           if (c.id === 'adjuntos') return null; // Ya lo manejamos con "Evidencia" arriba
-                           
+                           if (c.id === 'vencimiento_plazo' || c.id === 'fecha_cumplimiento') {
+                              return <input key={c.id} type="date" title={c.label} className="text-[11px] p-2 border border-slate-200 rounded outline-none text-slate-500 font-bold uppercase cursor-pointer" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />;
+                           }
+                           if (c.id === 'adjuntos') return null; 
                            return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={e => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />;
                         })}
                       </div>
                     </div>
                   )}
 
-                  {/* SECCIÓN CUSTOM */}
                   {colsCustom.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-purple-600 tracking-widest mb-3 border-b border-purple-100 pb-1">Columnas Personalizadas</h3>
@@ -936,9 +1153,8 @@ export default function WorkspaceMatrizPage() {
                     </div>
                   )}
 
-                  {/* BOTONERA FILTROS */}
                   <div className="flex justify-end pt-2">
-                     <button onClick={() => setFiltros({ norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categoria: '' }, evidencia: '', dinamicos: {} })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">
+                     <button onClick={() => setFiltros({ norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] }, evidencia: '', dinamicos: {} })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">
                         Limpiar Filtros
                      </button>
                   </div>
@@ -946,8 +1162,7 @@ export default function WorkspaceMatrizPage() {
            )}
         </div>
 
-        {/* BARRA DE CONTROL AZUL (Títulos y Ordenamiento) */}
-        <div className="bg-lgc-primary px-5 py-3 rounded-xl shadow-sm mb-4 flex justify-between items-center sticky top-0 z-30">
+        <div className="bg-[#005F78] px-5 py-3 rounded-xl shadow-sm mb-4 flex justify-between items-center sticky top-0 z-30">
            <div className="flex items-center gap-3">
               <svg className="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
               <span className="text-xs font-bold text-white uppercase tracking-widest">
@@ -955,7 +1170,6 @@ export default function WorkspaceMatrizPage() {
               </span>
            </div>
            
-           {/* BOTONES DE ACCIÓN SOBRE LAS TARJETAS */}
            <div className="flex gap-4 items-center">
               {hasActiveFilters && (
                 <span className="text-[9px] text-orange-200 font-bold uppercase tracking-widest border border-orange-200/30 px-2 py-1 rounded bg-orange-900/20">
@@ -975,17 +1189,15 @@ export default function WorkspaceMatrizPage() {
               )}
 
               <button onClick={() => setExpandAll(!expandAll)} className="text-[10px] text-white bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/20 transition-all font-bold uppercase tracking-widest flex items-center gap-2 shadow-inner">
-                 <svg className={`w-4 h-4 transform transition-transform ${expandAll ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                 <svg className={`w-4 h-4 transform transition-transform ${expandAll ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
                  {expandAll ? 'Contraer Todas' : 'Expandir Todas'}
               </button>
            </div>
         </div>
 
-        {/* CONTENEDOR DE TARJETAS */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndItems}>
           <div className="flex flex-col max-w-7xl mx-auto relative z-10">
             
-            {/* TARJETA ESPECIAL: ALTA RÁPIDA */}
             {showQuickAdd && (
               <div className="bg-linear-to-r from-amber-50 to-orange-50 rounded-2xl shadow-lg border border-amber-200 p-6 mb-6 animate-fade-in relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/10 rounded-full blur-3xl"></div>
@@ -1014,7 +1226,6 @@ export default function WorkspaceMatrizPage() {
               </div>
             )}
 
-            {/* LISTA DE TARJETAS ORDENABLES */}
             <SortableContext items={itemsFiltrados.map(i => i.id_item_matriz)} strategy={verticalListSortingStrategy}>
               {itemsFiltrados.length === 0 && !showQuickAdd ? (
                 <div className="p-16 flex flex-col items-center justify-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed mt-4">
@@ -1044,7 +1255,6 @@ export default function WorkspaceMatrizPage() {
         </DndContext>
       </div>
 
-      {/* MODAL EVIDENCIAS (Se mantiene igual) */}
       {itemEvidencia && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-slate-200">
@@ -1056,7 +1266,7 @@ export default function WorkspaceMatrizPage() {
             <div className="mb-6 bg-slate-50 p-5 rounded-xl border border-slate-200 border-dashed">
                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Subir nuevo documento probatorio</label>
                <div className="flex gap-3 items-center">
-                  <input type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e) => setEvidenciaFile(e.target.files?.[0] || null)} />
+                  <input ref={fileInputRef} type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e) => setEvidenciaFile(e.target.files?.[0] || null)} />
                   <button onClick={handleUploadEvidencia} disabled={!evidenciaFile || isUploading} className="bg-lgc-accent hover:bg-[#D97920] text-white px-6 py-2.5 text-xs font-bold rounded-lg shadow-md disabled:opacity-50 transition-colors uppercase tracking-widest flex items-center gap-2">
                      {isUploading ? <><svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Subiendo</> : 'Adjuntar'}
                   </button>

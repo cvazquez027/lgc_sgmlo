@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sistema de Gestión de Matrices Legales Online - Lamas Global Consulting",
-  description: "Sistema de Gestión de Matrices Legales",
+  description: "Sistema de Gestión de Matrices Legales Online",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

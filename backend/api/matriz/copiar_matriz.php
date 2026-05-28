@@ -9,10 +9,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit();
 include_once '../../config/Database.php';
 include_once '../../config/JwtHandler.php';
 
+// ---------------------------------------------------------
+// EXTRACCIÓN ROBUSTA DEL TOKEN (Previene bloqueos del servidor)
+// ---------------------------------------------------------
+$token = '';
+if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+    $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
+} elseif (function_exists('apache_request_headers')) {
+    $requestHeaders = apache_request_headers();
+    $requestHeaders = array_combine(array_map('ucwords', array_keys($requestHeaders)), array_values($requestHeaders));
+    if (isset($requestHeaders['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $requestHeaders['Authorization']));
+    }
+} else {
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $headers['Authorization']));
+    }
+}
+
 $jwt = new JwtHandler();
-$headers = getallheaders();
-$token = isset($headers['Authorization']) ? str_replace('Bearer ', '', $headers['Authorization']) : '';
-if (!$jwt->validate($token)) { http_response_code(401); echo json_encode(["mensaje" => "No autorizado"]); exit(); }
+
+// Verificamos si el token es válido
+if (!$jwt->verificar($token)) { 
+    http_response_code(401); 
+    echo json_encode(["mensaje" => "No autorizado. Token inválido, expirado o ausente."]); 
+    exit(); 
+}
 
 $data = json_decode(file_get_contents("php://input"));
 $id_origen = !empty($data->id_matriz) ? (int)filter_var($data->id_matriz, FILTER_VALIDATE_INT) : 0;
@@ -49,13 +72,13 @@ try {
     ]);
     $nueva_version = (int)$stmt_ver->fetchColumn();
 
-    // 3. Insertar nueva cabecera en estado BORRADOR (id_estado_matriz = 1, vigente = 0)
+    // 3. Insertar nueva cabecera en estado BORRADOR (id_estado_matriz = 1, vigente = 1)
     $stmt_nueva = $db->prepare(
         "INSERT INTO matriz
             (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz,
              fecha_desde, version, id_estado_matriz, vigente, config_columnas)
          VALUES
-            (:est, :tipo, :esp, :fecha, :ver, 1, 0, :config)"
+            (:est, :tipo, :esp, :fecha, :ver, 1, 1, :config)"
     );
     $stmt_nueva->execute([
         ':est'    => $origen['id_cliente_establecimiento'],

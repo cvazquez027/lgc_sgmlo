@@ -29,4 +29,37 @@ class JwtHandler {
         // Devolvemos las 3 partes unidas por un punto
         return $base64UrlHeader . "." . $base64UrlPayload . "." . $base64UrlFirma;
     }
+
+    // NUEVO MÉTODO: Para validar el token que llega del frontend
+    public function verificar($token) {
+        if (empty($token)) {
+            return false;
+        }
+
+        $partes = explode('.', $token);
+        if (count($partes) !== 3) {
+            return false; // Token mal formado
+        }
+
+        $base64UrlHeader = $partes[0];
+        $base64UrlPayload = $partes[1];
+        $firmaRecibida = $partes[2];
+
+        // Volvemos a generar la firma con las 2 primeras partes para ver si coincide
+        $firmaCalculada = hash_hmac('sha256', $base64UrlHeader . "." . $base64UrlPayload, $this->secret, true);
+        $base64UrlFirmaCalculada = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($firmaCalculada));
+
+        // Si la firma coincide, el token es auténtico
+        if (hash_equals($base64UrlFirmaCalculada, $firmaRecibida)) {
+            // Verificamos si no está expirado
+            $payloadDecodificado = json_decode(base64_decode(str_replace(['-', '_'], ['+', '/'], $base64UrlPayload)), true);
+            if (isset($payloadDecodificado['exp']) && $payloadDecodificado['exp'] < time()) {
+                return false; // Token expirado
+            }
+            return $payloadDecodificado; // Validado correctamente
+        }
+
+        return false; // Firma inválida
+    }
 }
+?>

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../../hooks/usePermissions";
 
-// Diccionario de etiquetas (para que los encabezados de tabla coincidan con el workspace)
+// Diccionario de etiquetas (se mejoraron las leyendas)
 const COLUMN_LABELS: Record<string, string> = {
   'resumen_legal': 'Obligación / Resumen Legal',
   'normas': 'Normativas',
@@ -20,6 +20,8 @@ const COLUMN_LABELS: Record<string, string> = {
   'evidencia_cumplimiento': 'Evidencia',
   'verificacion_cumplimiento': 'Verificación',
   'interpretacion_aplicacion': 'Interpretación',
+  'id_tipo_modalidad': 'Tipo Modalidad',
+  'obs_modalidad': 'Obs. Modalidad',
   'editable1': 'Campo Editable 1',
   'editable2': 'Campo Editable 2',
   'editable3': 'Campo Editable 3',
@@ -34,41 +36,74 @@ export default function PreviewMatrizPage() {
   const { canRead, canEdit } = usePermissions();
 
   const [items, setItems] = useState<any[]>([]);
-  const [config, setConfig] = useState<string[]>([]);
+  const [config, setConfig] = useState<any[]>([]);
   const [headerInfo, setHeaderInfo] = useState<any>(null);
   
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [cumplimientoTotal, setCumplimientoTotal] = useState<number>(0);
+  const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
 
-  // 1. Cargar Datos (Header y Items)
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) return router.push("/");
     
     try {
       setLoading(true);
-      // Traemos el Header (Logo, Cliente, Establecimiento)
       const resH = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer.php?id_matriz=${idMatriz}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const dataH = await resH.json();
       if (dataH.registros && dataH.registros.length > 0) setHeaderInfo(dataH.registros[0]);
 
-      // Traemos los Items y la Configuración de columnas
       const resI = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       const dataI = await resI.json();
       
-      // Extraer solo los IDs si config_columnas es un array de objetos
-      const configData = dataI.config_columnas || [];
-      const configIds = Array.isArray(configData) && configData.length > 0 && typeof configData[0] === 'object'
-        ? configData.map((col: any) => col.id)
-        : configData;
-      setConfig(configIds);
+      let configData = dataI.config_columnas;
+      if (typeof configData === 'string') {
+          try { configData = JSON.parse(configData); } catch(e) { configData = []; }
+      }
+      if (!Array.isArray(configData)) configData = [];
+
+      let normalizedConfig = [];
+      if (configData.length > 0) {
+          if (typeof configData[0] === 'string') {
+              normalizedConfig = configData.map((id: string) => ({ 
+                  id, 
+                  label: COLUMN_LABELS[id] || (id.startsWith('custom_') ? 'Columna Personalizada' : id) 
+              }));
+          } else {
+              normalizedConfig = configData;
+          }
+      } else {
+          const isRegulatoria = dataH.registros?.[0]?.id_tipo_matriz === 1;
+          const defaultCols = isRegulatoria 
+            ? ['normas', 'norma_nivel_jur', 'norma_emisor', 'norma_sintesis', 'resumen_legal', 'articulos_aplicables', 'interpretacion_aplicacion', 'id_tipo_modalidad', 'obs_modalidad']
+            : ['normas', 'norma_nivel_jur', 'norma_emisor', 'norma_sintesis', 'resumen_legal', 'articulos_aplicables', 'interpretacion_aplicacion', 'id_tipo_modalidad', 'obs_modalidad', 'evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'];
+          normalizedConfig = defaultCols.map((id: string) => ({ id, label: COLUMN_LABELS[id] || id }));
+      }
+
+      setConfig(normalizedConfig);
       setItems(dataI.registros || []);
+
+      // Obtener estados de cumplimiento para el gráfico
+      const resEst = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_cumplimiento`, { headers: { "Authorization": `Bearer ${token}` } });
+      const dataEst = await resEst.json();
+      setEstadosCumplimiento(dataEst.registros || []);
+
+      // Calcular porcentaje de cumplimiento (estado "Cumple")
+      const itemsConEstado = dataI.registros || [];
+      const totalItems = itemsConEstado.length;
+      const cumpleItems = itemsConEstado.filter((item: any) => {
+        const estadoDesc = item.estado_cumplimiento_desc?.toLowerCase();
+        return estadoDesc === 'cumple';
+      }).length;
+      setCumplimientoTotal(totalItems > 0 ? Math.round((cumpleItems / totalItems) * 100) : 0);
+      
     } catch (err) {
       console.error(err);
     } finally {
@@ -80,7 +115,6 @@ export default function PreviewMatrizPage() {
     if (canRead("matriz")) fetchData();
   }, [fetchData, canRead]);
 
-  // Alternar Pantalla Completa
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
@@ -93,33 +127,27 @@ export default function PreviewMatrizPage() {
     }
   };
 
-  // Escuchar cambio de fullscreen (tecla ESC)
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
   }, []);
 
-  // Función para Publicar la Matriz
   const handlePublicar = async () => {
     if (!confirm("¿Confirma que desea PUBLICAR esta matriz? Quedará como versión definitiva vigente y la anterior publicada pasará a archivada.")) return;
     
     try {
         setIsPublishing(true);
         const token = localStorage.getItem("sgml_token");
-
-        // Usamos publicar_matriz_config.php que aplica la transacción de archivado correctamente
         const payload = {
             id_matriz: headerInfo.id_matriz,
-            config_columnas: config  // reenviamos la config que ya tenemos cargada
+            config_columnas: config
         };
-
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/publicar_matriz_config.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify(payload)
         });
-
         if (res.ok) {
             fetchData();
         } else {
@@ -134,20 +162,17 @@ export default function PreviewMatrizPage() {
     }
   };
 
-  // Función para copiar una matriz publicada como nueva versión en borrador
   const handleCopiar = async () => {
     if (!confirm(`¿Crear una nueva versión en BORRADOR copiando esta matriz? Se clonarán todos los ítems y normativas. La versión actual (${headerInfo?.version}.0) seguirá publicada hasta que la nueva versión sea publicada.`)) return;
 
     try {
         setIsCopying(true);
         const token = localStorage.getItem("sgml_token");
-
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/copiar_matriz.php`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({ id_matriz: headerInfo.id_matriz })
         });
-
         const data = await res.json();
         if (res.ok && data.id_matriz) {
             alert(`Nueva versión ${data.version}.0 creada en borrador (#${data.id_matriz}). Serás redirigido al nuevo workspace.`);
@@ -167,11 +192,18 @@ export default function PreviewMatrizPage() {
     switch (colId) {
       case 'normas':
         return (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             {item.normas_vinculadas?.map((n: any, i: number) => (
-              <span key={i} className="text-[9px] print:text-[7px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit uppercase">
-                {n.tipo_norma} {n.numero}/{n.anio}
-              </span>
+              <div key={i} className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] print:text-[7px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 uppercase">
+                  {n.tipo_norma_desc || n.tipo_norma} {n.numero}/{n.anio}
+                </span>
+                {n.url_norma && (
+                  <a href={n.url_norma} target="_blank" rel="noopener noreferrer" className="text-lgc-accent hover:text-[#D97920] print:text-blue-600 transition-colors" title="Ver Documento Original">
+                    <svg className="w-3.5 h-3.5 print:w-3 print:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  </a>
+                )}
+              </div>
             ))}
           </div>
         );
@@ -192,20 +224,21 @@ export default function PreviewMatrizPage() {
         const niveles = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.nivel_jurisdiccion_desc || n.jurisdiccion_desc).filter(Boolean)));
         return niveles.join(', ') || '-';
       default:
-        // Renderizamos campos JSON dinámicos o campos de texto normales
         return item[colId] || '-';
     }
   };
 
   if (loading) return <div className="py-20 text-center animate-pulse text-lgc-primary font-bold tracking-widest uppercase">Cargando Documento...</div>;
 
-  // Orientación del PDF Dinámica: Más de 10 columnas = Horizontal (landscape)
+  // Nueva lógica de layout: mostrar en tarjetas si hay muchas columnas
+  const mostrarComoTarjetas = config.length > 6;
+  const itemsPorPagina = 5; // para simplificar, mostramos todos
+
   const isLandscape = config.length > 10;
 
   return (
     <div className={`animate-fade-in flex flex-col h-full bg-slate-50 ${isFullscreen ? 'p-0' : 'space-y-4'}`}>
       
-      {/* MAGIA DE CSS PARA EL PDF PERFECTO */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           @page {
@@ -217,13 +250,11 @@ export default function PreviewMatrizPage() {
             print-color-adjust: exact !important;
             background-color: white !important;
           }
-          /* Oculta menú lateral y cabeceras del sistema en impresión */
           aside, header { display: none !important; }
           main { padding: 0 !important; margin: 0 !important; overflow: visible !important; height: auto !important; }
         }
       `}} />
 
-      {/* BARRA DE HERRAMIENTAS (Se oculta sola al imprimir por clases nativas de Next/Tailwind) */}
       {!isFullscreen && (
         <div className="print:hidden bg-white px-5 py-3 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-4">
@@ -242,7 +273,6 @@ export default function PreviewMatrizPage() {
                  {headerInfo?.estado_matriz_desc || 'Borrador'}
                </span>
             </h1>
-            {/* Aviso de solo lectura para archivadas */}
             {headerInfo?.id_estado_matriz === 3 && (
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -256,7 +286,6 @@ export default function PreviewMatrizPage() {
               Pantalla Completa
             </button>
 
-            {/* BOTÓN PUBLICAR — solo para borradores (estado 1) */}
             {canEdit("matriz") && headerInfo?.id_estado_matriz === 1 && (
               <button onClick={handlePublicar} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -264,7 +293,6 @@ export default function PreviewMatrizPage() {
               </button>
             )}
 
-            {/* BOTÓN COPIAR COMO NUEVA VERSIÓN — solo para publicadas (estado 2) */}
             {canEdit("matriz") && headerInfo?.id_estado_matriz === 2 && (
               <button onClick={handleCopiar} disabled={isCopying} className="bg-lgc-accent hover:bg-[#D97920] text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
@@ -272,7 +300,6 @@ export default function PreviewMatrizPage() {
               </button>
             )}
 
-            {/* BOTÓN DESCARGAR PDF */}
             <button onClick={() => window.print()} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               Exportar a PDF
@@ -281,7 +308,6 @@ export default function PreviewMatrizPage() {
         </div>
       )}
 
-      {/* DOCUMENTO DE LA MATRIZ (Este es el canvas que se imprime) */}
       <div className={`flex-1 bg-white overflow-auto shadow-2xl print:shadow-none print:overflow-visible ${isFullscreen ? 'p-0' : 'rounded-xl mx-auto w-full border border-slate-200 print:border-none'}`}>
         
         {/* ENCABEZADO CORPORATIVO */}
@@ -306,55 +332,80 @@ export default function PreviewMatrizPage() {
             </div>
           </div>
           
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end gap-2">
+             {headerInfo?.id_tipo_matriz === 2 && (
+                <div className="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
+                  <span className="text-[10px] font-bold uppercase text-slate-600">Cumplimiento:</span>
+                  <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-lgc-accent" style={{ width: `${cumplimientoTotal}%` }}></div>
+                  </div>
+                  <span className="text-xs font-bold text-lgc-accent">{cumplimientoTotal}%</span>
+                </div>
+             )}
              <div className="text-[10px] print:text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">Emitido por</div>
-             <img src="/img/logo_lgc.png" alt="LGC Logo" className="h-10 print:h-6 w-auto opacity-80 ml-auto" onError={(e) => e.currentTarget.style.display = 'none'} />
-             <div className="text-[11px] print:text-[8px] font-bold text-slate-800 uppercase mt-2">LGC CONSULTORES</div>
+             <img src="/logo_lgc.png" alt="Lamas Global Consulting" className="h-10 print:h-6 w-auto opacity-80" onError={(e) => e.currentTarget.style.display = 'none'} />
           </div>
         </div>
 
-        {/* CUERPO DE LA MATRIZ (GRILLA) */}
+        {/* CUERPO DE LA MATRIZ */}
         <div className="p-0">
-          {/* Se usa table-auto y anchos mínimos para que el navegador haga el cálculo exacto del PDF */}
-          <table className="w-full text-left border-collapse table-auto print:table-fixed print:text-[8px]">
-            <thead className="bg-slate-50 print:bg-slate-100 sticky top-0 z-10 border-b border-slate-200 print:table-header-group">
-              <tr>
-                <th className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 w-10 text-center">#</th>
-                {config.map(colId => (
-                  <th key={colId} className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 wrap-break-words">
-                    {COLUMN_LABELS[colId] || colId}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
-              {items.length === 0 ? (
-                <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
-              ) : (
-                items.map((item, idx) => (
-                  <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">
-                    <td className="p-4 print:p-2 font-bold text-slate-400 print:text-slate-600 border-r border-slate-50 print:border-slate-200 text-center">{idx + 1}</td>
-                    {config.map(colId => (
-                      <td key={colId} className="p-4 print:p-2 align-top text-slate-700 leading-relaxed border-r border-slate-50 print:border-slate-200 wrap-break-words">
-                        {renderContent(item, colId)}
-                      </td>
+          {mostrarComoTarjetas ? (
+            // Vista en tarjetas (evita scroll horizontal)
+            <div className="p-4 space-y-6">
+              {items.map((item, idx) => (
+                <div key={item.id_item_matriz} className="border border-slate-200 rounded-xl p-4 shadow-sm print:break-inside-avoid">
+                  <div className="font-bold text-lgc-primary border-b pb-2 mb-3">Ítem #{idx+1}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {config.map((col: any) => (
+                      <div key={col.id} className="flex flex-col gap-1">
+                        <span className="text-[9px] font-bold uppercase text-slate-500">{col.label}</span>
+                        <span className="text-xs text-slate-700">{renderContent(item, col.id)}</span>
+                      </div>
                     ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Vista en tabla tradicional
+            <table className="w-full text-left border-collapse table-auto print:table-fixed print:text-[8px]">
+              <thead className="bg-slate-50 print:bg-slate-100 sticky top-0 z-10 border-b border-slate-200 print:table-header-group">
+                <tr>
+                  <th className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 w-10 text-center">#</th>
+                  {config.map((col: any) => (
+                    <th key={col.id} className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 wrap-break-words">
+                      {col.label || COLUMN_LABELS[col.id] || col.id}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
+                {items.length === 0 ? (
+                  <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
+                ) : (
+                  items.map((item, idx) => (
+                    <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">
+                      <td className="p-4 print:p-2 font-bold text-slate-400 print:text-slate-600 border-r border-slate-50 print:border-slate-200 text-center">{idx+1}</td>
+                      {config.map((col: any) => (
+                        <td key={col.id} className="p-4 print:p-2 align-top text-slate-700 leading-relaxed border-r border-slate-50 print:border-slate-200 wrap-break-words">
+                          {renderContent(item, col.id)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        {/* PIE DE PÁGINA (Solo para impresión) */}
+        {/* PIE DE PÁGINA (solo impresión) */}
         <div className="p-8 print:p-4 bg-slate-50 print:bg-white border-t border-slate-100 print:border-slate-300 mt-10 print:mt-0 hidden print:block">
            <div className="flex justify-between text-[10px] print:text-[8px] font-bold text-slate-500 uppercase">
-              <span>© {new Date().getFullYear()} LGC Consultores - Documento Legal</span>
-              <span>Matriz ID: {idMatriz}</span>
+              <span>© {new Date().getFullYear()} Lamas Global Consulting</span>
            </div>
         </div>
       </div>
-
     </div>
   );
 }

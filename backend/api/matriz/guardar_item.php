@@ -46,6 +46,7 @@ try {
     $db->beginTransaction();
 
     if ($id_item_matriz) {
+        // MODO EDICIÓN: NO se modifica el orden
         $query_item = "UPDATE item_matriz SET 
                         id_matriz = :id_matriz, resumen_legal = :resumen_legal, articulos_aplicables = :articulos_aplicables,
                         interpretacion_aplicacion = :interpretacion_aplicacion, id_tipo_modalidad = :id_tipo_modalidad,
@@ -57,18 +58,25 @@ try {
         $stmt = $db->prepare($query_item);
         $stmt->bindValue(":id_item_matriz", $id_item_matriz, PDO::PARAM_INT);
     } else {
+        // MODO CREACIÓN: Calcular el próximo orden para esta matriz
+        $query_max_orden = "SELECT COALESCE(MAX(orden), -1) + 1 AS siguiente_orden FROM item_matriz WHERE id_matriz = :id_matriz";
+        $stmt_max = $db->prepare($query_max_orden);
+        $stmt_max->execute([':id_matriz' => $id_matriz]);
+        $siguiente_orden = (int)$stmt_max->fetchColumn();
+
         $query_item = "INSERT INTO item_matriz 
-                        (id_matriz, resumen_legal, articulos_aplicables, interpretacion_aplicacion, id_tipo_modalidad, obs_modalidad, 
+                        (id_matriz, orden, resumen_legal, articulos_aplicables, interpretacion_aplicacion, id_tipo_modalidad, obs_modalidad, 
                          vencimiento_plazo, fecha_cumplimiento, evidencia_cumplimiento, verificacion_cumplimiento, 
                          id_estado_cumplimiento, obs_estado_cumplimiento, id_responsable_establecimiento, datos_dinamicos)
                        VALUES 
-                        (:id_matriz, :resumen_legal, :articulos_aplicables, :interpretacion_aplicacion, :id_tipo_modalidad, :obs_modalidad, 
+                        (:id_matriz, :orden, :resumen_legal, :articulos_aplicables, :interpretacion_aplicacion, :id_tipo_modalidad, :obs_modalidad, 
                          :vencimiento_plazo, :fecha_cumplimiento, :evidencia_cumplimiento, :verificacion_cumplimiento, 
                          :id_estado_cumplimiento, :obs_estado_cumplimiento, :id_responsable, :datos_dinamicos)";
         $stmt = $db->prepare($query_item);
+        $stmt->bindValue(":orden", $siguiente_orden, PDO::PARAM_INT);
     }
 
-    // Usamos bindValue dinámico: si es nulo pasa PDO::PARAM_NULL, sino pasa su tipo correspondiente
+    // Parámetros comunes a INSERT y UPDATE
     $stmt->bindValue(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt->bindValue(":resumen_legal", $resumen_legal, is_null($resumen_legal) ? PDO::PARAM_NULL : PDO::PARAM_STR);
     $stmt->bindValue(":articulos_aplicables", $articulos_aplicables, is_null($articulos_aplicables) ? PDO::PARAM_NULL : PDO::PARAM_STR);
@@ -87,6 +95,7 @@ try {
     $stmt->execute();
     if (!$id_item_matriz) $id_item_matriz = $db->lastInsertId();
 
+    // Gestión de normas vinculadas
     $stmt_del_normas = $db->prepare("DELETE FROM item_matriz_norma WHERE id_item_matriz = :id_item_matriz");
     $stmt_del_normas->execute([':id_item_matriz' => $id_item_matriz]);
 

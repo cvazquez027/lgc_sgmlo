@@ -233,7 +233,7 @@ export default function ClientesPage() {
               setFormData({id_cliente: "", cuit: "", razon_social: "", nombre_fantasia: "", logo_path: "", vigente: 1, contactos: []}); 
               setIsModalOpen(true); 
             }}
-            className="bg-lgc-tostado text-slate-800 py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-tostado/90 transition-all shadow-md flex items-center gap-2"
+            className="bg-lgc-accent text-slate-800 py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-tostado/70 transition-all shadow-md flex items-center gap-2"
           >
             <span>+</span> Nuevo Cliente
           </button>
@@ -315,7 +315,7 @@ export default function ClientesPage() {
             ) : (
               clientesPaginados.map((cliente, index) => {
                 const esVerde = index % 2 === 0;
-                const bgColor = esVerde ? "bg-lgc-accent" : "bg-lgc-primary";
+                const bgColor = esVerde ? "bg-slate-900" : "bg-slate-700";
                 
                 return (
                   <div 

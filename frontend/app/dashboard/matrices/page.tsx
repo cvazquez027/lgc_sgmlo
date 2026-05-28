@@ -44,22 +44,19 @@ export default function MatricesPage() {
   const { canRead, canEdit } = usePermissions();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
-  // ID de cliente del usuario logueado (null = usuario interno LGC, ve todo)
   const [userClienteId, setUserClienteId] = useState<string | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem("sgml_cliente_id"); // null si usuario interno
+    const raw = localStorage.getItem("sgml_cliente_id");
     setUserClienteId(raw && raw !== "null" ? raw : null);
   }, []);
 
-  // Datos
   const [matrices, setMatrices] = useState<Matriz[]>([]);
   const [estadosMatriz, setEstadosMatriz] = useState<Maestra[]>([]);
   const [tiposMatriz, setTiposMatriz] = useState<Maestra[]>([]); 
   const [especialidadesMatriz, setEspecialidadesMatriz] = useState<Maestra[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   
-  // Filtros de tabla
   const [filtroCliente, setFiltroCliente] = useState<string>("");
   const [filtroEstablecimiento, setFiltroEstablecimiento] = useState<string>("");
   const [filtroEspecialidad, setFiltroEspecialidad] = useState<string>("");
@@ -67,11 +64,9 @@ export default function MatricesPage() {
   const [filtroVigente, setFiltroVigente] = useState<boolean>(true);
   const [establecimientosFiltro, setEstablecimientosFiltro] = useState<Establecimiento[]>([]);
 
-  // Estados UI
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
   const [formLoading, setFormLoading] = useState(false);
@@ -190,7 +185,7 @@ export default function MatricesPage() {
       id_tipo_matriz: "",
       id_especialidad_matriz: "",
       fecha_desde: new Date().toISOString().split('T')[0],
-      version: 1,
+      version: 1, // se recalculará en el backend
       id_estado_matriz: "1",
       vigente: 1
     });
@@ -242,9 +237,32 @@ export default function MatricesPage() {
     }
   };
 
+  // Ordenamiento según lo solicitado
+  const matricesOrdenadas = useMemo(() => {
+    return [...matrices].sort((a, b) => {
+      // Primero por cliente (nombre_fantasia)
+      const clienteA = a.nombre_fantasia || '';
+      const clienteB = b.nombre_fantasia || '';
+      if (clienteA !== clienteB) return clienteA.localeCompare(clienteB);
+      // luego por establecimiento
+      const estA = a.establecimiento_desc || '';
+      const estB = b.establecimiento_desc || '';
+      if (estA !== estB) return estA.localeCompare(estB);
+      // luego por especialidad
+      const espA = a.especialidad_matriz_desc || '';
+      const espB = b.especialidad_matriz_desc || '';
+      if (espA !== espB) return espA.localeCompare(espB);
+      // luego por tipo
+      const tipoA = a.tipo_matriz_desc || '';
+      const tipoB = b.tipo_matriz_desc || '';
+      if (tipoA !== tipoB) return tipoA.localeCompare(tipoB);
+      // luego por versión descendente
+      return b.version - a.version;
+    });
+  }, [matrices]);
+
   const matricesFiltradas = useMemo(() => {
-    return matrices.filter(m => {
-      // Usuarios externos (con id_cliente): solo ven sus matrices y solo las publicadas
+    return matricesOrdenadas.filter(m => {
       if (userClienteId) {
         if (m.id_cliente?.toString() !== userClienteId) return false;
         if (m.id_estado_matriz !== 2) return false;
@@ -256,18 +274,14 @@ export default function MatricesPage() {
       const mVigente = filtroVigente ? m.vigente === 1 : true;
       return mCliente && mEstablecimiento && mEspecialidad && mTipo && mVigente;
     });
-  }, [matrices, filtroCliente, filtroEstablecimiento, filtroEspecialidad, filtroTipo, filtroVigente, userClienteId]);
+  }, [matricesOrdenadas, filtroCliente, filtroEstablecimiento, filtroEspecialidad, filtroTipo, filtroVigente, userClienteId]);
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales...</div>;
   if (!canRead("matriz")) return <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100"><div className="text-red-500 text-6xl mb-4">🔒</div><h2 className="text-2xl font-heading text-slate-800 uppercase tracking-tight mb-2">Acceso Denegado</h2></div>;
 
   return (
     <div className="space-y-4 animate-fade-in">
-      
-      {/* HEADER PRINCIPAL Y FILTROS INTEGRADOS */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden">
-        
-        {/* RECUADRO DE TÍTULO AZUL CORPORATIVO Y BOTÓN VOLVER INTEGRADO */}
         <div className="bg-[#005F78] text-white flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4 border-b border-[#004D62]">
           <div className="flex items-center gap-4">
             <Link 
@@ -292,7 +306,6 @@ export default function MatricesPage() {
           )}
         </div>
 
-        {/* BARRA DE FILTROS EN BLANCO/GRIS CLARO PARA CONTRASTE */}
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 bg-slate-50">
           <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm">
             <option value="">Todos los Clientes</option>
@@ -329,16 +342,15 @@ export default function MatricesPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left font-sans">
-              {/* FILA DE TÍTULOS DE LA GRILLA EN AZUL CORPORATIVO */}
               <thead className="bg-lgc-primary text-[10px] uppercase tracking-[0.2em] text-white font-bold border-b border-lgc-primary">
                 <tr>
                   <th className="p-4">Cliente</th>
-                  <th className="p-4">ID / Versión</th>
+                  <th className="p-4">Establecimiento</th>
                   <th className="p-4">Especialidad</th>
                   <th className="p-4">Tipo</th>
-                  <th className="p-4">Establecimiento</th>
-                  <th className="p-4">Inicio</th>
+                  <th className="p-4">Versión</th>
                   <th className="p-4">Estado</th>
+                  <th className="p-4">Fecha Creación</th>
                   <th className="p-4 text-right">Acciones</th>
                 </tr>
               </thead>
@@ -358,8 +370,7 @@ export default function MatricesPage() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <div className="font-bold text-slate-700 text-xs">#{matriz.id_matriz}</div>
-                        <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">V{matriz.version}.0</div>
+                        <div className="font-bold text-slate-800 text-xs uppercase">{matriz.establecimiento_desc || `ID: ${matriz.id_cliente_establecimiento}`}</div>
                       </td>
                       <td className="p-4 whitespace-nowrap">
                          <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-sm border ${
@@ -371,21 +382,17 @@ export default function MatricesPage() {
                          }`}>
                            {matriz.especialidad_matriz_desc || "No definido"}
                          </span>
-                      </td>
+                       </td>
                       <td className="p-4 whitespace-nowrap">
                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
                            {matriz.tipo_matriz_desc || "No definido"}
                          </span>
                       </td>
                       <td className="p-4">
-                        <div className="font-bold text-slate-800 text-xs uppercase">{matriz.establecimiento_desc || `ID: ${matriz.id_cliente_establecimiento}`}</div>
-                      </td>
-                      <td className="p-4 text-xs text-slate-600 font-medium">
-                        {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
+                        <div className="text-xs font-bold text-slate-700">{matriz.version}</div>
                       </td>
                       <td className="p-4">
-                        {/* LÓGICA DE ESTADOS POR COLORES */}
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border whitespace-nowrap ${
                             matriz.id_estado_matriz === 1 ? 'bg-amber-100 text-amber-700 border-amber-300' :
                             matriz.id_estado_matriz === 2 ? 'bg-green-100 text-green-700 border-green-300' :
                             matriz.id_estado_matriz === 3 ? 'bg-slate-100 text-slate-500 border-slate-300' :
@@ -400,8 +407,10 @@ export default function MatricesPage() {
                           {matriz.estado_matriz_desc || "SIN ESTADO"}
                         </span>
                       </td>
+                      <td className="p-4 text-xs text-slate-600 font-medium">
+                        {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
+                      </td>
                       <td className="p-4 text-right flex justify-end gap-2 items-center">
-                        {/* LAPIZ OCULTO SI ESTADO ES 2 (Publicada) O 3 (Archivada) */}
                         {canEdit("matriz") && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
                           <button onClick={() => openEditarModal(matriz)} className="text-slate-400 hover:text-lgc-primary transition-colors p-2" title="Editar Propiedades">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
@@ -460,12 +469,13 @@ export default function MatricesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Fecha Inicio *</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Fecha Creación *</label>
                   <input required type="date" value={formData.fecha_desde} onChange={e => setFormData({...formData, fecha_desde: e.target.value})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Versión *</label>
-                  <input required type="number" min="1" value={formData.version} onChange={e => setFormData({...formData, version: parseInt(e.target.value)})} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" />
+                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Versión</label>
+                  <input type="number" min="1" value={formData.version} disabled className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500" />
+                  <p className="text-[9px] text-slate-400 mt-1">Se asigna automáticamente</p>
                 </div>
               </div>
               <div className="pt-4 flex gap-3">

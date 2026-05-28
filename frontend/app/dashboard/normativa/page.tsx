@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -38,45 +38,60 @@ interface Categoria {
 
 // --- NANO-COMPONENTES PARA FILTROS AVANZADOS ---
 
-// 1. Combo Buscable con Texto Libre (Reutilizable para Emisor, Nivel, Jur)
+// 1. Combo Buscable con Texto Libre (para Emisor, Jurisdicción)
 const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
   const [query, setQuery] = useState(value || "");
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sincronizar estado local si el filtro se limpia desde afuera
   useEffect(() => { setQuery(value || ""); }, [value]);
+
+  // Cerrar menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const filtered = options.filter((o: any) => 
     o.descripcion?.toLowerCase().includes(query.toLowerCase())
   );
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    onChange(e.target.value);
+    if (!isOpen) setIsOpen(true);
+  };
+
+  const selectOption = (desc: string) => {
+    setQuery(desc);
+    onChange(desc);
+    setIsOpen(false);
+    inputRef.current?.focus();
+  };
+
   return (
-    <div className="relative w-full">
+    <div className="relative w-full" ref={containerRef}>
       <input
+        ref={inputRef}
         className="w-full text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors"
         placeholder={placeholder}
         value={query}
         onFocus={() => setIsOpen(true)}
-        // Pequeño timeout para permitir que el clic en la opción se registre antes de cerrar
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          onChange(e.target.value); // Permitimos texto libre al escribir
-        }}
+        onChange={handleChange}
       />
       {isOpen && filtered.length > 0 && (
-        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1">
           {filtered.map((o: any) => (
             <div 
               key={o.id} 
               className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
-              onMouseDown={(e) => {
-                 // Prevenimos el blur del input principal para que registre el clic
-                 e.preventDefault();
-                 setQuery(o.descripcion);
-                 onChange(o.descripcion);
-                 setIsOpen(false);
-              }}
+              onMouseDown={(e) => { e.preventDefault(); selectOption(o.descripcion); }}
             >
               {o.descripcion}
             </div>
@@ -87,64 +102,78 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
   );
 };
 
-// 2. Selector Múltiple con Tags (Cuadraditos)
-const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
+// 2. Selector Múltiple de Categorías con Tags (versión mejorada)
+const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any) => {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Filtrar opciones: buscable y que no estén ya seleccionadas
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const filtered = options.filter((o: any) => 
     o.descripcion?.toLowerCase().includes(query.toLowerCase()) &&
     !selected.includes(o.descripcion)
   );
 
-  const addTag = (tag: string) => {
-    if (!selected.includes(tag)) {
-        onChange([...selected, tag]);
+  const addTag = (desc: string) => {
+    if (!selected.includes(desc)) {
+      onChange([...selected, desc]);
     }
     setQuery("");
     setIsOpen(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const removeTag = (tag: string) => {
-    onChange(selected.filter((t: string) => t !== tag));
+  const removeTag = (desc: string) => {
+    onChange(selected.filter((t: string) => t !== desc));
+    if (!isOpen) setIsOpen(true);
+  };
+
+  const handleFocus = () => {
+    setIsOpen(true);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    if (!isOpen) setIsOpen(true);
   };
 
   return (
-    <div className="relative w-full col-span-1 md:col-span-2">
-      {/* Contenedor de Tags seleccionados (arriba del input) */}
-      <div className="flex flex-wrap gap-1 mb-1.5 min-h-[25px]">
+    <div className="relative w-full" ref={containerRef}>
+      <div className="flex flex-wrap gap-1 mb-1.5 min-h-6.25px">
         {selected.map((tag: string, idx: number) => (
-          <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold shadow-sm uppercase tracking-widest animate-fade-in">
+          <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold shadow-sm uppercase tracking-widest">
             {tag}
             <button type="button" onClick={() => removeTag(tag)} className="text-blue-400 hover:text-red-500 font-bold ml-1 transition-colors text-xs">
-               &times;
+              &times;
             </button>
           </span>
         ))}
       </div>
-      
-      {/* Input Buscador */}
       <input
+        ref={inputRef}
         className="w-full text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors"
         placeholder={selected.length === 0 ? placeholder : "+ Buscar y agregar más..."}
         value={query}
-        onFocus={() => setIsOpen(true)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        onChange={(e) => setQuery(e.target.value)}
+        onFocus={handleFocus}
+        onChange={handleChange}
       />
-      
-      {/* Lista Desplegable de Categorías */}
       {isOpen && filtered.length > 0 && (
-        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1">
           {filtered.map((o: any) => (
             <div 
               key={o.id} 
               className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
-              onMouseDown={(e) => {
-                 e.preventDefault();
-                 addTag(o.descripcion);
-              }}
+              onMouseDown={(e) => { e.preventDefault(); addTag(o.descripcion); }}
             >
               {o.descripcion}
             </div>
@@ -188,23 +217,19 @@ export default function NormativaOficialPage() {
   const [normas, setNormas] = useState<Norma[]>([]);
   const [tipos, setTipos] = useState<Diccionario[]>([]);
   const [emisores, setEmisores] = useState<Diccionario[]>([]);
+  const [niveles, setNiveles] = useState<Diccionario[]>([]);
   const [estados, setEstados] = useState<Diccionario[]>([]);
-  
-  // Guardamos las categorías maestras para los tags de filtros
   const [categoriasGlobales, setCategoriasGlobales] = useState<Diccionario[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   
-  // Búsqueda Rápida
   const [searchTerm, setSearchTerm] = useState("");
-
-  // Filtros Avanzados - Implementación del MultiSelect de Categorías
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filtros, setFiltros] = useState({
     tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', 
-    categorias: [] as string[] // Multi selección de tags
+    categorias: [] as string[]
   });
 
   const defaultForm = {
@@ -222,7 +247,6 @@ export default function NormativaOficialPage() {
 
   const [formData, setFormData] = useState(defaultForm);
 
-  // --- ESTADOS PARA MODAL DE CATEGORÍAS (Asignación) ---
   const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [normaSeleccionada, setNormaSeleccionada] = useState<Norma | null>(null);
   const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]);
@@ -242,25 +266,23 @@ export default function NormativaOficialPage() {
 
   const fetchDiccionarios = useCallback(async (token: string) => {
     try {
-      const [resTipos, resEmisores, resEstados, resCat] = await Promise.all([
+      const [resTipos, resEmisores, resEstados, resCat, resNiveles] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=emisor_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_norma`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=nivel_jurisdiccion`, { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
-      const [dataTipos, dataEmisores, dataEstados, dataCat] = await Promise.all([
-        resTipos.json(), resEmisores.json(), resEstados.json(), resCat.json()
+      const [dataTipos, dataEmisores, dataEstados, dataCat, dataNiveles] = await Promise.all([
+        resTipos.json(), resEmisores.json(), resEstados.json(), resCat.json(), resNiveles.json()
       ]);
 
-      // Adaptamos IDs porque a veces vienen como id_tipo_norma, etc.
       setTipos(dataTipos.registros?.map((e:any) => ({ id: e.id_tipo_norma || e.id, descripcion: e.descripcion })) || []);
       setEmisores(dataEmisores.registros?.map((e:any) => ({ id: e.id_emisor_norma || e.id, descripcion: e.descripcion })) || []);
       setEstados(dataEstados.registros?.map((e:any) => ({ id: e.id_estado_norma || e.id, descripcion: e.descripcion })) || []);
-      
-      // Categorías maestras para los tags de filtros
       setCategoriasGlobales(dataCat.registros?.map((c:any) => ({ id: c.id_categoria || c.id, descripcion: c.descripcion })) || []);
-
+      setNiveles(dataNiveles.registros?.map((e:any) => ({ id: e.id_nivel_jurisdiccion || e.id, descripcion: e.descripcion })) || []);
     } catch (err) {
       console.error("Error cargando diccionarios", err);
     }
@@ -315,7 +337,6 @@ export default function NormativaOficialPage() {
     }
   };
 
-  // --- LÓGICA DEL MODAL DE CATEGORÍAS (Asignación) ---
   const abrirModalCategorias = async (norma: Norma) => {
     setNormaSeleccionada(norma);
     setIsCategoriasModalOpen(true);
@@ -389,7 +410,7 @@ export default function NormativaOficialPage() {
 
       if (res.ok) {
         setIsCategoriasModalOpen(false);
-        fetchData(); // Recargamos para ver los tags en la tabla principal
+        fetchData();
       } else {
         alert("Error al guardar categorías.");
       }
@@ -406,7 +427,6 @@ export default function NormativaOficialPage() {
     c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
   );
 
-  // Derivar niveles y jurisdicciones únicos de los datos cargados para los combos de filtros
   const nivelesDisponibles = useMemo(() => {
     const setNiveles = new Set(normas.map(n => n.nivel_jurisdiccion_desc).filter(Boolean));
     return Array.from(setNiveles).map((desc, i) => ({ id: desc, descripcion: desc }));
@@ -417,18 +437,14 @@ export default function NormativaOficialPage() {
     return Array.from(setJur).map((desc, i) => ({ id: desc, descripcion: desc }));
   }, [normas]);
 
-  // MOTOR DE FILTRADO (General + Avanzado)
   const normasFiltradas = useMemo(() => {
     return normas.filter(n => {
-      // 1. Filtro General (Búsqueda Rápida)
       const matchesSearch = searchTerm === "" || 
         n.numero?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         n.sintesis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         n.emisor_desc?.toLowerCase().includes(searchTerm.toLowerCase());
-        
       if (!matchesSearch) return false;
 
-      // 2. Filtros Avanzados (Coincidencia exacta/texto libre)
       if (filtros.tipo && !n.tipo_norma_desc?.toLowerCase().includes(filtros.tipo.toLowerCase())) return false;
       if (filtros.nro && !n.numero?.toString().toLowerCase().includes(filtros.nro.toLowerCase())) return false;
       if (filtros.anio && !n.anio?.toString().includes(filtros.anio)) return false;
@@ -437,7 +453,6 @@ export default function NormativaOficialPage() {
       if (filtros.nivel && !n.nivel_jurisdiccion_desc?.toLowerCase().includes(filtros.nivel.toLowerCase())) return false;
       if (filtros.jurisdiccion && !n.jurisdiccion_desc?.toLowerCase().includes(filtros.jurisdiccion.toLowerCase())) return false;
       
-      // Filtro de Categorías Múltiples (Todas las seleccionadas deben coincidir)
       if (filtros.categorias.length > 0) {
          if (!n.categorias || n.categorias.length === 0) return false;
          const hasAll = filtros.categorias.every(catFilter => 
@@ -445,7 +460,6 @@ export default function NormativaOficialPage() {
          );
          if (!hasAll) return false;
       }
-
       return true;
     });
   }, [normas, searchTerm, filtros]);
@@ -458,7 +472,7 @@ export default function NormativaOficialPage() {
   return (
     <div className="space-y-6 font-sans animate-fade-in relative z-10">
       
-      {/* HEADER PRINCIPAL AZUL CORPORATIVO (Fondo Azul) */}
+      {/* HEADER PRINCIPAL AZUL CORPORATIVO */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-lgc-primary text-white p-6 rounded-2xl shadow-lg border border-lgc-primary gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -494,7 +508,7 @@ export default function NormativaOficialPage() {
         </div>
       </div>
 
-      {/* PANEL DE FILTROS AVANZADOS (Desplegable - Fondo original claro) */}
+      {/* PANEL DE FILTROS AVANZADOS - NUEVA DISPOSICIÓN */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 transition-all overflow-hidden relative z-20">
          <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
             <div className="flex items-center gap-3">
@@ -507,32 +521,83 @@ export default function NormativaOficialPage() {
          
          {isFilterOpen && (
             <div className="p-6 border-t border-slate-200 bg-white space-y-6">
-                <div>
-                  <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest mb-4 border-b border-blue-100 pb-2">Configuración de Filtros</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-                    
-                    {/* IMPLEMENTACIÓN DE COMBOS BUSCABLES CON TEXTO LIBRE */}
-                    <SearchableSelect label="Emisor" options={emisores} value={filtros.emisor} onChange={(val:string) => setFiltros({...filtros, emisor: val})} placeholder="Emisor Normativo..." />
-                    <SearchableSelect label="Nivel" options={nivelesDisponibles} value={filtros.nivel} onChange={(val:string) => setFiltros({...filtros, nivel: val})} placeholder="Nivel Jurisdiccional..." />
-                    <SearchableSelect label="Jurisdicción" options={jurisdiccionesDisponibles} value={filtros.jurisdiccion} onChange={(val:string) => setFiltros({...filtros, jurisdiccion: val})} placeholder="Jurisdicción..." />
-                    
-                    {/* Tipo de Norma (Combo Clásico solicitado) */}
-                    <select className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" value={filtros.tipo} onChange={e => setFiltros({...filtros, tipo: e.target.value})}>
+                <div className="space-y-5">
+                  {/* Primera fila: Tipo Norma, Nro, Año */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* Tipo de Norma (combo) */}
+                    <select 
+                      className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" 
+                      value={filtros.tipo} 
+                      onChange={e => setFiltros({...filtros, tipo: e.target.value})}
+                    >
                        <option value="">Tipo Norma (Todos)</option>
                        {tipos.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
                     </select>
 
-                    <input type="text" placeholder="Nro de Norma" className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.nro} onChange={e => setFiltros({...filtros, nro: e.target.value})} />
-                    <input type="text" placeholder="Año" className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.anio} onChange={e => setFiltros({...filtros, anio: e.target.value})} />
+                    {/* Número de Norma */}
+                    <input 
+                      type="text" 
+                      placeholder="Nro de Norma" 
+                      className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" 
+                      value={filtros.nro} 
+                      onChange={e => setFiltros({...filtros, nro: e.target.value})} 
+                    />
                     
-                    {/* IMPLEMENTACIÓN DE TAGS MÚLTIPLES DE CATEGORÍAS */}
-                    <MultiSelectTags options={categoriasGlobales} selected={filtros.categorias} onChange={(arr:string[]) => setFiltros({...filtros, categorias: arr})} placeholder="Filtrar por categorías..." />
+                    {/* Año (solo números, 4 dígitos) */}
+                    <input 
+                      type="text" 
+                      placeholder="Año" 
+                      maxLength={4}
+                      className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" 
+                      value={filtros.anio} 
+                      onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }}
+                      onChange={e => setFiltros({...filtros, anio: e.target.value})} 
+                    />
+                  </div>
+
+                  {/* Segunda fila: Nivel Jurisdiccional, Jurisdicción, Emisor */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* Nivel Jurisdiccional (combo simple, sin escritura) */}
+                    <select 
+                      className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer"
+                      value={filtros.nivel} 
+                      onChange={e => setFiltros({...filtros, nivel: e.target.value})}
+                    >
+                      <option value="">Nivel de Jurisdicción (Todos)</option>
+                      {niveles.map(n => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
+                    </select>
+                    
+                    {/* Jurisdicción (buscable) */}
+                    <SearchableSelect 
+                      options={jurisdiccionesDisponibles} 
+                      value={filtros.jurisdiccion} 
+                      onChange={(val:string) => setFiltros({...filtros, jurisdiccion: val})} 
+                      placeholder="Jurisdicción..." 
+                    />
+                    
+                    {/* Emisor (buscable) */}
+                    <SearchableSelect 
+                      options={emisores} 
+                      value={filtros.emisor} 
+                      onChange={(val:string) => setFiltros({...filtros, emisor: val})} 
+                      placeholder="Emisor Normativo..." 
+                    />
+                  </div>
+
+                  {/* Tercera fila: Categorías (multiselect) ocupando todo el ancho */}
+                  <div className="grid grid-cols-1">
+                    <MultiSelectCategorias 
+                      options={categoriasGlobales} 
+                      selected={filtros.categorias} 
+                      onChange={(arr:string[]) => setFiltros({...filtros, categorias: arr})} 
+                      placeholder="Filtrar por categorías..." 
+                    />
                   </div>
                 </div>
 
-                {/* BOTONERA FILTROS */}
-                <div className="flex justify-between items-center pt-2 gap-4">
-                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded border border-slate-200 whitespace-nowrap shadow-inner">
+                {/* Botonera */}
+                <div className="flex justify-between items-center pt-2 gap-4 border-t border-slate-100 mt-4">
+                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded border border-slate-200 shadow-inner">
                      Resultados: <span className="text-lgc-primary font-black text-xs">{normasFiltradas.length}</span> normas encontradas
                    </div>
                    <button onClick={() => setFiltros({ tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] })} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors shadow-sm whitespace-nowrap">
@@ -548,7 +613,6 @@ export default function NormativaOficialPage() {
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative z-10">
           <table className="w-full text-left">
-            {/* CABECERA DE LA GRILLA AZUL CORPORATIVO (Fondo Azul) */}
             <thead className="bg-lgc-primary text-white text-[10px] uppercase tracking-[0.2em] font-bold border-b border-lgc-primary sticky top-0 z-10">
               <tr>
                 <th className="p-5">Norma</th>
@@ -580,7 +644,6 @@ export default function NormativaOficialPage() {
                     <td className="p-5">
                       <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed" title={norma.sintesis}>{norma.sintesis || 'Sin síntesis registrada.'}</p>
                       
-                      {/* RENDERIZADO DE CUADRADITOS DE CATEGORÍAS (TAGS) */}
                       {norma.categorias && norma.categorias.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-3">
                            {norma.categorias.map((c, idx) => (
@@ -646,7 +709,7 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA (Mantiene igual) */}
+      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA (sin cambios) */}
       {isModalOpen && canEdit("normativa") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -661,7 +724,6 @@ export default function NormativaOficialPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Tipo de Norma *</label>
@@ -723,7 +785,7 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* --- MODAL: ASIGNACIÓN DE CATEGORÍAS (DUAL LISTBOX - Mantiene igual) --- */}
+      {/* MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) */}
       {isCategoriasModalOpen && normaSeleccionada && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
@@ -740,8 +802,7 @@ export default function NormativaOficialPage() {
               <button onClick={() => setIsCategoriasModalOpen(false)} className="text-slate-400 hover:text-red-500 text-2xl transition-colors">&times;</button>
             </div>
 
-            <div className="p-6 flex-1 overflow-hidden flex flex-col md:flex-row gap-6 bg-white min-h-[400px]">
-              
+            <div className="p-6 flex-1 overflow-hidden flex flex-col md:flex-row gap-6 bg-white min-h-100">
               {/* PANEL IZQUIERDO: DISPONIBLES */}
               <div className="flex-1 flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col gap-2">
@@ -775,7 +836,7 @@ export default function NormativaOficialPage() {
                 </div>
               </div>
 
-              {/* BOTONERA CENTRAL (CONTROLES MASIVOS) */}
+              {/* BOTONERA CENTRAL */}
               <div className="flex md:flex-col justify-center gap-3 shrink-0 py-4">
                  <button 
                    onClick={() => moverTodasADerecha(categoriasDisponiblesFiltradas)} 
@@ -797,7 +858,7 @@ export default function NormativaOficialPage() {
                  </button>
               </div>
 
-              {/* PANEL DERECHO: ASIGNADAS (SORTABLE) */}
+              {/* PANEL DERECHO: ASIGNADAS */}
               <div className="flex-1 flex flex-col border border-[#006A8A]/30 rounded-xl overflow-hidden shadow-sm bg-[#006A8A]/5">
                 <div className="bg-white p-3 border-b border-[#006A8A]/20">
                   <div className="flex justify-between items-center mb-1">
@@ -825,7 +886,6 @@ export default function NormativaOficialPage() {
               </div>
             </div>
 
-            {/* PIE DEL MODAL */}
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0 relative z-10">
                <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg shadow-sm">
                  Cancelar
@@ -841,7 +901,6 @@ export default function NormativaOficialPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

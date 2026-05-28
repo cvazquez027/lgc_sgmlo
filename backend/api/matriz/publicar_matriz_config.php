@@ -64,9 +64,9 @@ try {
     $stmt_archivar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_archivar->execute();
 
-    // 4. PUBLICAMOS LA NUEVA MATRIZ
+    // 4. PUBLICAMOS LA NUEVA MATRIZ (Corregido a estado = 2)
     $query_publicar = "UPDATE matriz 
-                       SET id_estado_matriz = 1, vigente = 1, config_columnas = :config 
+                       SET id_estado_matriz = 2, vigente = 1, config_columnas = :config 
                        WHERE id_matriz = :id_matriz";
               
     $stmt_publicar = $db->prepare($query_publicar);

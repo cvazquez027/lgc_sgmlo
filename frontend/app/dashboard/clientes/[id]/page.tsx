@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -19,6 +19,7 @@ interface Establecimiento {
   id_jurisdiccion: number;
   vigente: number;
   contactos?: DatoContacto[];
+  categorias?: { id_categoria: number; descripcion: string }[]; // <-- NUEVO
 }
 
 interface Jurisdiccion {
@@ -103,6 +104,91 @@ const SortableResponsableItem = ({ resp, onEdit, onDelete }: { resp: Responsable
   );
 };
 
+// Componente para multiselect de categorías en filtros
+const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any) => {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Opciones filtradas: excluir ya seleccionadas y que coincidan con query
+  const filtered = options.filter((o: any) => {
+    const matchesQuery = o.descripcion?.toLowerCase().includes(query.toLowerCase());
+    const alreadySelected = selected.some((s: any) => s.id_categoria === o.id_categoria);
+    return matchesQuery && !alreadySelected;
+  });
+
+  const addTag = (cat: any) => {
+    if (!selected.some((s: any) => s.id_categoria === cat.id_categoria)) {
+      onChange([...selected, cat]);
+    }
+    setQuery("");        // Limpiar búsqueda
+    setIsOpen(false);    // Cerrar menú
+    // Mantener el foco en el input para seguir escribiendo
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const removeTag = (cat: any) => {
+    onChange(selected.filter((s: any) => s.id_categoria !== cat.id_categoria));
+    // Al quitar una categoría, reabrir menú si hay query o estaba abierto
+    if (!isOpen) setIsOpen(true);
+  };
+
+  const handleFocus = () => {
+    setIsOpen(true);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    if (!isOpen) setIsOpen(true);  // Si estaba cerrado, lo abrimos al escribir
+  };
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <div className="flex flex-wrap gap-1 mb-1.5 min-h-6.25">
+        {selected.map((cat: any) => (
+          <span key={cat.id_categoria} className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] px-2 py-1 rounded flex items-center gap-1 font-bold shadow-sm uppercase tracking-widest">
+            {cat.descripcion}
+            <button type="button" onClick={() => removeTag(cat)} className="text-blue-400 hover:text-red-500 font-bold ml-1 transition-colors text-xs">&times;</button>
+          </span>
+        ))}
+      </div>
+      <input
+        ref={inputRef}
+        className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none focus:border-lgc-primary bg-white transition-colors"
+        placeholder={selected.length === 0 ? placeholder : "+ Buscar y agregar más..."}
+        value={query}
+        onFocus={handleFocus}
+        onChange={handleChange}
+      />
+      {isOpen && filtered.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1">
+          {filtered.map((cat: any) => (
+            <div
+              key={cat.id_categoria}
+              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100"
+              onMouseDown={(e) => { e.preventDefault(); addTag(cat); }}
+            >
+              {cat.descripcion}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function EstablecimientosPage() {
   const { id } = useParams(); 
   const router = useRouter();
@@ -118,6 +204,7 @@ export default function EstablecimientosPage() {
   const [establecimientos, setEstablecimientos] = useState<Establecimiento[]>([]);
   const [jurisdicciones, setJurisdicciones] = useState<Jurisdiccion[]>([]);
   const [tiposContacto, setTiposContacto] = useState<TipoContacto[]>([]);
+  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]); // <-- para filtros
   
   const [clienteActual, setClienteActual] = useState<{ nombre_fantasia: string, logo_path: string | null } | null>(null);
   
@@ -136,7 +223,6 @@ export default function EstablecimientosPage() {
   // --- NUEVOS ESTADOS PARA MODAL DE CATEGORÍAS ---
   const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [establecimientoSeleccionado, setEstablecimientoSeleccionado] = useState<Establecimiento | null>(null);
-  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]);
   const [categoriasAsignadas, setCategoriasAsignadas] = useState<Categoria[]>([]);
   const [searchCat, setSearchCat] = useState("");
   const [savingCategorias, setSavingCategorias] = useState(false);
@@ -149,10 +235,38 @@ export default function EstablecimientosPage() {
   const [savingResponsable, setSavingResponsable] = useState(false);
   const [formResponsable, setFormResponsable] = useState<{ id_responsable_establecimiento: string; descripcion: string; observacion: string; vigente: number } | null>(null);
 
+  // --- ESTADOS DE FILTROS ---
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filtros, setFiltros] = useState({
+    descripcion: "",
+    id_jurisdiccion: "",
+    vigente: "todos", // "todos", "1", "0"
+    categorias: [] as Categoria[] // array de objetos { id, descripcion }
+  });
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  // Cargar todas las categorías globales para usar en el filtro
+  const fetchCategoriasGlobales = useCallback(async () => {
+    const token = localStorage.getItem("sgml_token");
+    if (!token) return;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      const cats = data.registros?.map((c: any) => ({
+        id_categoria: c.id_categoria || c.id,
+        descripcion: c.descripcion
+      })) || [];
+      setTodasLasCategorias(cats);
+    } catch (err) {
+      console.error("Error cargando categorías globales:", err);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
@@ -172,6 +286,7 @@ export default function EstablecimientosPage() {
         resEst.json(), resJur.json(), resTipos.json(), resClientes.json()
       ]);
 
+      // El backend ahora devuelve categorías en cada registro
       setEstablecimientos(dataEst.registros || []);
       setJurisdicciones(dataJur.registros || []);
       setTiposContacto(dataTipos.registros || []);
@@ -194,8 +309,36 @@ export default function EstablecimientosPage() {
   }, [id, router]);
 
   useEffect(() => { 
-    if (!isCheckingPerms && canRead("clientes")) fetchData(); 
-  }, [fetchData, isCheckingPerms, canRead]);
+    if (!isCheckingPerms && canRead("clientes")) {
+      fetchData();
+      fetchCategoriasGlobales();
+    }
+  }, [fetchData, fetchCategoriasGlobales, isCheckingPerms, canRead]);
+
+  // Lógica de filtrado
+  const establecimientosFiltrados = useMemo(() => {
+    return establecimientos.filter(est => {
+      // Filtro descripción
+      if (filtros.descripcion.trim() !== "" && !est.descripcion.toLowerCase().includes(filtros.descripcion.toLowerCase())) return false;
+      
+      // Filtro jurisdicción
+      if (filtros.id_jurisdiccion !== "" && est.id_jurisdiccion.toString() !== filtros.id_jurisdiccion) return false;
+      
+      // Filtro estado vigente
+      if (filtros.vigente !== "todos" && est.vigente.toString() !== filtros.vigente) return false;
+      
+      // Filtro categorías (AND: todas las categorías seleccionadas deben estar presentes)
+      if (filtros.categorias.length > 0) {
+        const categoriasEst = est.categorias?.map(c => c.id_categoria) || [];
+        const todasPresentes = filtros.categorias.every(catFiltro => 
+          categoriasEst.includes(catFiltro.id_categoria)
+        );
+        if (!todasPresentes) return false;
+      }
+      
+      return true;
+    });
+  }, [establecimientos, filtros]);
 
   const handleAddContacto = () => setFormData(prev => ({ ...prev, contactos: [...prev.contactos, { id_tipo_contacto: "", valor: "" }] }));
   const handleRemoveContacto = (index: number) => setFormData(prev => ({ ...prev, contactos: prev.contactos.filter((_, i) => i !== index) }));
@@ -252,18 +395,17 @@ export default function EstablecimientosPage() {
     if (!token) return;
 
     try {
-      // 1. Cargamos TODAS las categorías maestras (asumimos que existe en maestras)
+      // 1. Cargamos TODAS las categorías maestras
       const resMaestras = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataMaestras = await resMaestras.json();
       const todas = dataMaestras.registros?.map((c:any) => ({ id_categoria: c.id_categoria || c.id, descripcion: c.descripcion })) || [];
-      setTodasLasCategorias(todas);
+      setTodasLasCategorias(todas); // Actualizar global también
 
       // 2. Cargamos las categorías ya asignadas a este establecimiento
       const resAsignadas = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer_categorias.php?id_cliente_establecimiento=${est.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataAsignadas = await resAsignadas.json();
       
       if (dataAsignadas.registros) {
-        // Mapeamos a nuestro objeto Categoria
         const asignadas = dataAsignadas.registros.map((c: any) => ({
           id_categoria: c.id_categoria,
           descripcion: c.descripcion
@@ -319,6 +461,7 @@ export default function EstablecimientosPage() {
 
       if (res.ok) {
         setIsCategoriasModalOpen(false);
+        fetchData(); // Recargar para actualizar las categorías en la tabla
       } else {
         alert("Error al guardar categorías.");
       }
@@ -425,14 +568,23 @@ export default function EstablecimientosPage() {
     }
   };
 
-  // Filtrar categorías que no estén ya asignadas
-  const IDsAsignados = categoriasAsignadas.map(c => c.id_categoria);
-  const categoriasDisponibles = todasLasCategorias.filter(c => !IDsAsignados.includes(c.id_categoria));
-  
-  // Aplicar buscador
-  const categoriasDisponiblesFiltradas = categoriasDisponibles.filter(c => 
-    c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
-  );
+  // Limpiar filtros
+  const limpiarFiltros = () => {
+    setFiltros({
+      descripcion: "",
+      id_jurisdiccion: "",
+      vigente: "todos",
+      categorias: []
+    });
+  };
+
+  // Verificar si hay filtros activos
+  const hayFiltrosActivos = useMemo(() => {
+    return filtros.descripcion !== "" ||
+           filtros.id_jurisdiccion !== "" ||
+           filtros.vigente !== "todos" ||
+           filtros.categorias.length > 0;
+  }, [filtros]);
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
   if (!canRead("clientes")) return <div className="py-32 text-center text-red-500 font-bold text-2xl">Acceso Denegado</div>;
@@ -446,24 +598,27 @@ export default function EstablecimientosPage() {
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
-        
-        {/* HEADER DE ESTABLECIMIENTOS CON IDENTIDAD DEL CLIENTE */}
+      {/* HEADER CON FONDO PRINCIPAL */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-lgc-primary p-6 rounded-2xl shadow-lg gap-4">
         <div className="flex items-center gap-4">
           {clienteActual?.logo_path ? (
-            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
               <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${clienteActual.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
             </div>
           ) : (
-            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-slate-50 shadow-sm flex items-center justify-center shrink-0">
-               <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white flex items-center justify-center shrink-0 shadow-sm">
+              <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
             </div>
           )}
-          
           <div>
-            <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Establecimientos / Sedes</h1>
-            <p className="text-slate-500 text-sm mt-0.5">
-              Gestionando establecimientos de <strong className="text-slate-700 font-bold uppercase tracking-widest text-[10px] bg-slate-100 px-2 py-1 rounded ml-1">{clienteActual?.nombre_fantasia || `Cliente #${id}`}</strong>
+            <h1 className="text-2xl font-heading text-white uppercase tracking-tight flex items-center gap-2">
+              ESTABLECIMIENTOS
+              <span className="bg-white/20 text-white px-3 py-0.5 rounded-full text-sm font-normal tracking-normal">
+                {establecimientosFiltrados.length}
+              </span>
+            </h1>
+            <p className="text-white/70 text-sm mt-0.5">
+              Gestionando sedes de <strong className="text-white font-bold uppercase tracking-widest text-[10px] bg-white/20 px-2 py-1 rounded ml-1">{clienteActual?.nombre_fantasia || `Cliente #${id}`}</strong>
             </p>
           </div>
         </div>
@@ -474,10 +629,94 @@ export default function EstablecimientosPage() {
                 setFormData({id_cliente_establecimiento: "", id_jurisdiccion: "", descripcion: "", vigente: 1, contactos: []}); 
                 setIsModalOpen(true); 
               }}
-              className="bg-lgc-accent text-white py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-primary transition-all shadow-md shrink-0 flex items-center gap-2"
+              className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-accent hover:text-white transition-all shadow-md shrink-0 flex items-center gap-2"
           >
-            <span>+</span> Agregar Sede
+            <span>+</span> Agregar Establecimiento
           </button>
+        )}
+      </div>
+
+      {/* SECCIÓN DE FILTROS PLEGABLE */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <button
+          onClick={() => setIsFilterOpen(!isFilterOpen)}
+          className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            <span className="font-bold uppercase text-xs tracking-widest text-slate-600">Filtros de búsqueda</span>
+            {hayFiltrosActivos && (
+              <span className="bg-lgc-accent text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase shadow-sm">Activo</span>
+            )}
+          </div>
+          <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+
+        {isFilterOpen && (
+          <div className="p-5 border-t border-slate-200 bg-white space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Filtro descripción */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Descripción</label>
+                <input
+                  type="text"
+                  className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none focus:border-lgc-primary"
+                  placeholder="Nombre o descripción..."
+                  value={filtros.descripcion}
+                  onChange={e => setFiltros({...filtros, descripcion: e.target.value})}
+                />
+              </div>
+
+              {/* Filtro jurisdicción */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Jurisdicción</label>
+                <select
+                  className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer"
+                  value={filtros.id_jurisdiccion}
+                  onChange={e => setFiltros({...filtros, id_jurisdiccion: e.target.value})}
+                >
+                  <option value="">Todas</option>
+                  {jurisdicciones.map(j => (
+                    <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>{j.descripcion}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtro estado */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Estado</label>
+                <select
+                  className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer"
+                  value={filtros.vigente}
+                  onChange={e => setFiltros({...filtros, vigente: e.target.value})}
+                >
+                  <option value="todos">Todos</option>
+                  <option value="1">Activos</option>
+                  <option value="0">Inactivos</option>
+                </select>
+              </div>
+
+              {/* Filtro categorías (multiselect) */}
+              <div className="lg:col-span-2">
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Categorías (todas deben coincidir)</label>
+                <MultiSelectCategorias
+                  options={todasLasCategorias}
+                  selected={filtros.categorias}
+                  onChange={(cats: Categoria[]) => setFiltros({...filtros, categorias: cats})}
+                  placeholder="Seleccionar categorías..."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={limpiarFiltros}
+                className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -486,35 +725,54 @@ export default function EstablecimientosPage() {
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold border-b border-slate-200">
+            <thead className="bg-lgc-primary text-[10px] uppercase tracking-[0.2em] text-white font-bold">
               <tr>
                 <th className="p-5">Descripción de la Planta/Sede</th>
                 <th className="p-5">Jurisdicción</th>
+                <th className="p-5">Categorías</th>
                 <th className="p-5">Estado</th>
                 <th className="p-5 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {establecimientos.length === 0 ? (
+              {establecimientosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-10 text-center text-slate-400 italic">No hay establecimientos registrados para este cliente.</td>
+                  <td colSpan={5} className="p-10 text-center text-slate-400 italic">No hay establecimientos que coincidan con los filtros.</td>
                 </tr>
               ) : (
-                establecimientos.map(est => (
+                establecimientosFiltrados.map(est => (
                   <tr key={est.id_cliente_establecimiento} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="p-5 font-bold text-slate-700 text-sm">{est.descripcion}</td>
                     <td className="p-5 text-xs text-slate-500 font-medium uppercase tracking-widest">{est.jurisdiccion_nombre}</td>
                     <td className="p-5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {est.categorias && est.categorias.length > 0 ? (
+                          est.categorias.slice(0, 3).map(cat => (
+                            <span key={cat.id_categoria} className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider">
+                              {cat.descripcion}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">—</span>
+                        )}
+                        {est.categorias && est.categorias.length > 3 && (
+                          <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                            +{est.categorias.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-5">
                         <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${est.vigente ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                             {est.vigente ? 'OPERATIVO' : 'INACTIVO'}
                         </span>
-                    </td>
+                     </td>
                     <td className="p-5 text-right">
                       {canEdit("clientes") ? (
                         <div className="flex justify-end gap-2">
                           <button 
                             onClick={() => abrirModalCategorias(est)}
-                            className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
+                            className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
                             title="Asignar Categorías y Rubros"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
@@ -546,8 +804,8 @@ export default function EstablecimientosPage() {
                       ) : (
                         <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest cursor-not-allowed">Solo Lectura</span>
                       )}
-                    </td>
-                  </tr>
+                     </td>
+                   </tr>
                 ))
               )}
             </tbody>
@@ -555,7 +813,7 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
-      {/* --- MODAL ESTÁNDAR DE EDICIÓN DE ESTABLECIMIENTO --- */}
+      {/* --- MODAL ESTÁNDAR DE EDICIÓN DE ESTABLECIMIENTO (sin cambios) --- */}
       {isModalOpen && canEdit("clientes") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -635,7 +893,7 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
-      {/* --- NUEVO MODAL: ASIGNACIÓN DE CATEGORÍAS (DUAL LISTBOX) --- */}
+      {/* --- MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) --- */}
       {isCategoriasModalOpen && establecimientoSeleccionado && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
@@ -659,7 +917,7 @@ export default function EstablecimientosPage() {
                 <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Categorías Disponibles</h3>
-                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{categoriasDisponiblesFiltradas.length}</span>
+                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria)).length}</span>
                   </div>
                   <input 
                     type="text" 
@@ -670,10 +928,10 @@ export default function EstablecimientosPage() {
                   />
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50">
-                  {categoriasDisponiblesFiltradas.length === 0 ? (
+                  {todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).length === 0 ? (
                     <div className="text-center text-xs text-slate-400 italic p-6">No hay categorías que coincidan.</div>
                   ) : (
-                    categoriasDisponiblesFiltradas.map(cat => (
+                    todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).map(cat => (
                       <button 
                         key={cat.id_categoria} 
                         onClick={() => moverADerecha(cat)}
@@ -687,12 +945,12 @@ export default function EstablecimientosPage() {
                 </div>
               </div>
 
-              {/* BOTONERA CENTRAL (CONTROLES MASIVOS) */}
+              {/* BOTONERA CENTRAL */}
               <div className="flex md:flex-col justify-center gap-3 shrink-0 py-4">
                  <button 
-                   onClick={() => moverTodasADerecha(categoriasDisponiblesFiltradas)} 
-                   disabled={categoriasDisponiblesFiltradas.length === 0}
-                   className="bg-slate-100 hover:bg-[#006A8A] hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
+                   onClick={() => moverTodasADerecha(todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())))} 
+                   disabled={todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).length === 0}
+                   className="bg-slate-100 hover:bg-lgc-primary hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
                    title="Mover todas a la derecha"
                  >
                    <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
@@ -710,11 +968,11 @@ export default function EstablecimientosPage() {
               </div>
 
               {/* PANEL DERECHO: ASIGNADAS (SORTABLE) */}
-              <div className="flex-1 flex flex-col border border-[#006A8A]/30 rounded-xl overflow-hidden shadow-sm bg-[#006A8A]/5">
-                <div className="bg-white p-3 border-b border-[#006A8A]/20">
+              <div className="flex-1 flex flex-col border border-lgc-primary/30 rounded-xl overflow-hidden shadow-sm bg-lgc-primary/5">
+                <div className="bg-white p-3 border-b border-lgc-primary/20">
                   <div className="flex justify-between items-center mb-1">
-                    <h3 className="text-[10px] font-bold uppercase text-[#006A8A] tracking-widest">Asignadas a la Sede</h3>
-                    <span className="bg-[#006A8A] text-white text-[10px] font-bold px-2 py-0.5 rounded">{categoriasAsignadas.length}</span>
+                    <h3 className="text-[10px] font-bold uppercase text-lgc-primary tracking-widest">Asignadas a la Sede</h3>
+                    <span className="bg-lgc-primary text-white text-[10px] font-bold px-2 py-0.5 rounded">{categoriasAsignadas.length}</span>
                   </div>
                   <p className="text-[9px] text-slate-500 uppercase tracking-widest">Arrastrá para ordenar por prioridad</p>
                 </div>
@@ -742,7 +1000,7 @@ export default function EstablecimientosPage() {
                <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg">
                  Cancelar
                </button>
-               <button onClick={guardarCategorias} disabled={savingCategorias} className="px-8 py-2.5 bg-lgc-primary hover:bg-[#006A8A] text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors">
+               <button onClick={guardarCategorias} disabled={savingCategorias} className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors">
                  {savingCategorias ? (
                    <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...</>
                  ) : (
@@ -754,7 +1012,7 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
-      {/* --- NUEVO MODAL: GESTIÓN DE RESPONSABLES --- */}
+      {/* --- MODAL GESTIÓN DE RESPONSABLES (sin cambios) --- */}
       {isResponsablesModalOpen && establecimientoResponsables && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
@@ -864,7 +1122,7 @@ export default function EstablecimientosPage() {
 
             {/* PIE DEL MODAL */}
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
-              <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="px-8 py-2.5 bg-lgc-primary hover:bg-[#006A8A] text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors">
+              <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors">
                 Cerrar
               </button>
             </div>
