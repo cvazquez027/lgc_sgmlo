@@ -122,12 +122,13 @@ export default function DashboardHome() {
     <div className="animate-fade-in font-sans h-full flex flex-col py-2 justify-between">
       
       <div className="flex-1 flex flex-col justify-center my-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 xl:gap-5 max-w-screen-2xl mx-auto w-full">
+        {/* Grid: garantiza 4 columnas en escritorio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-5 max-w-screen-2xl mx-auto w-full px-4">
           {modulosFiltrados.map((modulo, index) => (
             <Link 
               key={index}
               href={modulo.href}
-              className="group relative flex flex-col p-5 bg-[#00455E] rounded-2xl border border-[#005A7A] shadow-[0_4px_10px_rgba(0,34,48,0.45)] hover:shadow-[0_6px_14px_rgba(0,34,48,0.65)] hover:bg-[#00384D] hover:-translate-y-0.5 transition-all duration-300 h-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-primary"
+              className="group relative flex flex-col p-5 bg-[#00455E] rounded-2xl border border-[#005A7A] shadow-[0_4px_10px_rgba(0,34,48,0.45)] hover:shadow-[0_6px_14px_rgba(0,34,48,0.65)] hover:bg-[#00384D] hover:-translate-y-0.5 transition-all duration-300 h-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-primary w-full"
               aria-label={`Acceder al módulo de ${modulo.titulo}`}
             >
               <div className="flex items-start gap-4 mb-3">
@@ -159,7 +160,6 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      {/* BOTÓN CERRAR SESIÓN (Quirúrgico: LGC Accent, Hover Rojo Claro, Borde Doble) */}
       <div className="mt-4 flex justify-center shrink-0">
          <button 
            onClick={handleLogout}

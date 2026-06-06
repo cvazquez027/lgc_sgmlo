@@ -38,67 +38,62 @@ $db = $database->getConnection();
 try {
     $db->beginTransaction();
 
-    // ==========================================
-    // PREPARACIÓN DE CONSULTAS (Statements)
-    // ==========================================
+    // -------------------------------------------------------------
+    // STATEMENTS PREPARADOS PARA OPTIMIZAR EL BUCLE
+    // -------------------------------------------------------------
+    
+    // Motor dinámico para EMISOR
+    $stmt_emisor = $db->prepare("SELECT id_emisor_norma FROM emisor_norma WHERE UPPER(descripcion) = :desc AND id_jurisdiccion = :id_jur");
+    $stmt_ins_emisor = $db->prepare("INSERT INTO emisor_norma (descripcion, id_jurisdiccion) VALUES (:desc, :id_jur)");
 
-    // 1. BLINDAJE ANTI-DUPLICADOS: Busca la URL en el buffer y en las normas definitivas
-    $query_check_dup = "
-        SELECT 1 FROM norma_bo WHERE url_norma = :url 
-        UNION 
-        SELECT 1 FROM norma WHERE url_norma = :url 
-        LIMIT 1
-    ";
-    $stmt_check_dup = $db->prepare($query_check_dup);
+    // Motor dinámico para TIPO DE NORMA
+    $stmt_tipo = $db->prepare("SELECT id_tipo_norma FROM tipo_norma WHERE UPPER(descripcion) = :desc");
+    $stmt_ins_tipo = $db->prepare("INSERT INTO tipo_norma (descripcion, vigente) VALUES (:desc, 1)");
 
-    // 2. Inserción de Norma
-    $query_norma = "INSERT INTO norma_bo 
-        (id_tipo_norma, id_emisor_norma, numero, anio, fecha_publicacion, sintesis, url_norma, id_estado_norma, origen_carga) 
-        VALUES (:id_tipo, :id_emisor, :numero, :anio, :fecha, :sintesis, :url, :id_estado, 'Scraping')";
-    $stmt_norma = $db->prepare($query_norma);
+    // Inserción de la norma en el Buffer
+    $q_norma = "INSERT INTO norma_bo (id_tipo_norma, id_emisor_norma, numero, anio, fecha_publicacion, sintesis, url_norma, id_estado_norma) VALUES (:id_tipo, :id_emisor, :numero, :anio, :fecha, :sintesis, :url, :id_estado)";
+    $stmt_norma = $db->prepare($q_norma);
 
-    // 3. Inserción de Categorías
-    $query_cat = "INSERT INTO categoria_norma_bo (id_norma_bo, id_categoria) VALUES (:id_nbo, :id_cat)";
-    $stmt_cat = $db->prepare($query_cat);
-
-    // 4. Gestión de Emisores
-    $stmt_check_emisor = $db->prepare("SELECT id_emisor_norma FROM emisor_norma WHERE descripcion = :desc AND id_jurisdiccion = :jur");
-    $stmt_ins_emisor = $db->prepare("INSERT INTO emisor_norma (descripcion, id_jurisdiccion) VALUES (:desc, :jur)");
+    $q_cat = "INSERT INTO categoria_norma_bo (id_norma_bo, id_categoria) VALUES (:id_nbo, :id_cat)";
+    $stmt_cat = $db->prepare($q_cat);
 
     $procesadas = 0;
-    $ignoradas = 0;
 
     foreach ($data['normas'] as $norma) {
-        $url = htmlspecialchars(strip_tags($norma['url_norma']));
-
-        // --- MAGIA ANTI-DUPLICADOS ---
-        // Verificamos si la norma ya entró al sistema alguna vez
-        $stmt_check_dup->execute([':url' => $url]);
-        if ($stmt_check_dup->fetch()) {
-            $ignoradas++;
-            continue; // Ya existe, saltamos al siguiente ciclo del foreach
-        }
-        // -----------------------------
-
-        // 1. Gestión dinámica del Emisor
-        $nombre_emisor = htmlspecialchars(strip_tags($norma['nombre_emisor']));
         $id_jurisdiccion = filter_var($norma['id_jurisdiccion'], FILTER_VALIDATE_INT);
+        if (!$id_jurisdiccion) continue;
 
-        $stmt_check_emisor->execute([':desc' => $nombre_emisor, ':jur' => $id_jurisdiccion]);
-        $emisor = $stmt_check_emisor->fetch(PDO::FETCH_ASSOC);
-
-        if ($emisor) {
-            $id_emisor_final = $emisor['id_emisor_norma'];
+        // --- 1. PROCESAR TIPO DE NORMA DINÁMICO ---
+        $tipo_norma_desc = isset($norma['tipo_norma_desc']) ? strtoupper(trim($norma['tipo_norma_desc'])) : 'OTRO';
+        
+        $stmt_tipo->execute([':desc' => $tipo_norma_desc]);
+        $row_tipo = $stmt_tipo->fetch(PDO::FETCH_ASSOC);
+        
+        if ($row_tipo) {
+            $id_tipo = $row_tipo['id_tipo_norma'];
         } else {
-            $stmt_ins_emisor->execute([':desc' => $nombre_emisor, ':jur' => $id_jurisdiccion]);
+            // Si el tipo no existe en la BD (ej. AVISO OFICIAL), lo agrega automáticamente
+            $stmt_ins_tipo->execute([':desc' => $tipo_norma_desc]);
+            $id_tipo = $db->lastInsertId();
+        }
+
+        // --- 2. PROCESAR EMISOR DINÁMICO ---
+        $emisor_desc = strtoupper(trim($norma['nombre_emisor']));
+        $stmt_emisor->execute([':desc' => $emisor_desc, ':id_jur' => $id_jurisdiccion]);
+        $row_emisor = $stmt_emisor->fetch(PDO::FETCH_ASSOC);
+
+        if ($row_emisor) {
+            $id_emisor_final = $row_emisor['id_emisor_norma'];
+        } else {
+            $stmt_ins_emisor->execute([':desc' => $emisor_desc, ':id_jur' => $id_jurisdiccion]);
             $id_emisor_final = $db->lastInsertId();
         }
 
-        // 2. Procesamiento e Inserción de la Norma
-        $id_tipo = filter_var($norma['id_tipo_norma'], FILTER_VALIDATE_INT);
+        // --- 3. INSERCIÓN DE NORMA_BO ---
         $numero = htmlspecialchars(strip_tags($norma['numero']));
         $anio = filter_var($norma['anio'], FILTER_VALIDATE_INT);
         $fecha = htmlspecialchars(strip_tags($norma['fecha_publicacion']));
+        $url = filter_var($norma['url_norma'], FILTER_SANITIZE_URL);
         $sintesis = htmlspecialchars(strip_tags($norma['sintesis']));
         $id_estado = 1; // Vigente
 
@@ -114,7 +109,7 @@ try {
         $stmt_norma->execute();
         $id_norma_bo = $db->lastInsertId();
 
-        // 3. Inserción de Categorías
+        // --- 4. INSERCIÓN DE CATEGORÍAS ---
         if (isset($norma['categorias']) && is_array($norma['categorias'])) {
             foreach ($norma['categorias'] as $id_categoria) {
                 $id_cat = filter_var($id_categoria, FILTER_VALIDATE_INT);
@@ -130,13 +125,11 @@ try {
 
     $db->commit();
     http_response_code(200);
-    echo json_encode([
-        "mensaje" => "Lote procesado. Nuevas ingresadas: $procesadas. Duplicadas ignoradas: $ignoradas."
-    ]);
+    echo json_encode(["mensaje" => "Se procesaron $procesadas normas exitosamente."]);
 
 } catch (Exception $e) {
     $db->rollBack();
     http_response_code(500);
-    echo json_encode(["mensaje" => "Error procesando el scraping.", "error" => $e->getMessage()]);
+    echo json_encode(["mensaje" => "Error al guardar en la BD.", "error" => $e->getMessage()]);
 }
 ?>

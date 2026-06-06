@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../../hooks/usePermissions";
@@ -188,6 +188,7 @@ export default function PreviewMatrizPage() {
     }
   };
 
+  // Función para renderizar el contenido de una celda (reutilizada para tabla y exportación)
   const renderContent = (item: any, colId: string) => {
     switch (colId) {
       case 'normas':
@@ -228,13 +229,65 @@ export default function PreviewMatrizPage() {
     }
   };
 
+  // Función para obtener el valor plano de una celda (para exportación)
+  const getPlainTextContent = (item: any, colId: string): string => {
+    const content = renderContent(item, colId);
+    if (typeof content === 'string') return content;
+    // Si es un elemento React, extraemos texto
+    if (React.isValidElement(content)) {
+      // Caso especial para 'normas', 'estado', etc.
+      if (colId === 'normas') {
+        const normas = item.normas_vinculadas || [];
+        return normas.map((n: any) => `${n.tipo_norma_desc || n.tipo_norma} ${n.numero}/${n.anio}`).join('; ');
+      }
+      if (colId === 'estado') return item.estado_cumplimiento_desc || '-';
+      // Para otros, intentamos obtener el texto plano
+      return item[colId] || '-';
+    }
+    return content || '-';
+  };
+
+  // Exportar a CSV (Excel)
+  const exportToExcel = () => {
+    // Obtener encabezados
+    const headers = config.map(col => col.label || COLUMN_LABELS[col.id] || col.id);
+    
+    // Obtener filas
+    const rows = items.map(item => {
+      return config.map(col => {
+        let rawValue = getPlainTextContent(item, col.id);
+        // Limpiar saltos de línea y comillas para CSV
+        if (typeof rawValue === 'string') {
+          rawValue = rawValue.replace(/[\n\r]+/g, ' ').replace(/"/g, '""');
+        }
+        return rawValue;
+      });
+    });
+    
+    // Combinar encabezados y filas
+    const csvData = [headers, ...rows];
+    
+    // Convertir a texto CSV con separador punto y coma
+    const csvContent = csvData.map(row => 
+      row.map(cell => `"${cell}"`).join(';')
+    ).join('\n');
+    
+    // Añadir BOM para UTF-8 (para que Excel reconozca tildes)
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `matriz_${idMatriz}_${new Date().toISOString().slice(0,19)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return <div className="py-20 text-center animate-pulse text-lgc-primary font-bold tracking-widest uppercase">Cargando Documento...</div>;
 
-  // Nueva lógica de layout: mostrar en tarjetas si hay muchas columnas
-  const mostrarComoTarjetas = config.length > 6;
-  const itemsPorPagina = 5; // para simplificar, mostramos todos
-
-  const isLandscape = config.length > 10;
+  // Orientación del PDF: si hay más de 6 columnas, usamos horizontal
+  const isLandscape = config.length > 6;
 
   return (
     <div className={`animate-fade-in flex flex-col h-full bg-slate-50 ${isFullscreen ? 'p-0' : 'space-y-4'}`}>
@@ -253,6 +306,21 @@ export default function PreviewMatrizPage() {
           aside, header { display: none !important; }
           main { padding: 0 !important; margin: 0 !important; overflow: visible !important; height: auto !important; }
         }
+        /* Estilo para scroll horizontal suave */
+        .scrollbar-thin::-webkit-scrollbar {
+          height: 8px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 4px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
       `}} />
 
       {!isFullscreen && (
@@ -262,14 +330,14 @@ export default function PreviewMatrizPage() {
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </Link>
             <h1 className="text-xl font-heading text-slate-800 uppercase tracking-tight flex items-center gap-3">
-               Documento Final 
-               <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase shadow-sm border ${
+               PREVISUALIZACIÓN DE LA MATRIZ
+               <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase shadow-sm border ${(
                  headerInfo?.id_estado_matriz === 2
                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                    : headerInfo?.id_estado_matriz === 3
                    ? 'bg-slate-100 text-slate-500 border-slate-300'
                    : 'bg-orange-100 text-orange-700 border-orange-200'
-               }`}>
+               )}`}>
                  {headerInfo?.estado_matriz_desc || 'Borrador'}
                </span>
             </h1>
@@ -281,6 +349,11 @@ export default function PreviewMatrizPage() {
             )}
           </div>
           <div className="flex gap-2">
+            {/* Botón Exportar a Excel */}
+            <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              Exportar a Excel
+            </button>
             <button onClick={toggleFullscreen} className="bg-white hover:bg-slate-50 text-slate-600 font-bold py-2 px-4 rounded-lg transition-all text-[10px] uppercase tracking-widest border border-slate-300 flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
               Pantalla Completa
@@ -347,56 +420,36 @@ export default function PreviewMatrizPage() {
           </div>
         </div>
 
-        {/* CUERPO DE LA MATRIZ */}
-        <div className="p-0">
-          {mostrarComoTarjetas ? (
-            // Vista en tarjetas (evita scroll horizontal)
-            <div className="p-4 space-y-6">
-              {items.map((item, idx) => (
-                <div key={item.id_item_matriz} className="border border-slate-200 rounded-xl p-4 shadow-sm print:break-inside-avoid">
-                  <div className="font-bold text-lgc-primary border-b pb-2 mb-3">Ítem #{idx+1}</div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* CUERPO DE LA MATRIZ: Tabla con scroll horizontal */}
+        <div className="p-0 overflow-x-auto scrollbar-thin">
+          <table className="w-full text-left border-collapse table-auto print:table-fixed print:text-[8px] min-w-max">
+            <thead className="bg-slate-50 print:bg-slate-100 sticky top-0 z-10 border-b border-slate-200 print:table-header-group">
+              <tr>
+                <th className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 w-10 text-center">#</th>
+                {config.map((col: any) => (
+                  <th key={col.id} className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 whitespace-nowrap">
+                    {col.label || COLUMN_LABELS[col.id] || col.id}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
+              {items.length === 0 ? (
+                <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
+              ) : (
+                items.map((item, idx) => (
+                  <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">
+                    <td className="p-4 print:p-2 font-bold text-slate-400 print:text-slate-600 border-r border-slate-50 print:border-slate-200 text-center">{idx+1}</td>
                     {config.map((col: any) => (
-                      <div key={col.id} className="flex flex-col gap-1">
-                        <span className="text-[9px] font-bold uppercase text-slate-500">{col.label}</span>
-                        <span className="text-xs text-slate-700">{renderContent(item, col.id)}</span>
-                      </div>
+                      <td key={col.id} className="p-4 print:p-2 align-top text-slate-700 leading-relaxed border-r border-slate-50 print:border-slate-200 whitespace-normal wrap-break-word min-w-30 max-w-75">
+                        {renderContent(item, col.id)}
+                      </td>
                     ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            // Vista en tabla tradicional
-            <table className="w-full text-left border-collapse table-auto print:table-fixed print:text-[8px]">
-              <thead className="bg-slate-50 print:bg-slate-100 sticky top-0 z-10 border-b border-slate-200 print:table-header-group">
-                <tr>
-                  <th className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 w-10 text-center">#</th>
-                  {config.map((col: any) => (
-                    <th key={col.id} className="p-4 print:p-2 text-[10px] print:text-[7px] font-bold text-slate-600 uppercase tracking-wider border-r border-slate-200 wrap-break-words">
-                      {col.label || COLUMN_LABELS[col.id] || col.id}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
-                {items.length === 0 ? (
-                  <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
-                ) : (
-                  items.map((item, idx) => (
-                    <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">
-                      <td className="p-4 print:p-2 font-bold text-slate-400 print:text-slate-600 border-r border-slate-50 print:border-slate-200 text-center">{idx+1}</td>
-                      {config.map((col: any) => (
-                        <td key={col.id} className="p-4 print:p-2 align-top text-slate-700 leading-relaxed border-r border-slate-50 print:border-slate-200 wrap-break-words">
-                          {renderContent(item, col.id)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* PIE DE PÁGINA (solo impresión) */}

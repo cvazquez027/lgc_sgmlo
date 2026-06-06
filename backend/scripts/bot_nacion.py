@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import re
 import sys
-import codecs
 
 # Forzar a Python a escupir los prints en UTF-8 sin importar lo que diga Windows
 if sys.stdout.encoding.lower() != 'utf-8':
@@ -18,15 +17,6 @@ URL_GUARDAR_NORMAS = "http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_sc
 
 # ID de la Jurisdicción (Nación)
 ID_JURISDICCION_NACION = 1 
-
-MAPEO_TIPOS = {
-    "LEY": 1,
-    "DECRETO": 2,
-    "RESOLUCION": 3,
-    "DISPOSICION": 4,
-    "DECISION ADMINISTRATIVA": 5
-}
-ID_TIPO_DEFECTO = 5
 
 # ==========================================
 # 🧠 MOTOR DE CATEGORIZACIÓN DINÁMICO
@@ -98,73 +88,86 @@ def ejecutar_bot_nacion():
         
     print(f"🔍 Se encontraron {len(avisos)} normativas potenciales. Procesando...")
 
-    # 2. TRANSFORM: Recortamos y limpiamos
+    # 2. TRANSFORM: Extracción Inteligente
     normas_procesadas = []
     
+    # REGEX MAESTRO: Detecta N°, Nro, y soporta Comunicación "A"
+    patron_tipos = r'^(Decreto Sintetizado|Decreto|Decisión Administrativa|Resolución Conjunta|Resolución Sintetizada|Resolución|Disposición Sintetizada|Disposición|Ley|Acuerdo|Acta|Circular|Comunicación(?:\s+"[A-Z0-9]+")?|Convenio|Directiva|Instrucción|Providencia|Recomendación|Reglamento|Aviso Oficial|Aviso)\s*(?:N[°º]\s*|Nro\.?\s*|N\.\s*)?(\d+|S/N)?(?:/(\d{4}))?'
+    
     for link_tag in avisos:
-        texto_completo = link_tag.text.strip()
+        # Usamos un separador para aislar los bloques HTML y no mezclar Emisor con Tipo
+        texto_completo = link_tag.get_text(separator=' | ', strip=True)
         if not texto_completo:
             continue
             
         url_completa = f"https://www.boletinoficial.gob.ar{link_tag.get('href')}"
         
-        # Extraer información del texto
-        # Formato típico: "ORGANISMO Tipo N°/año CODIGO - Descripción"
-        # Ejemplo: "MINISTERIO DE SALUD Decreto 326/2026 DECTO-2026-326-APN-PTE - Desígnase..."
+        # Dividimos el texto en partes analizando las etiquetas HTML ocultas
+        partes = [p.strip() for p in texto_completo.split(' | ') if p.strip()]
         
-        # Extraer organismo emisor (primera parte antes del tipo de norma)
-        nombre_emisor = "PODER EJECUTIVO NACIONAL"
+        matches_encontrados = []
         
-        # Buscar el tipo de norma y número
-        match_tipo_numero = re.search(r'(Decreto|Decisión Administrativa|Resolución|Disposición|Ley|Aviso)\s+(\d+)/\d{4}', texto_completo, re.IGNORECASE)
-        
-        if match_tipo_numero:
-            tipo_texto = match_tipo_numero.group(1).upper()
-            numero = match_tipo_numero.group(2)  # Solo el número, sin el año
-            
-            # Extraer el organismo emisor (todo lo que está antes del tipo)
-            pos_tipo = match_tipo_numero.start()
-            if pos_tipo > 0:
-                nombre_emisor = texto_completo[:pos_tipo].strip().upper()
-        else:
-            # Si no se encuentra el patrón estándar, buscar solo números
-            match_numero = re.search(r'(\d+)/\d{4}', texto_completo)
-            if match_numero:
-                tipo_texto = "AVISO"
-                numero = match_numero.group(1)  # Solo el número, sin el año
+        # Escaneamos bloque por bloque buscando la norma
+        for i, part in enumerate(partes):
+            m = re.search(patron_tipos, part, re.IGNORECASE)
+            if m:
+                matches_encontrados.append({
+                    'index': i,
+                    'tipo': m.group(1).upper().strip(),
+                    'numero': m.group(2) if m.group(2) else "S/N",
+                    'anio': m.group(3) if m.group(3) else str(datetime.now().year),
+                    'raw': part
+                })
+                
+        if matches_encontrados:
+            # Si hay varias, filtramos "Aviso Oficial" para darle prioridad a "Comunicación"
+            principales = [m for m in matches_encontrados if "AVISO" not in m['tipo']]
+            if principales:
+                elegido = principales[-1] # Tomamos la más específica (Ej: Comunicación "A")
             else:
-                tipo_texto = "AVISO"
-                numero = "S/N"
-        
-        # Normalizar el tipo de norma para el mapeo
-        tipo_normalizado = tipo_texto.replace("Ó", "O").upper()
-        if "RESOLUCION" in tipo_normalizado:
-            tipo_normalizado = "RESOLUCION"
-        elif "DECISION" in tipo_normalizado:
-            tipo_normalizado = "DECISION ADMINISTRATIVA"
-        elif "DISPOSICION" in tipo_normalizado:
-            tipo_normalizado = "DISPOSICION"
-        elif "DECRETO" in tipo_normalizado:
-            tipo_normalizado = "DECRETO"
-        elif "LEY" in tipo_normalizado:
-            tipo_normalizado = "LEY"
+                elegido = matches_encontrados[0] # Si solo hay Avisos, tomamos ese
+                
+            tipo_norma_desc = elegido['tipo']
+            numero = elegido['numero']
+            anio = elegido['anio']
             
-        id_tipo = MAPEO_TIPOS.get(tipo_normalizado, ID_TIPO_DEFECTO)
-        
-        # Gestión de Anexos y Síntesis
-        sintesis_final = texto_completo
-        if "ANEXO" in texto_completo.upper():
-            sintesis_final = f"ANEXO - Referente a {tipo_texto} {numero}"
-        
-        # Categorización Dinámica
+            # Búsqueda Inteligente del Emisor (Suele ser el bloque anterior a la norma)
+            idx = elegido['index']
+            nombre_emisor = "PODER EJECUTIVO NACIONAL"
+            if idx > 0:
+                candidato = partes[idx - 1]
+                # Si el bloque anterior era una fecha, buscamos uno más atrás
+                if re.match(r'^\d{2}/\d{2}/\d{4}$', candidato) and idx > 1:
+                    candidato = partes[idx - 2]
+                nombre_emisor = candidato.strip()
+            elif idx == 0 and len(partes) > 1:
+                nombre_emisor = partes[1].strip()
+                
+        else:
+            # Fallback en caso de formato desconocido
+            tipo_norma_desc = "AVISO OFICIAL"
+            numero = "S/N"
+            anio = str(datetime.now().year)
+            nombre_emisor = "PODER EJECUTIVO NACIONAL"
+            
+        # Limpieza final de caracteres extraños en el Emisor
+        nombre_emisor = re.sub(r'^[^A-ZÁÉÍÓÚÑ]+', '', nombre_emisor, flags=re.IGNORECASE).strip()
+        if not nombre_emisor or len(nombre_emisor) < 3:
+            nombre_emisor = "PODER EJECUTIVO NACIONAL"
+            
+        # Síntesis
+        sintesis_final = texto_completo.replace(' | ', ' ')
+        if "ANEXO" in sintesis_final.upper():
+            sintesis_final = f"ANEXO - Referente a {tipo_norma_desc} {numero} - " + sintesis_final
+            
         categorias_detectadas = categorizar_texto(sintesis_final, diccionario_categorias)
         
         norma_formateada = {
             "id_jurisdiccion": ID_JURISDICCION_NACION,
             "nombre_emisor": nombre_emisor,
-            "id_tipo_norma": id_tipo,
+            "tipo_norma_desc": tipo_norma_desc, # Enviamos el STRING completo (Ej: COMUNICACIÓN "A")
             "numero": numero,
-            "anio": datetime.now().year,
+            "anio": anio,
             "fecha_publicacion": fecha_hoy_str,
             "sintesis": sintesis_final,
             "url_norma": url_completa,
@@ -176,7 +179,7 @@ def ejecutar_bot_nacion():
         print("ℹ️ No se pudo extraer información útil del HTML.")
         return
 
-    # 3. LOAD: Enviar al Backend
+    # 3. LOAD: Enviar al Backend PHP
     paquete_json = {"normas": normas_procesadas}
     headers_post = {"Authorization": f"Bearer {API_KEY_BACKEND}", "Content-Type": "application/json"}
     

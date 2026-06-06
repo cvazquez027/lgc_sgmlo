@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../hooks/usePermissions"; 
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// DICCIONARIOS DE COLUMNAS POR TIPO (sin cambios)
+// DICCIONARIOS DE COLUMNAS POR TIPO
 const COLUMNAS_REGULATORIAS = [
   { id: 'normas', label: 'Normativas (Tipo, Nro, Año)', custom: false },
   { id: 'norma_nivel_jur', label: 'Nivel Jurisdiccional (Norma)', custom: false },
@@ -33,9 +33,8 @@ const COLUMNAS_CUMPLIMIENTO = [
   { id: 'adjuntos', label: 'Evidencia (Archivos)', custom: false }
 ];
 
-// COMPONENTES AUXILIARES (se mantienen igual, solo se renombra MultiSelectTags si es necesario)
+// COMPONENTES AUXILIARES
 const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
-  // ... (código existente, sin cambios)
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
 
@@ -90,7 +89,6 @@ const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
 };
 
 const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
-  // ... (código existente, sin cambios)
   const [localValue, setLocalValue] = useState(value || '');
   const [isFocused, setIsFocused] = useState(false);
   useEffect(() => { setLocalValue(value || ''); }, [value]);
@@ -115,8 +113,89 @@ const EditableCell = ({ value, onSave, placeholder = "..." }: any) => {
   );
 };
 
+// Selector de normas mejorado para el formulario de nueva fila (con auto-completado de campos)
+const InlineNormSelectorConAutocompletado = ({ selectedNormas, onChange, onAutocompletar }: any) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (query.trim().length < 1) { setResults([]); return; }
+    const timeoutId = setTimeout(async () => {
+      const token = localStorage.getItem("sgml_token");
+      try {
+        let res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer.php?buscar=${query}`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        const qLower = query.toLowerCase();
+        setResults((data.registros || []).filter((r: any) => (r.numero && r.numero.toString().toLowerCase().includes(qLower)) || (r.tipo_norma_desc && r.tipo_norma_desc.toLowerCase().includes(qLower))));
+      } catch (e) {} 
+    }, 400); 
+    return () => clearTimeout(timeoutId);
+  }, [query]);
+
+  const seleccionarNorma = (norma: any) => {
+    const nuevaNorma = {
+      id_norma: norma.id_norma,
+      tipo_norma: norma.tipo_norma_desc || 'NORMA',
+      numero: norma.numero,
+      anio: norma.anio,
+      emisor_desc: norma.emisor_desc,
+      nivel_jurisdiccion_desc: norma.nivel_jurisdiccion_desc,
+      jurisdiccion_desc: norma.jurisdiccion_desc,
+      sintesis: norma.sintesis,
+      categorias: norma.categorias,
+      url_norma: norma.url_norma
+    };
+    const nuevasNormas = [...selectedNormas, nuevaNorma];
+    onChange(nuevasNormas);
+    // Llamar a la función de autocompletado con la última norma agregada
+    if (onAutocompletar) onAutocompletar(nuevaNorma);
+    setIsOpen(false);
+    setQuery('');
+    setResults([]);
+  };
+
+  const removerNorma = (index: number) => {
+    const nuevas = selectedNormas.filter((_: any, i: number) => i !== index);
+    onChange(nuevas);
+    if (onAutocompletar && nuevas.length === 0) onAutocompletar(null);
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className="flex flex-col gap-1 mb-2">
+        {selectedNormas.map((n: any, idx: number) => (
+          <span key={idx} className="bg-slate-100 text-slate-700 border border-slate-200 text-[10px] px-2 py-1.5 rounded flex justify-between items-center font-bold tracking-widest w-full">
+            <span>{n.tipo_norma} {n.numero}</span>
+            <button type="button" onClick={() => removerNorma(idx)} className="text-red-400 hover:text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-2">×</button>
+          </span>
+        ))}
+      </div>
+      <input
+        type="text"
+        placeholder="+ Buscar Norma por N°..."
+        className="w-full text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white shadow-sm transition-colors"
+        value={query}
+        onChange={e => { setQuery(e.target.value); setIsOpen(true); }}
+        onFocus={() => { if(query.length > 0) setIsOpen(true); }}
+      />
+      {isOpen && results.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 shadow-2xl rounded-xl z-50 max-h-48 overflow-y-auto">
+          <div className="flex justify-end p-2 bg-slate-50 border-b sticky top-0">
+            <button type="button" onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-red-500 text-[10px] font-bold uppercase tracking-widest">Cerrar</button>
+          </div>
+          {results.map((r: any) => (
+            <div key={r.id_norma} className="p-3 text-[11px] hover:bg-slate-50 cursor-pointer border-b last:border-0" onMouseDown={() => seleccionarNorma(r)}>
+              <span className="font-bold text-lgc-primary tracking-wider">{r.tipo_norma_desc} {r.numero}/{r.anio}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
-  // ... (código existente, sin cambios)
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -161,7 +240,6 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
 };
 
 const SortableConfigItem = ({ col, onRemove }: any) => {
-  // ... (código existente, sin cambios)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, opacity: isDragging ? 0.5 : 1, position: isDragging ? 'relative' as 'relative' : 'static' as 'static' };
   return (
@@ -177,24 +255,13 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
   );
 };
 
-// COMPONENTE SORTABLE ROW CON SLIDE DE PÁGINAS
+// COMPONENTE SORTABLE ROW SIN PAGINACIÓN
 const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, estadosCumplimiento, responsables, tiposModalidad, onOpenEvidencia, forceExpand, isDragDisabled }: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [paginaActual, setPaginaActual] = useState(0);
-  const POR_PAGINA = 3;
-  const totalPaginas = Math.ceil(columnasVisibles.length / POR_PAGINA);
-  const columnasPagina = columnasVisibles.slice(paginaActual * POR_PAGINA, (paginaActual + 1) * POR_PAGINA);
-  const hayPaginacion = totalPaginas > 1;
-
   useEffect(() => { setIsExpanded(forceExpand); }, [forceExpand]);
-  // Resetear página al colapsar/expandir
-  useEffect(() => { if (!isExpanded) setPaginaActual(0); }, [isExpanded]);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id_item_matriz });
   const style = { transform: isDragging && transform ? CSS.Transform.toString(transform) : undefined, transition, opacity: isDragging ? 0.7 : 1, zIndex: isDragging ? 40 : 1 };
-
-  // Resumen: mostrar las normas como badges
-  const resumenNormas = item.normas_vinculadas?.map((n:any) => `${n.tipo_norma_desc || n.tipo_norma} ${n.numero}`).join(', ') || "Ítem sin normas vinculadas";
 
   const renderCelda = (colId: string, isReadOnly: boolean) => {
     if (colId.startsWith('custom_')) {
@@ -287,15 +354,6 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
     }
   };
 
-  const irPaginaAnterior = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPaginaActual(prev => Math.max(0, prev - 1));
-  };
-  const irPaginaSiguiente = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPaginaActual(prev => Math.min(totalPaginas - 1, prev + 1));
-  };
-
   return (
     <div ref={setNodeRef} style={style} className={`flex flex-col bg-white rounded-xl shadow-sm border mb-4 transition-all duration-300 relative ${isDragging ? 'ring-4 ring-lgc-primary/20 border-lgc-primary' : 'border-slate-200 hover:border-slate-300'}`}>
       <div className="flex items-center justify-between p-3.5 bg-white rounded-t-xl cursor-pointer hover:bg-slate-50 transition-colors group" onClick={() => setIsExpanded(!isExpanded)}>
@@ -345,19 +403,8 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
       {isExpanded && (
         <div className="transition-all duration-300 overflow-visible border-t border-slate-100">
           <div className="p-5 md:p-6 bg-slate-50/30 rounded-b-xl">
-            {hayPaginacion && (
-              <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-200">
-                <button onClick={irPaginaAnterior} disabled={paginaActual === 0} className="text-lgc-primary disabled:opacity-30 p-1 rounded hover:bg-white transition">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <span className="text-[10px] font-bold text-slate-400">Página {paginaActual+1} de {totalPaginas}</span>
-                <button onClick={irPaginaSiguiente} disabled={paginaActual === totalPaginas-1} className="text-lgc-primary disabled:opacity-30 p-1 rounded hover:bg-white transition">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </button>
-              </div>
-            )}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {columnasPagina.map((col: any) => (
+              {columnasVisibles.map((col: any) => (
                 <div key={col.id} className="flex flex-col gap-2 group/field">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-1.5 ml-1">
                     {col.label} 
@@ -379,6 +426,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, canEdit, canEditField, 
 export default function WorkspaceMatrizPage() {
   const router = useRouter();
   const params = useParams(); 
+  const searchParams = useSearchParams();
   const idMatriz = params.id as string; 
   const { canRead, canEdit } = usePermissions();
   
@@ -412,7 +460,18 @@ export default function WorkspaceMatrizPage() {
   const [evidenciaFile, setEvidenciaFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const [newRowData, setNewRowData] = useState<any>({ id_estado_cumplimiento: '', id_tipo_modalidad: '', normas_vinculadas: [] });
+  // Estado para nueva fila con campos autocompletados
+  const [newRowData, setNewRowData] = useState<any>({
+    id_estado_cumplimiento: '',
+    id_tipo_modalidad: '',
+    normas_vinculadas: [],
+    // Campos autocompletados
+    norma_emisor: '',
+    norma_nivel_jur: '',
+    norma_sintesis: '',
+    sintesis_categorias: '',
+    url_norma: ''
+  });
 
   // FILTROS AVANZADOS
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -426,6 +485,16 @@ export default function WorkspaceMatrizPage() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  // Detectar si se debe abrir configuración automáticamente (por parámetro ?config=true)
+  useEffect(() => {
+    const shouldOpenConfig = searchParams.get('config') === 'true';
+    if (shouldOpenConfig && !showConfig && !loading) {
+      setShowConfig(true);
+      // Limpiar el parámetro de la URL sin recargar la página
+      router.replace(`/dashboard/matrices/${idMatriz}`, { scroll: false });
+    }
+  }, [searchParams, showConfig, loading, idMatriz, router]);
 
   const fetchItems = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
@@ -514,7 +583,6 @@ export default function WorkspaceMatrizPage() {
 
   const itemsFiltrados = useMemo(() => {
     return items.filter(item => {
-      // Filtros (sin cambios)
       if (Object.values(filtros.norma).some(v => typeof v === 'string' ? v !== '' : (v as string[]).length > 0)) {
          const matchNorma = item.normas_vinculadas?.some((n:any) => {
             if (filtros.norma.tipo && !((n.tipo_norma_desc || n.tipo_norma || '').toLowerCase().includes(filtros.norma.tipo.toLowerCase()))) return false;
@@ -632,9 +700,27 @@ export default function WorkspaceMatrizPage() {
   const handleSaveNewRow = async () => {
     setIsSavingRow(true);
     const token = localStorage.getItem("sgml_token");
-    const payload = { id_matriz: idMatriz, ...newRowData, normas_vinculadas: newRowData.normas_vinculadas?.map((n:any) => n.id_norma) || [] };
+    // Construir payload incluyendo campos autocompletados
+    const payload = {
+      id_matriz: idMatriz,
+      ...newRowData,
+      normas_vinculadas: newRowData.normas_vinculadas.map((n:any) => n.id_norma) || []
+    };
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_item.php`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, body: JSON.stringify(payload) });
-    if (res.ok) { setShowQuickAdd(false); setNewRowData({ id_estado_cumplimiento: estadosCumplimiento[0]?.id || '', id_tipo_modalidad: '', normas_vinculadas: [] }); fetchItems(); }
+    if (res.ok) {
+      setShowQuickAdd(false);
+      setNewRowData({
+        id_estado_cumplimiento: estadosCumplimiento[0]?.id || '',
+        id_tipo_modalidad: '',
+        normas_vinculadas: [],
+        norma_emisor: '',
+        norma_nivel_jur: '',
+        norma_sintesis: '',
+        sintesis_categorias: '',
+        url_norma: ''
+      });
+      fetchItems();
+    }
     setIsSavingRow(false);
   };
 
@@ -651,11 +737,8 @@ export default function WorkspaceMatrizPage() {
         headers: { "Authorization": `Bearer ${token}` },
         body: formData
       });
-      // Recargar el ítem específico para actualizar la lista de evidencias en el modal
       await recargarItemEvidencia();
-      // Recargar todos los items para mantener la tabla general actualizada
       await fetchItems();
-      // Limpiar el file input y el estado local
       setEvidenciaFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
@@ -674,11 +757,8 @@ export default function WorkspaceMatrizPage() {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ id_documentacion: id_doc })
       });
-      // Recargar el ítem específico para actualizar la lista de evidencias en el modal
       await recargarItemEvidencia();
-      // Recargar todos los items para mantener la tabla general actualizada
       await fetchItems();
-      // No cerramos el modal
     } catch (err) {
       console.error(err);
       alert("Error al eliminar el archivo.");
@@ -703,9 +783,7 @@ export default function WorkspaceMatrizPage() {
     if (over && active.id !== over.id) {
       const oldIndex = items.findIndex(i => i.id_item_matriz === active.id);
       const newIndex = items.findIndex(i => i.id_item_matriz === over.id);
-      // Reordenar el array
       const newItems = arrayMove(items, oldIndex, newIndex);
-      // Asignar el nuevo orden a cada item según su posición en el array
       const itemsConNuevoOrden = newItems.map((item, idx) => ({ ...item, orden: idx }));
       setItems(itemsConNuevoOrden);
       const token = localStorage.getItem("sgml_token");
@@ -716,11 +794,9 @@ export default function WorkspaceMatrizPage() {
           body: JSON.stringify(itemsConNuevoOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx })))
         });
         if (!res.ok) throw new Error("Error al reordenar en el servidor");
-        // Opcional: refrescar los items para tener datos consistentes
         await fetchItems();
       } catch (err) {
         console.error("Error al reordenar:", err);
-        // Si falla, revertimos al estado anterior
         setItems(items);
       }
     }
@@ -746,7 +822,6 @@ export default function WorkspaceMatrizPage() {
     setItems(itemsConOrden);
     
     const token = localStorage.getItem("sgml_token");
-    // CORRECCIÓN: ruta correcta
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/reordenar_items.php`, { 
        method: "POST", 
        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
@@ -754,16 +829,65 @@ export default function WorkspaceMatrizPage() {
     }).catch(err => console.error("Error al ordenar por jurisdicción:", err));
   };
 
+  // Función para autocompletar campos al seleccionar una norma en nueva fila
+  const autocompletarCampos = (norma: any) => {
+    if (!norma) {
+      setNewRowData((prev: any) => ({
+        ...prev,
+        norma_emisor: '',
+        norma_nivel_jur: '',
+        norma_sintesis: '',
+        sintesis_categorias: '',
+        url_norma: ''
+      }));
+      return;
+    }
+    setNewRowData((prev: any) => ({
+      ...prev,
+      norma_emisor: norma.emisor_desc || '',
+      norma_nivel_jur: norma.nivel_jurisdiccion_desc || norma.jurisdiccion_desc || '',
+      sintesis_categorias: norma.sintesis || '',
+      url_norma: norma.url_norma || '',
+    }));
+  };
+
   const renderQuickAddCell = (colId: string) => {
     switch(colId) {
-      case 'estado': return <select className="w-full text-[11px] p-2.5 border border-amber-200 rounded-lg outline-none bg-white" value={newRowData.id_estado_cumplimiento} onChange={e => setNewRowData({...newRowData, id_estado_cumplimiento: e.target.value})}>{estadosCumplimiento.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select>;
-      case 'id_tipo_modalidad': return <select className="w-full text-[11px] p-2.5 border border-amber-200 rounded-lg outline-none bg-white" value={newRowData.id_tipo_modalidad || ''} onChange={e => setNewRowData({...newRowData, id_tipo_modalidad: e.target.value})}><option value="">Sin Asignar</option>{tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select>;
-      case 'normas': return <InlineNormSelector selectedNormas={newRowData.normas_vinculadas} onChange={(normas:any) => setNewRowData({...newRowData, normas_vinculadas: normas})} />;
-      case 'id_responsable_establecimiento': return <select className="w-full text-[11px] p-2.5 border border-amber-200 rounded-lg outline-none bg-white" value={newRowData.id_responsable_establecimiento || ''} onChange={e => setNewRowData({...newRowData, id_responsable_establecimiento: e.target.value})}><option value="">Sin Asignar</option>{responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}</select>;
-      case 'adjuntos': return <div className="text-[10px] text-amber-600/70 italic p-2.5 bg-white rounded-lg border border-amber-200 flex items-center justify-center">Guardar ítem primero</div>;
-      case 'norma_emisor': case 'norma_nivel_jur': case 'norma_sintesis': return <div className="text-[10px] text-amber-600/70 font-bold uppercase bg-amber-50 p-2.5 rounded-lg text-center border border-amber-200">Autocompletable</div>;
-      case 'vencimiento_plazo': case 'fecha_cumplimiento': return <input type="date" className="w-full text-[11px] p-2.5 border border-amber-200 rounded-lg outline-none bg-white" value={newRowData[colId] || ''} onChange={e => setNewRowData({...newRowData, [colId]: e.target.value})} />;
-      default: return <input type="text" className="w-full text-[11px] p-2.5 border border-amber-200 rounded-lg outline-none bg-white" value={newRowData[colId] || ''} onChange={e => setNewRowData({...newRowData, [colId]: e.target.value})} placeholder="Completar..." />;
+      case 'estado':
+        return <select className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData.id_estado_cumplimiento} onChange={e => setNewRowData({...newRowData, id_estado_cumplimiento: e.target.value})}>{estadosCumplimiento.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select>;
+      case 'id_tipo_modalidad':
+        return <select className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData.id_tipo_modalidad || ''} onChange={e => setNewRowData({...newRowData, id_tipo_modalidad: e.target.value})}><option value="">Sin Asignar</option>{tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select>;
+      case 'normas':
+        return <InlineNormSelectorConAutocompletado
+          selectedNormas={newRowData.normas_vinculadas}
+          onChange={(normas: any) => setNewRowData({...newRowData, normas_vinculadas: normas})}
+          onAutocompletar={autocompletarCampos}
+        />;
+      case 'id_responsable_establecimiento':
+        return <select className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData.id_responsable_establecimiento || ''} onChange={e => setNewRowData({...newRowData, id_responsable_establecimiento: e.target.value})}><option value="">Sin Asignar</option>{responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}</select>;
+      case 'adjuntos':
+        return <div className="text-[10px] text-slate-400 italic p-2.5 bg-slate-50 rounded-lg border border-dashed text-center">Guardar ítem primero</div>;
+      case 'norma_emisor':
+        return <input type="text" className="w-full text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed" value={newRowData.norma_emisor || ''} readOnly disabled />;
+      case 'norma_nivel_jur':
+        return <input type="text" className="w-full text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 cursor-not-allowed" value={newRowData.norma_nivel_jur || ''} readOnly disabled />;
+      case 'norma_sintesis':
+        return (
+          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+            <p className="text-[11px] text-slate-600 line-clamp-3">{newRowData.sintesis_categorias || 'Seleccione una norma para ver la síntesis.'}</p>
+            {newRowData.url_norma && (
+              <a href={newRowData.url_norma} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2 text-[10px] text-lgc-accent font-bold hover:underline">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                Ver Original
+              </a>
+            )}
+          </div>
+        );
+      case 'vencimiento_plazo':
+      case 'fecha_cumplimiento':
+        return <input type="date" className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData[colId] || ''} onChange={e => setNewRowData({...newRowData, [colId]: e.target.value})} />;
+      default:
+        return <input type="text" className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData[colId] || ''} onChange={e => setNewRowData({...newRowData, [colId]: e.target.value})} placeholder="Completar..." />;
     }
   };
 
@@ -826,7 +950,7 @@ export default function WorkspaceMatrizPage() {
   return (
     <div className="space-y-4 animate-fade-in flex flex-col h-[calc(100vh-100px)]">
       
-      {/* HEADER DINÁMICO CON MISMO AZUL QUE LISTADO DE MATRICES */}
+      {/* HEADER DINÁMICO */}
       <div className="bg-[#005F78] px-6 py-4 rounded-xl shadow-md flex justify-between items-center shrink-0 border border-[#004D62]">
         <div className="flex items-center gap-5">
           <Link href="/dashboard/matrices" className="text-white/80 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2.5 rounded-xl border border-white/20 shadow-inner">
@@ -879,12 +1003,7 @@ export default function WorkspaceMatrizPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             Vista Previa
           </Link>
-          {canEdit("matriz") && puedeAgregarFilas && (
-            <button onClick={() => setShowQuickAdd(true)} className="bg-white hover:bg-slate-100 text-[#005F78] font-bold py-2 px-5 rounded-xl shadow-lg text-[10px] uppercase tracking-widest flex items-center gap-2 transform hover:-translate-y-0.5 transition-all">
-               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-               Fila Nueva
-            </button>
-          )}
+          {/* Botón "Fila Nueva" movido a la tabla, lo eliminamos de aquí */}
         </div>
       </div>
 
@@ -1198,59 +1317,75 @@ export default function WorkspaceMatrizPage() {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndItems}>
           <div className="flex flex-col max-w-7xl mx-auto relative z-10">
             
-            {showQuickAdd && (
-              <div className="bg-linear-to-r from-amber-50 to-orange-50 rounded-2xl shadow-lg border border-amber-200 p-6 mb-6 animate-fade-in relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/10 rounded-full blur-3xl"></div>
-                <div className="flex items-center justify-between mb-6 border-b border-amber-200/50 pb-3 relative z-10">
-                  <div className="flex items-center gap-3">
-                     <span className="bg-amber-400 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                     </span>
-                     <span className="text-sm font-bold text-amber-700 uppercase tracking-widest">Crear Nueva Fila</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowQuickAdd(false)} className="bg-white text-slate-500 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase shadow-sm hover:bg-slate-50 transition-colors">Cancelar</button>
-                    <button onClick={handleSaveNewRow} disabled={isSavingRow} className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded-lg shadow-md text-xs font-bold uppercase flex items-center gap-2 transition-colors disabled:opacity-50">
-                       {isSavingRow ? 'Guardando...' : 'Guardar Ítem'}
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 relative z-10">
-                  {configColumnas.map((col:any) => (
-                    <div key={col.id} className="flex flex-col gap-1.5">
-                       <label className="text-[10px] font-bold uppercase text-amber-700/70 tracking-widest ml-1">{col.label}</label>
-                       {renderQuickAddCell(col.id)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <SortableContext items={itemsFiltrados.map(i => i.id_item_matriz)} strategy={verticalListSortingStrategy}>
-              {itemsFiltrados.length === 0 && !showQuickAdd ? (
-                <div className="p-16 flex flex-col items-center justify-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed mt-4">
-                  <svg className="w-12 h-12 mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  <span className="font-bold uppercase tracking-widest text-[11px]">{hasActiveFilters ? 'No hay resultados para estos filtros.' : 'No hay filas en la matriz.'}</span>
-                </div>
-              ) : (
-                itemsFiltrados.map(item => (
-                  <SortableRow 
-                    key={item.id_item_matriz} 
-                    item={item} 
-                    columnasVisibles={configColumnas} 
-                    canEdit={canEdit("matriz") && estadoMatriz !== 3} 
-                    canEditField={puedeEditarCampo}
-                    onUpdate={handleUpdateExistingRow} 
-                    estadosCumplimiento={estadosCumplimiento} 
-                    responsables={responsables} 
-                    tiposModalidad={tiposModalidad} 
-                    onOpenEvidencia={setItemEvidencia} 
-                    forceExpand={expandAll}
-                    isDragDisabled={hasActiveFilters || !puedeReordenar}
-                  />
-                ))
+            {/* CONTENEDOR PRINCIPAL (ya no es una tabla, sino divs) */}
+            <div className="relative">
+              {/* Botón "Fila Nueva" */}
+              {canEdit("matriz") && puedeAgregarFilas && (
+                <button
+                  onClick={() => setShowQuickAdd(true)}
+                  className="w-full bg-[#e6f7f5] hover:bg-[#ccefec] text-[#005F78] font-bold py-3 rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[#005F78]/20 shadow-sm mb-4"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                  Nueva Fila
+                </button>
               )}
-            </SortableContext>
+
+              {/* Formulario de nueva fila (si está abierto) */}
+              {showQuickAdd && (
+                <div className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#005F78]/10 rounded-full blur-3xl"></div>
+                  <div className="flex items-center justify-between mb-6 border-b border-[#005F78]/20 pb-3 relative z-10">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-[#005F78] text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+                      </span>
+                      <span className="text-sm font-bold text-[#005F78] uppercase tracking-widest">Crear Nueva Fila</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowQuickAdd(false)} className="bg-white text-slate-500 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase shadow-sm hover:bg-slate-50 transition-colors">Cancelar</button>
+                      <button onClick={handleSaveNewRow} disabled={isSavingRow} className="bg-[#005F78] hover:bg-[#004A5E] text-white px-6 py-2 rounded-lg shadow-md text-xs font-bold uppercase flex items-center gap-2 transition-colors disabled:opacity-50">
+                        {isSavingRow ? 'Guardando...' : 'Guardar Ítem'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 relative z-10">
+                    {configColumnas.map((col:any) => (
+                      <div key={col.id} className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold uppercase text-[#005F78] tracking-widest ml-1">{col.label}</label>
+                        {renderQuickAddCell(col.id)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de items existentes (SortableContext envuelve los SortableRow) */}
+              <SortableContext items={itemsFiltrados.map(i => i.id_item_matriz)} strategy={verticalListSortingStrategy}>
+                {itemsFiltrados.length === 0 && !showQuickAdd ? (
+                  <div className="p-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed">
+                    <svg className="w-12 h-12 mb-3 text-slate-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <span className="font-bold uppercase tracking-widest text-[11px]">{hasActiveFilters ? 'No hay resultados para estos filtros.' : 'No hay filas en la matriz.'}</span>
+                  </div>
+                ) : (
+                  itemsFiltrados.map(item => (
+                    <SortableRow 
+                      key={item.id_item_matriz} 
+                      item={item} 
+                      columnasVisibles={configColumnas} 
+                      canEdit={canEdit("matriz") && estadoMatriz !== 3} 
+                      canEditField={puedeEditarCampo}
+                      onUpdate={handleUpdateExistingRow} 
+                      estadosCumplimiento={estadosCumplimiento} 
+                      responsables={responsables} 
+                      tiposModalidad={tiposModalidad} 
+                      onOpenEvidencia={setItemEvidencia} 
+                      forceExpand={expandAll}
+                      isDragDisabled={hasActiveFilters || !puedeReordenar}
+                    />
+                  ))
+                )}
+              </SortableContext>
+            </div>
           </div>
         </DndContext>
       </div>

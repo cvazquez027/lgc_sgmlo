@@ -21,6 +21,7 @@ interface Matriz {
   id_cliente?: number;
   nombre_fantasia?: string;
   logo_path?: string;
+  total_items?: number; // Nuevo campo
 }
 
 interface Maestra {
@@ -37,6 +38,13 @@ interface Cliente {
 interface Establecimiento {
   id_cliente_establecimiento: number;
   descripcion: string;
+}
+
+interface GrupoCliente {
+  id_cliente: number;
+  nombre_fantasia: string;
+  logo_path?: string;
+  matrices: Matriz[];
 }
 
 export default function MatricesPage() {
@@ -84,6 +92,14 @@ export default function MatricesPage() {
     id_estado_matriz: "1", 
     vigente: 1
   });
+
+  const [clientesExpandidos, setClientesExpandidos] = useState<Set<number>>(new Set());
+
+  // Estado para el modal de eliminación
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [matrizToDelete, setMatrizToDelete] = useState<Matriz | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
@@ -185,7 +201,7 @@ export default function MatricesPage() {
       id_tipo_matriz: "",
       id_especialidad_matriz: "",
       fecha_desde: new Date().toISOString().split('T')[0],
-      version: 1, // se recalculará en el backend
+      version: 1,
       id_estado_matriz: "1",
       vigente: 1
     });
@@ -226,7 +242,7 @@ export default function MatricesPage() {
       if (!res.ok) throw new Error(data.mensaje || "Error al procesar la matriz.");
       setIsModalOpen(false);
       if (modalMode === "crear") {
-        router.push(`/dashboard/matrices/${data.id_matriz}`);
+        router.push(`/dashboard/matrices/${data.id_matriz}?config=true`);
       } else {
         fetchMatrices(); 
       }
@@ -237,26 +253,20 @@ export default function MatricesPage() {
     }
   };
 
-  // Ordenamiento según lo solicitado
   const matricesOrdenadas = useMemo(() => {
     return [...matrices].sort((a, b) => {
-      // Primero por cliente (nombre_fantasia)
       const clienteA = a.nombre_fantasia || '';
       const clienteB = b.nombre_fantasia || '';
       if (clienteA !== clienteB) return clienteA.localeCompare(clienteB);
-      // luego por establecimiento
       const estA = a.establecimiento_desc || '';
       const estB = b.establecimiento_desc || '';
       if (estA !== estB) return estA.localeCompare(estB);
-      // luego por especialidad
       const espA = a.especialidad_matriz_desc || '';
       const espB = b.especialidad_matriz_desc || '';
       if (espA !== espB) return espA.localeCompare(espB);
-      // luego por tipo
       const tipoA = a.tipo_matriz_desc || '';
       const tipoB = b.tipo_matriz_desc || '';
       if (tipoA !== tipoB) return tipoA.localeCompare(tipoB);
-      // luego por versión descendente
       return b.version - a.version;
     });
   }, [matrices]);
@@ -275,6 +285,69 @@ export default function MatricesPage() {
       return mCliente && mEstablecimiento && mEspecialidad && mTipo && mVigente;
     });
   }, [matricesOrdenadas, filtroCliente, filtroEstablecimiento, filtroEspecialidad, filtroTipo, filtroVigente, userClienteId]);
+
+  const grupos: GrupoCliente[] = useMemo(() => {
+    const map = new Map<number, GrupoCliente>();
+    matricesFiltradas.forEach(matriz => {
+      const id = matriz.id_cliente || 0;
+      if (!map.has(id)) {
+        map.set(id, {
+          id_cliente: id,
+          nombre_fantasia: matriz.nombre_fantasia || "Cliente sin nombre",
+          logo_path: matriz.logo_path,
+          matrices: []
+        });
+      }
+      map.get(id)!.matrices.push(matriz);
+    });
+    return Array.from(map.values()).sort((a, b) => a.nombre_fantasia.localeCompare(b.nombre_fantasia));
+  }, [matricesFiltradas]);
+
+  const toggleGrupo = (idCliente: number) => {
+    setClientesExpandidos((prev: Set<number>) => {
+      const newSet = new Set(prev);
+      if (newSet.has(idCliente)) {
+        newSet.delete(idCliente);
+      } else {
+        newSet.add(idCliente);
+      }
+      return newSet;
+    });
+  };
+
+  // Abrir modal de confirmación de eliminación
+  const confirmDelete = (matriz: Matriz) => {
+    if (matriz.id_estado_matriz !== 1) return;
+    const mensaje = matriz.total_items && matriz.total_items > 0
+      ? "¿Está seguro que desea eliminar esta matriz? La misma posee items asociados. Esta operación no puede deshacerse."
+      : "¿Está seguro que desea eliminar esta matriz? Esta operación no puede deshacerse.";
+    setDeleteMessage(mensaje);
+    setMatrizToDelete(matriz);
+    setShowDeleteModal(true);
+  };
+
+  const handleDelete = async () => {
+    if (!matrizToDelete) return;
+    setDeleting(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/eliminar.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ id_matriz: matrizToDelete.id_matriz })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.mensaje || "Error al eliminar.");
+      // Recargar lista
+      fetchMatrices();
+      setShowDeleteModal(false);
+      setMatrizToDelete(null);
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales...</div>;
   if (!canRead("matriz")) return <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100"><div className="text-red-500 text-6xl mb-4">🔒</div><h2 className="text-2xl font-heading text-slate-800 uppercase tracking-tight mb-2">Acceso Denegado</h2></div>;
@@ -339,97 +412,150 @@ export default function MatricesPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-100 flex flex-col">
         {loading ? (
            <div className="flex-1 flex items-center justify-center py-20 text-slate-400 animate-pulse font-heading">Cargando información...</div>
+        ) : grupos.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 font-bold uppercase text-xs">No se encontraron matrices.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left font-sans">
-              <thead className="bg-lgc-primary text-[10px] uppercase tracking-[0.2em] text-white font-bold border-b border-lgc-primary">
-                <tr>
-                  <th className="p-4">Cliente</th>
-                  <th className="p-4">Establecimiento</th>
-                  <th className="p-4">Especialidad</th>
-                  <th className="p-4">Tipo</th>
-                  <th className="p-4">Versión</th>
-                  <th className="p-4">Estado</th>
-                  <th className="p-4">Fecha Creación</th>
-                  <th className="p-4 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {matricesFiltradas.length === 0 ? (
-                  <tr><td colSpan={8} className="p-12 text-center text-slate-400 font-bold uppercase text-xs">No se encontraron matrices.</td></tr>
-                ) : (
-                  matricesFiltradas.map(matriz => (
-                    <tr key={matriz.id_matriz} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          {matriz.logo_path ? (
-                            <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${matriz.logo_path}`} alt="Logo" className="w-8 h-8 object-contain rounded-sm" />
-                          ) : (
-                            <div className="w-8 h-8 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500 font-bold">{matriz.nombre_fantasia?.charAt(0) || 'C'}</div>
-                          )}
+            {grupos.map((grupo, idx) => {
+              const expandido = clientesExpandidos.has(grupo.id_cliente);
+              // Alternar fondo de grupo: par -> bg-slate-50/80, impar -> bg-blue-50/40 (azul muy sutil)
+              const grupoBg = idx % 2 === 0 ? 'bg-slate-50/80' : 'bg-blue-50/40';
+              return (
+                <div key={grupo.id_cliente} className="border-b border-slate-100 last:border-b-0">
+                  <div 
+                    className={`flex items-center gap-3 p-4 ${grupoBg} cursor-pointer hover:bg-slate-100 transition-colors`}
+                    onClick={() => toggleGrupo(grupo.id_cliente)}
+                  >
+                    <svg 
+                      className={`w-5 h-5 text-slate-500 transition-transform ${expandido ? 'rotate-90' : ''}`} 
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <div className="flex items-center gap-3 flex-1">
+                      {grupo.logo_path ? (
+                        <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${grupo.logo_path}`} alt="Logo" className="w-8 h-8 object-contain rounded-sm" />
+                      ) : (
+                        <div className="w-8 h-8 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500 font-bold">
+                          {grupo.nombre_fantasia.charAt(0) || 'C'}
                         </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-800 text-xs uppercase">{matriz.establecimiento_desc || `ID: ${matriz.id_cliente_establecimiento}`}</div>
-                      </td>
-                      <td className="p-4 whitespace-nowrap">
-                         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-sm border ${
-                           matriz.id_especialidad_matriz === 1
-                             ? 'bg-lgc-accent/10 text-[#6B7A1A] border-lgc-accent/30'
-                             : matriz.id_especialidad_matriz === 2
-                             ? 'bg-lgc-primary/10 text-[#005F78] border-lgc-primary/30'
-                             : 'bg-slate-100 text-slate-600 border-slate-200'
-                         }`}>
-                           {matriz.especialidad_matriz_desc || "No definido"}
-                         </span>
-                       </td>
-                      <td className="p-4 whitespace-nowrap">
-                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
-                           {matriz.tipo_matriz_desc || "No definido"}
-                         </span>
-                      </td>
-                      <td className="p-4">
-                        <div className="text-xs font-bold text-slate-700">{matriz.version}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border whitespace-nowrap ${
-                            matriz.id_estado_matriz === 1 ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                            matriz.id_estado_matriz === 2 ? 'bg-green-100 text-green-700 border-green-300' :
-                            matriz.id_estado_matriz === 3 ? 'bg-slate-100 text-slate-500 border-slate-300' :
-                            'bg-slate-50 text-slate-700 border-slate-200'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                              matriz.id_estado_matriz === 1 ? 'bg-amber-500' :
-                              matriz.id_estado_matriz === 2 ? 'bg-green-500' :
-                              matriz.id_estado_matriz === 3 ? 'bg-slate-400' :
-                              'bg-slate-500'
-                          }`}></span>
-                          {matriz.estado_matriz_desc || "SIN ESTADO"}
-                        </span>
-                      </td>
-                      <td className="p-4 text-xs text-slate-600 font-medium">
-                        {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
-                      </td>
-                      <td className="p-4 text-right flex justify-end gap-2 items-center">
-                        {canEdit("matriz") && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
-                          <button onClick={() => openEditarModal(matriz)} className="text-slate-400 hover:text-lgc-primary transition-colors p-2" title="Editar Propiedades">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                          </button>
-                        )}
-                        <Link href={`/dashboard/matrices/${matriz.id_matriz}`} className="bg-slate-100 hover:bg-lgc-primary text-slate-600 hover:text-white px-3 py-1.5 rounded border border-slate-200 hover:border-lgc-primary transition-all shadow-sm text-[10px] uppercase tracking-widest font-bold flex items-center gap-2">
-                          <span>{matriz.id_estado_matriz === 3 ? "Visualizar" : "Gestionar"}</span>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      )}
+                      <span className="font-bold text-slate-700 text-sm">{grupo.nombre_fantasia}</span>
+                      <span className="text-xs text-slate-400 ml-2">({grupo.matrices.length} matrices)</span>
+                    </div>
+                  </div>
+
+                  {expandido && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left font-sans">
+                        <thead className="bg-lgc-primary text-[10px] uppercase tracking-[0.2em] text-white font-bold">
+                          <tr>
+                            <th className="p-4">Establecimiento</th>
+                            <th className="p-4">Especialidad</th>
+                            <th className="p-4">Tipo</th>
+                            <th className="p-4">Versión</th>
+                            <th className="p-4">Estado</th>
+                            <th className="p-4">Fecha Creación</th>
+                            <th className="p-4 text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {grupo.matrices.map(matriz => (
+                            <tr key={matriz.id_matriz} className="hover:bg-slate-50/50 transition-colors group">
+                              <td className="p-4">
+                                <div className="font-bold text-slate-800 text-xs uppercase">{matriz.establecimiento_desc || `ID: ${matriz.id_cliente_establecimiento}`}</div>
+                              </td>
+                              <td className="p-4 whitespace-nowrap">
+                                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded shadow-sm border ${
+                                  matriz.id_especialidad_matriz === 1
+                                    ? 'bg-lgc-accent/10 text-[#6B7A1A] border-lgc-accent/30'
+                                    : matriz.id_especialidad_matriz === 2
+                                    ? 'bg-lgc-primary/10 text-[#005F78] border-lgc-primary/30'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                  {matriz.especialidad_matriz_desc || "No definido"}
+                                </span>
+                              </td>
+                              <td className="p-4 whitespace-nowrap">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded">
+                                  {matriz.tipo_matriz_desc || "No definido"}
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <div className="text-xs font-bold text-slate-700">{matriz.version}</div>
+                              </td>
+                              <td className="p-4">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border whitespace-nowrap ${
+                                    matriz.id_estado_matriz === 1 ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                                    matriz.id_estado_matriz === 2 ? 'bg-green-100 text-green-700 border-green-300' :
+                                    matriz.id_estado_matriz === 3 ? 'bg-slate-100 text-slate-500 border-slate-300' :
+                                    'bg-slate-50 text-slate-700 border-slate-200'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                      matriz.id_estado_matriz === 1 ? 'bg-amber-500' :
+                                      matriz.id_estado_matriz === 2 ? 'bg-green-500' :
+                                      matriz.id_estado_matriz === 3 ? 'bg-slate-400' :
+                                      'bg-slate-500'
+                                  }`}></span>
+                                  {matriz.estado_matriz_desc || "SIN ESTADO"}
+                                </span>
+                              </td>
+                              <td className="p-4 text-xs text-slate-600 font-medium">
+                                {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
+                              </td>
+                              <td className="p-4 text-right flex justify-end gap-2 items-center">
+                                {canEdit("matriz") && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
+                                  <>
+                                    <button onClick={() => openEditarModal(matriz)} className="text-slate-400 hover:text-lgc-primary transition-colors p-2" title="Editar Propiedades">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                    <button onClick={() => confirmDelete(matriz)} className="text-slate-400 hover:text-red-500 transition-colors p-2" title="Eliminar Matriz">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                  </>
+                                )}
+                                <Link href={`/dashboard/matrices/${matriz.id_matriz}`} className="bg-slate-100 hover:bg-lgc-primary text-slate-600 hover:text-white px-3 py-1.5 rounded border border-slate-200 hover:border-lgc-primary transition-all shadow-sm text-[10px] uppercase tracking-widest font-bold flex items-center gap-2">
+                                  <span>{matriz.id_estado_matriz === 3 ? "Visualizar" : "Gestionar"}</span>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                </Link>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
+      {/* Modal de confirmación de eliminación */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">Confirmar eliminación</h2>
+              <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-700 text-sm">{deleteMessage}</p>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-xs uppercase font-bold shadow-md disabled:opacity-50">
+                  {deleting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de creación/edición (sin cambios) */}
       {isModalOpen && canEdit("matriz") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">

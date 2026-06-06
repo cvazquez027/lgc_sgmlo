@@ -18,7 +18,7 @@ $id_cliente_establecimiento = isset($_GET['id_cliente_establecimiento']) ? filte
 $id_matriz = isset($_GET['id_matriz']) ? filter_var($_GET['id_matriz'], FILTER_VALIDATE_INT) : null;
 
 try {
-    // MODIFICADO: Sumamos id_especialidad_matriz y su join.
+    // Agregamos el COUNT de items
     $query = "SELECT 
                 m.id_matriz, 
                 m.id_cliente_establecimiento, 
@@ -34,13 +34,15 @@ try {
                 ce.descripcion as establecimiento_desc,
                 c.id_cliente,
                 c.nombre_fantasia,
-                c.logo_path
+                c.logo_path,
+                COUNT(im.id_item_matriz) as total_items
               FROM matriz m
               LEFT JOIN estado_matriz em ON m.id_estado_matriz = em.id_estado_matriz
               LEFT JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
               LEFT JOIN especialidad_matriz esp ON m.id_especialidad_matriz = esp.id_especialidad_matriz
               LEFT JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
               LEFT JOIN cliente c ON ce.id_cliente = c.id_cliente
+              LEFT JOIN item_matriz im ON m.id_matriz = im.id_matriz
               WHERE 1=1";
 
     if ($id_cliente_establecimiento) {
@@ -50,7 +52,7 @@ try {
         $query .= " AND m.id_matriz = :id_matriz";
     }
 
-    $query .= " ORDER BY m.fecha_desde DESC";
+    $query .= " GROUP BY m.id_matriz ORDER BY m.fecha_desde DESC";
     $stmt = $db->prepare($query);
 
     if ($id_cliente_establecimiento) {
