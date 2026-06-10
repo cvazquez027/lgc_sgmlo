@@ -1,60 +1,201 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePermissions } from "../../hooks/usePermissions";
+
+interface Alerta {
+  id_alerta: number;
+  id_cliente: number;
+  id_matriz: number | null;
+  id_item_matriz: number | null;
+  tipo: string;
+  titulo: string;
+  mensaje: string;
+  fecha_creacion: string;
+  leido: boolean;
+  url: string | null;
+}
+
+interface Vencimiento {
+  id_matriz: number;
+  nombre_matriz: string;
+  id_item_matriz: number;
+  item_resumen: string;
+  vencimiento_plazo: string;
+  dias_restantes: number;
+  estado_desc: string;
+  color_estado?: string;
+}
 
 export default function ReportesPage() {
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
+  const { canRead } = usePermissions();
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [marcando, setMarcando] = useState(false);
 
-  useEffect(() => {
-    setIsReady(true);
+  const fetchAlertas = useCallback(async () => {
+    const token = localStorage.getItem("sgml_token");
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alertas/leer.php`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) setAlertas(data.alertas || []);
   }, []);
 
+  const fetchVencimientos = useCallback(async () => {
+    const token = localStorage.getItem("sgml_token");
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reportes/vencimientos.php`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (res.ok) setVencimientos(data.vencimientos || []);
+  }, []);
+
+  const marcarComoLeida = async (idAlerta: number) => {
+    setMarcando(true);
+    const token = localStorage.getItem("sgml_token");
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alertas/marcar_leida.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id_alerta: idAlerta })
+    });
+    await fetchAlertas();
+    setMarcando(false);
+  };
+
+  const marcarTodas = async () => {
+    if (!confirm("¿Marcar todas las alertas como leídas?")) return;
+    setMarcando(true);
+    const token = localStorage.getItem("sgml_token");
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alertas/marcar_leida.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ todas: true })
+    });
+    await fetchAlertas();
+    setMarcando(false);
+  };
+
+  useEffect(() => {
+    fetchAlertas();
+    fetchVencimientos();
+    setLoading(false);
+  }, [fetchAlertas, fetchVencimientos]);
+
+  if (loading) return <div className="py-20 text-center animate-pulse text-lgc-primary">Cargando alertas...</div>;
+
   return (
-    <div className={`flex flex-col h-[calc(100vh-100px)] animate-fade-in overflow-hidden ${isReady ? 'opacity-100' : 'opacity-0'}`}>
-      
-      {/* HEADER AZUL (ESTILO MATRICES) */}
-      <div className="bg-lgc-primary px-6 py-4 rounded-xl shadow-md flex justify-between items-center shrink-0 border border-lgc-primary mb-4">
-        <div className="flex items-center gap-5">
-          <button 
-            onClick={() => router.push("/dashboard")} 
-            className="text-white hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2.5 rounded-xl border border-white/20 shadow-inner"
-            title="Volver al inicio"
-          >
-             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-             </svg>
-          </button>
-          <div className="flex flex-col">
-            <h1 className="text-xl font-heading text-white uppercase tracking-tight">REPORTES Y ALERTAS</h1>
-            <p className="text-white/70 text-[10px] font-bold tracking-widest uppercase mt-0.5">Centro de control y seguimiento</p>
-          </div>
+    <div className="space-y-8 animate-fade-in">
+      {/* Cabecera */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight">Alertas y Vencimientos</h1>
+          <p className="text-slate-500 text-sm mt-1">Notificaciones y fechas críticas de tus matrices</p>
         </div>
+        {alertas.filter(a => !a.leido).length > 0 && (
+          <button onClick={marcarTodas} disabled={marcando} className="bg-lgc-accent text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-[#D97920] transition">
+            Marcar todas como leídas
+          </button>
+        )}
       </div>
 
-      {/* CONTENIDO PRINCIPAL (Centrado y sin scroll) */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center text-center max-w-lg w-full">
-          <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-6">
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          
-          <h2 className="text-xl font-bold text-slate-800 mb-2">
-            Sección en Desarrollo
-          </h2>
-          <p className="text-slate-500 leading-relaxed mb-8">
-            Estamos trabajando para integrar tu centro de control. Próximamente podrás visualizar aquí todos los reportes, alertas críticas y métricas de cumplimiento de tu matriz legal.
-          </p>
-          
-          <div className="px-6 py-2 bg-amber-50 text-amber-700 text-xs font-bold uppercase tracking-widest rounded-full border border-amber-200">
-            Versión de pre-visualización
-          </div>
+      {/* Sección de Alertas */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Notificaciones recientes</h2>
         </div>
+        {alertas.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 italic">No hay alertas pendientes.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {alertas.map(alerta => (
+              <div key={alerta.id_alerta} className={`p-5 ${!alerta.leido ? 'bg-amber-50/30' : 'bg-white'}`}>
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h3 className="font-bold text-slate-800">{alerta.titulo}</h3>
+                      {!alerta.leido && (
+                        <span className="bg-red-100 text-red-700 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">Nueva</span>
+                      )}
+                      <span className="text-[10px] text-slate-400">{new Date(alerta.fecha_creacion).toLocaleString('es-AR')}</span>
+                    </div>
+                    <p className="text-sm text-slate-600 mt-1">{alerta.mensaje}</p>
+                    {alerta.url && (
+                      <Link href={alerta.url} className="inline-block mt-2 text-[10px] font-bold text-lgc-primary hover:underline uppercase tracking-widest">
+                        Ver detalle →
+                      </Link>
+                    )}
+                  </div>
+                  {!alerta.leido && (
+                    <button
+                      onClick={() => marcarComoLeida(alerta.id_alerta)}
+                      disabled={marcando}
+                      className="text-slate-400 hover:text-slate-600 text-xs font-bold uppercase whitespace-nowrap"
+                    >
+                      Marcar leída
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      
+
+      {/* Sección de Vencimientos */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Próximos vencimientos</h2>
+        </div>
+        {vencimientos.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 italic">No hay vencimientos próximos ni vencidos.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="text-[10px] uppercase tracking-widest text-slate-500 bg-slate-50 border-b">
+                <tr>
+                  <th className="p-4">Matriz</th>
+                  <th className="p-4">Ítem</th>
+                  <th className="p-4">Fecha vencimiento</th>
+                  <th className="p-4">Estado</th>
+                  <th className="p-4"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {vencimientos.map(v => {
+                  const esVencido = v.dias_restantes < 0;
+                  const estaProximo = v.dias_restantes >= 0 && v.dias_restantes <= 30;
+                  let estadoClase = "";
+                  if (esVencido) estadoClase = "text-red-600 bg-red-50 border-red-200";
+                  else if (estaProximo) estadoClase = "text-amber-600 bg-amber-50 border-amber-200";
+                  else estadoClase = "text-green-600 bg-green-50 border-green-200";
+                  return (
+                    <tr key={`${v.id_matriz}-${v.id_item_matriz}`} className="hover:bg-slate-50 transition">
+                      <td className="p-4 font-bold text-slate-700 text-sm">{v.nombre_matriz}</td>
+                      <td className="p-4 text-slate-600 text-xs">{v.item_resumen || "Sin descripción"}</td>
+                      <td className="p-4 text-xs text-slate-600">{new Date(v.vencimiento_plazo).toLocaleDateString('es-AR')}</td>
+                      <td className="p-4">
+                        <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border ${estadoClase}`}>
+                          {esVencido ? "Vencido" : v.dias_restantes === 0 ? "Vence hoy" : `${v.dias_restantes} días`}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <Link href={`/dashboard/matrices/${v.id_matriz}?item=${v.id_item_matriz}`} className="text-lgc-primary text-[10px] font-bold uppercase tracking-widest hover:underline">
+                          Ver ítem
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

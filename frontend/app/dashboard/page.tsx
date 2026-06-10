@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "../hooks/usePermissions";
+import toast, { Toaster } from 'react-hot-toast'; // <-- AGREGADO
 
 export default function DashboardHome() {
   const { canRead } = usePermissions();
@@ -14,6 +15,28 @@ export default function DashboardHome() {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Verificar alertas no leídas al cargar el dashboard
+  useEffect(() => {
+    const checkAlerts = async () => {
+      const token = localStorage.getItem("sgml_token");
+      if (!token) return;
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alertas/contador.php`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.count > 0) {
+          toast.success(`Tienes ${data.count} alerta(s) sin leer.`, { duration: 6000 });
+        }
+      } catch (err) {
+        console.error("Error al consultar alertas:", err);
+      }
+    };
+    if (!isCheckingPerms && canRead("reportes")) {
+      checkAlerts();
+    }
+  }, [isCheckingPerms, canRead]);
 
   const handleLogout = () => {
     localStorage.removeItem("sgml_token");
@@ -66,8 +89,8 @@ export default function DashboardHome() {
       )
     },
     {
-      titulo: "Reportes",
-      descripcion: "Exportables de cumplimiento, vencimientos y trámites.",
+      titulo: "Alertas y Vencimientos",
+      descripcion: "Alertas, vencimientos y seguimiento de cumplimiento.",
       href: "/dashboard/reportes",
       permiso: "reportes",
       icono: (
@@ -119,60 +142,62 @@ export default function DashboardHome() {
   }
 
   return (
-    <div className="animate-fade-in font-sans h-full flex flex-col py-2 justify-between">
-      
-      <div className="flex-1 flex flex-col justify-center my-auto">
-        {/* Grid: garantiza 4 columnas en escritorio */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-5 max-w-screen-2xl mx-auto w-full px-4">
-          {modulosFiltrados.map((modulo, index) => (
-            <Link 
-              key={index}
-              href={modulo.href}
-              className="group relative flex flex-col p-5 bg-[#00455E] rounded-2xl border border-[#005A7A] shadow-[0_4px_10px_rgba(0,34,48,0.45)] hover:shadow-[0_6px_14px_rgba(0,34,48,0.65)] hover:bg-[#00384D] hover:-translate-y-0.5 transition-all duration-300 h-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-primary w-full"
-              aria-label={`Acceder al módulo de ${modulo.titulo}`}
-            >
-              <div className="flex items-start gap-4 mb-3">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/10 text-white/70 group-hover:bg-lgc-accent/20 group-hover:text-lgc-accent transition-all duration-300 shrink-0 border border-white/5 group-hover:border-lgc-accent/30 shadow-inner group-hover:scale-110">
-                  {modulo.icono}
+    <>
+      <Toaster position="top-right" /> {/* <-- AGREGADO */}
+      <div className="animate-fade-in font-sans h-full flex flex-col py-2 justify-between">
+        
+        <div className="flex-1 flex flex-col justify-center my-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-5 max-w-screen-2xl mx-auto w-full px-4">
+            {modulosFiltrados.map((modulo, index) => (
+              <Link 
+                key={index}
+                href={modulo.href}
+                className="group relative flex flex-col p-5 bg-[#00455E] rounded-2xl border border-[#005A7A] shadow-[0_4px_10px_rgba(0,34,48,0.45)] hover:shadow-[0_6px_14px_rgba(0,34,48,0.65)] hover:bg-[#00384D] hover:-translate-y-0.5 transition-all duration-300 h-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-lgc-primary w-full"
+                aria-label={`Acceder al módulo de ${modulo.titulo}`}
+              >
+                <div className="flex items-start gap-4 mb-3">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-white/10 text-white/70 group-hover:bg-lgc-accent/20 group-hover:text-lgc-accent transition-all duration-300 shrink-0 border border-white/5 group-hover:border-lgc-accent/30 shadow-inner group-hover:scale-110">
+                    {modulo.icono}
+                  </div>
+                  <div className="flex-1 mt-0.5">
+                    <h2 className="text-base sm:text-lg font-heading font-black text-white leading-tight uppercase tracking-tight">
+                      {modulo.titulo}
+                    </h2>
+                  </div>
                 </div>
-                <div className="flex-1 mt-0.5">
-                  <h2 className="text-base sm:text-lg font-heading font-black text-white leading-tight uppercase tracking-tight">
-                    {modulo.titulo}
-                  </h2>
-                </div>
-              </div>
-              
-              <div className="flex flex-col flex-1 justify-between gap-3">
-                <p className="text-[11px] sm:text-xs text-[#A8D3E0] leading-relaxed font-medium group-hover:text-white transition-colors duration-300">
-                  {modulo.descripcion}
-                </p>
+                
+                <div className="flex flex-col flex-1 justify-between gap-3">
+                  <p className="text-[11px] sm:text-xs text-[#A8D3E0] leading-relaxed font-medium group-hover:text-white transition-colors duration-300">
+                    {modulo.descripcion}
+                  </p>
 
-                <div className="flex justify-end pt-2.5 border-t border-white/10">
-                  <span className="text-white/30 group-hover:text-lgc-accent transition-colors duration-300 transform group-hover:translate-x-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4-4m4-4H3" />
-                    </svg>
-                  </span>
+                  <div className="flex justify-end pt-2.5 border-t border-white/10">
+                    <span className="text-white/30 group-hover:text-lgc-accent transition-colors duration-300 transform group-hover:translate-x-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4-4m4-4H3" />
+                      </svg>
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="mt-4 flex justify-center shrink-0">
-         <button 
-           onClick={handleLogout}
-           className="flex items-center gap-2.5 px-6 py-2 rounded-full font-bold uppercase tracking-widest text-xs shadow-sm bg-lgc-accent text-white border-2 border-lgc-accent 
-           hover:bg-red-800 hover:text-[#FFFBEB] hover:border-2 hover:border-[#FFFBEB] hover:ring-2 hover:ring-red-900 transition-all duration-200 group"
-         >
+        <div className="mt-4 flex justify-center shrink-0">
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2.5 px-6 py-2 rounded-full font-bold uppercase tracking-widest text-xs shadow-sm bg-lgc-accent text-white border-2 border-lgc-accent 
+            hover:bg-red-800 hover:text-[#FFFBEB] hover:border-2 hover:border-[#FFFBEB] hover:ring-2 hover:ring-red-900 transition-all duration-200 group"
+          >
             <svg className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             Cerrar Sesión Segura
-         </button>
-      </div>
+          </button>
+        </div>
 
-    </div>
+      </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { usePermissions } from "../hooks/usePermissions";
+import NotificationBell from "../components/NotificationBell";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -241,6 +242,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* AVATAR Y MENÚ DESPLEGABLE DE PERFIL */}
           <div className="flex items-center gap-4 relative">
+            <NotificationBell />
             <div 
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="w-10 h-10 rounded-full bg-lgc-primary border border-lgc-primary/30 flex items-center justify-center text-white font-bold shadow-sm cursor-pointer hover:bg-[#006A8A] transition-colors select-none" 
