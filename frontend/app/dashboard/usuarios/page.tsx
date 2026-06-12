@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-// Importamos nuestro nuevo guardián de seguridad
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
 
@@ -11,8 +10,8 @@ interface Usuario {
   nombre_completo: string;
   email: string;
   rol_nombre: string;
-  id_cliente: number | null; // Puede ser null
-  razon_social: string | null; // Puede ser null
+  id_cliente: number | null;
+  razon_social: string | null;
   vigente: number;
 }
 
@@ -26,16 +25,33 @@ interface Cliente {
   razon_social: string;
 }
 
+interface AuditoriaLog {
+  id_auditoria: number;
+  tabla_afectada: string;
+  accion: string;
+  id_registro: number;
+  id_usuario: number;
+  usuario_nombre: string | null;
+  ip_origen: string;
+  fecha_evento: string;
+  datos_json: any;
+}
+
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [roles, setRoles] = useState<Rol[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [logs, setLogs] = useState<AuditoriaLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<"usuarios" | "auditoria">("usuarios");
   const router = useRouter();
 
   const { canRead, canEdit } = usePermissions();
+  const canViewAudit = canRead("auditoria"); // Ajusta según tu permiso real
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
+
+  const [selectedAuditLog, setSelectedAuditLog] = useState<AuditoriaLog | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
@@ -53,7 +69,7 @@ export default function UsuariosPage() {
     email: "",
     password: "",
     id_rol: "",
-    id_cliente: "", // Manejaremos "" como null en el backend
+    id_cliente: "",
     vigente: 1
   });
 
@@ -83,17 +99,41 @@ export default function UsuariosPage() {
       setClientes(dataClientes.registros || []);
 
     } catch (err: any) {
-      setError("Error al sincronizar con el servidor");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   }, [router]);
 
+  const fetchAuditoria = useCallback(async () => {
+    if (!canViewAudit) return;
+    const token = localStorage.getItem("sgml_token");
+    if (!token) { router.push("/"); return; }
+    try {
+      setLoading(true);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auditoria/leer.php?limit=200`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const data = await res.json();
+      console.log("Respuesta de auditoría:", data); // Depuración
+      setLogs(data.registros || []);
+    } catch (err: any) {
+      console.error("Error cargando auditoría", err);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [canViewAudit, router]);
+
   useEffect(() => {
     if (!isCheckingPerms && canRead("usuarios")) {
-      fetchData();
+      if (activeTab === "usuarios") {
+        fetchData();
+      } else if (activeTab === "auditoria" && canViewAudit) {
+        fetchAuditoria();
+      }
     }
-  }, [fetchData, isCheckingPerms, canRead]);
+  }, [fetchData, fetchAuditoria, isCheckingPerms, canRead, activeTab, canViewAudit]);
 
   const openCrearModal = () => {
     if (!canEdit("usuarios")) return; 
@@ -115,7 +155,7 @@ export default function UsuariosPage() {
       email: user.email,
       password: "", 
       id_rol: rolId,
-      id_cliente: user.id_cliente?.toString() || "", // Si es null, pasamos ""
+      id_cliente: user.id_cliente?.toString() || "",
       vigente: user.vigente
     });
     setIsModalOpen(true);
@@ -151,6 +191,15 @@ export default function UsuariosPage() {
     }
   };
 
+  const getAccionBadge = (accion: string) => {
+    switch (accion) {
+      case 'INSERT': return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">INSERT</span>;
+      case 'UPDATE': return <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-bold">UPDATE</span>;
+      case 'DELETE': return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">DELETE</span>;
+      default: return <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-bold">{accion}</span>;
+    }
+  };
+
   if (isCheckingPerms) {
     return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
   }
@@ -179,11 +228,11 @@ export default function UsuariosPage() {
             </svg>
           </Link>
           <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
-            Gestión de Usuarios
+            Gestión de Usuarios y Seguridad
           </h1>
         </div>
         
-        {canEdit("usuarios") && (
+        {activeTab === "usuarios" && canEdit("usuarios") && (
           <button 
             onClick={openCrearModal}
             className="bg-lgc-primary hover:bg-lgc-accent text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest"
@@ -193,63 +242,163 @@ export default function UsuariosPage() {
         )}
       </div>
 
-      {loading ? (
-        <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Sincronizando base de datos...</div>
-      ) : (
+      {/* Tabs */}
+      <div className="border-b border-slate-200 bg-white rounded-t-xl">
+        <nav className="flex space-x-6 px-6" aria-label="Tabs">
+          <button
+            onClick={() => setActiveTab("usuarios")}
+            className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === "usuarios"
+                ? "border-lgc-primary text-lgc-primary"
+                : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+            }`}
+          >
+            Usuarios del Sistema
+          </button>
+          {canViewAudit && (
+            <button
+              onClick={() => setActiveTab("auditoria")}
+              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "auditoria"
+                  ? "border-lgc-primary text-lgc-primary"
+                  : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              Auditoría de Cambios
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Contenido de la pestaña Usuarios */}
+      {activeTab === "usuarios" && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-left font-sans">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] uppercase tracking-[0.2em]">
-                <th className="p-5 font-bold">Identidad</th>
-                <th className="p-5 font-bold">Empresa / Cliente</th>
-                <th className="p-5 font-bold">Rol</th>
-                <th className="p-5 font-bold">Estado</th>
-                <th className="p-5 font-bold text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {usuarios.map((user) => (
-                <tr key={user.id_usuario} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="p-5">
-                    <div className="font-bold text-slate-700">{user.nombre_completo}</div>
-                    <div className="text-xs text-slate-400">{user.email}</div>
-                  </td>
-                  <td className="p-5 text-sm text-slate-600 font-medium">
-                    {/* Mostramos la razón social o un indicador de interno */}
-                    {user.razon_social ? (
-                       <span>{user.razon_social}</span>
-                    ) : (
-                       <span className="text-xs font-bold text-lgc-primary uppercase tracking-widest bg-lgc-primary/10 px-2 py-1 rounded">Usuario Interno</span>
-                    )}
-                  </td>
-                  <td className="p-5 text-xs">
-                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-tighter">
-                      {user.rol_nombre}
-                    </span>
-                  </td>
-                  <td className="p-5 text-xs">
-                    <span className={`px-3 py-1 rounded-full font-bold ${user.vigente === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {user.vigente === 1 ? 'ACTIVO' : 'BAJA'}
-                    </span>
-                  </td>
-                  <td className="p-5 text-right">
-                    {canEdit("usuarios") ? (
-                      <button onClick={() => openEditarModal(user)} className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest">
-                        Editar
-                      </button>
-                    ) : (
-                      <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest cursor-not-allowed">
-                        Solo Lectura
-                      </span>
-                    )}
-                  </td>
+          {loading ? (
+            <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Sincronizando base de datos...</div>
+          ) : (
+            <table className="w-full text-left font-sans">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] uppercase tracking-[0.2em]">
+                  <th className="p-5 font-bold">Identidad</th>
+                  <th className="p-5 font-bold">Empresa / Cliente</th>
+                  <th className="p-5 font-bold">Rol</th>
+                  <th className="p-5 font-bold">Estado</th>
+                  <th className="p-5 font-bold text-right">Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {usuarios.map((user) => (
+                  <tr key={user.id_usuario} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-5">
+                      <div className="font-bold text-slate-700">{user.nombre_completo}</div>
+                      <div className="text-xs text-slate-400">{user.email}</div>
+                    </td>
+                    <td className="p-5 text-sm text-slate-600 font-medium">
+                      {user.razon_social ? (
+                         <span>{user.razon_social}</span>
+                      ) : (
+                         <span className="text-xs font-bold text-lgc-primary uppercase tracking-widest bg-lgc-primary/10 px-2 py-1 rounded">Usuario Interno</span>
+                      )}
+                    </td>
+                    <td className="p-5 text-xs">
+                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-tighter">
+                        {user.rol_nombre}
+                      </span>
+                    </td>
+                    <td className="p-5 text-xs">
+                      <span className={`px-3 py-1 rounded-full font-bold ${user.vigente === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {user.vigente === 1 ? 'ACTIVO' : 'BAJA'}
+                      </span>
+                    </td>
+                    <td className="p-5 text-right">
+                      {canEdit("usuarios") ? (
+                        <button onClick={() => openEditarModal(user)} className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest">
+                          Editar
+                        </button>
+                      ) : (
+                        <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest cursor-not-allowed">
+                          Solo Lectura
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
+      {/* Contenido de la pestaña Auditoría */}
+      {activeTab === "auditoria" && (
+        canViewAudit ? (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+            {loading ? (
+              <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Cargando historial de auditoría...</div>
+            ) : logs.length === 0 ? (
+              <div className="py-20 text-center text-slate-400">No se encontraron registros de auditoría.</div>
+            ) : (
+              <table className="w-full text-left font-sans text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-wider">
+                    <th className="p-3">Fecha</th>
+                    <th className="p-3">Usuario</th>
+                    <th className="p-3">Tabla</th>
+                    <th className="p-3">Acción</th>
+                    <th className="p-3">ID Registro</th>
+                    <th className="p-3">IP Origen</th>
+                    <th className="p-3">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {logs.map((log) => (
+                    <tr key={log.id_auditoria} className="hover:bg-slate-50/50">
+                      <td className="p-3 whitespace-nowrap text-xs">
+                        {new Date(log.fecha_evento).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-xs font-medium">
+                        {log.usuario_nombre || `Usuario #${log.id_usuario}`}
+                      </td>
+                      <td className="p-3 text-xs font-mono">
+                        {log.tabla_afectada}
+                      </td>
+                      <td className="p-3">
+                        {getAccionBadge(log.accion)}
+                      </td>
+                      <td className="p-3 text-xs">
+                        {log.id_registro}
+                      </td>
+                      <td className="p-3 text-xs font-mono">
+                        {log.ip_origen || '-'}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => {
+                            console.log("Log seleccionado:", log);
+                            console.log("datos_json:", log.datos_json);
+                            setSelectedAuditLog(log);
+                            setIsAuditModalOpen(true);
+                          }}
+                          className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest"
+                        >
+                          Ver JSON
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <div className="bg-white p-12 text-center rounded-xl shadow-sm border border-red-100">
+            <div className="text-red-500 text-4xl mb-2">🔒</div>
+            <p className="text-slate-500">No tienes permiso para ver la auditoría.</p>
+          </div>
+        )
+      )}
+
+      {/* Modal de creación/edición de usuarios */}
       {isModalOpen && canEdit("usuarios") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
@@ -292,7 +441,6 @@ export default function UsuariosPage() {
 
               <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-5">
                 <div>
-                  {/* Le quitamos el required al select */}
                   <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Asignar Cliente/Empresa</label>
                   <select 
                     value={formData.id_cliente} 
@@ -328,6 +476,33 @@ export default function UsuariosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para visualizar JSON de auditoría (con depuración) */}
+      {isAuditModalOpen && selectedAuditLog && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">
+                  Detalle del cambio - {selectedAuditLog.tabla_afectada} #{selectedAuditLog.id_registro}
+                </h2>
+                <p className="text-xs text-slate-500 mb-2">
+                  Contenido del registro afectado ({selectedAuditLog.tabla_afectada} ID {selectedAuditLog.id_registro}):
+                </p>
+              </div>
+              <button onClick={() => setIsAuditModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-6 max-h-[70vh] overflow-auto">
+              <pre className="text-xs bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto">
+                {JSON.stringify(selectedAuditLog.datos_json, null, 2)}
+              </pre>
+            </div>
+            <div className="p-4 bg-slate-50 border-t flex justify-end">
+              <button onClick={() => setIsAuditModalOpen(false)} className="px-5 py-2 bg-lgc-primary text-white rounded-lg text-xs uppercase tracking-widest hover:bg-lgc-accent transition-all">Cerrar</button>
+            </div>
           </div>
         </div>
       )}

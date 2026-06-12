@@ -591,20 +591,28 @@ export default function WorkspaceMatrizPage() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   // Configurar scroll listener
-  useLayoutEffect(() => {
+  useEffect(() => {
     const container = mainContainerRef.current;
     if (!container) return;
+
     const handleScroll = () => {
       const scrollTop = container.scrollTop;
       const scrollHeight = container.scrollHeight;
       const clientHeight = container.clientHeight;
-      setShowScrollTop(scrollTop > 200);
-      setShowScrollBottom(scrollTop + clientHeight < scrollHeight - 200);
+      setShowScrollTop(scrollTop > 50);
+      setShowScrollBottom(scrollTop + clientHeight < scrollHeight - 50);
     };
+
     container.addEventListener('scroll', handleScroll);
-    handleScroll();
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+
+    // Pequeño delay para que el DOM tenga las alturas reales calculadas
+    const timer = setTimeout(handleScroll, 100);
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      clearTimeout(timer);
+    };
+  }, [items, loading]); // ← re-ejecutar cuando cambia el contenido
 
   const scrollToTop = () => {
     mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -758,6 +766,20 @@ export default function WorkspaceMatrizPage() {
       return true;
     });
   }, [items, filtros]);
+
+  // Forzar recálculo de botones flotantes cuando cambia el contenido (items, filtros, expansión)
+  useEffect(() => {
+    const container = mainContainerRef.current;
+    if (!container) return;
+    const timeoutId = setTimeout(() => {
+      const scrollTop = container.scrollTop;
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+      setShowScrollTop(scrollTop > 50);
+      setShowScrollBottom(scrollTop + clientHeight < scrollHeight - 50);
+    }, 150);
+    return () => clearTimeout(timeoutId);
+  }, [items, itemsFiltrados, expandAll]);
 
   const hasActiveFilters = Object.values(filtros.norma).some(v => typeof v === 'string' ? v !== '' : (v as string[]).length > 0) || Object.values(filtros.dinamicos).some(v => v !== '') || filtros.evidencia !== '';
 
@@ -1699,7 +1721,7 @@ export default function WorkspaceMatrizPage() {
         {showScrollTop && (
           <button
             onClick={scrollToTop}
-            className="fixed bottom-6 right-6 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
+            className="fixed bottom-20 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
             title="Ir arriba"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
@@ -1708,7 +1730,7 @@ export default function WorkspaceMatrizPage() {
         {showScrollBottom && (
           <button
             onClick={scrollToBottom}
-            className="fixed bottom-6 right-6 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
+            className="fixed bottom-6 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
             title="Ir abajo"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>

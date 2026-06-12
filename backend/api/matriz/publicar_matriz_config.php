@@ -33,11 +33,11 @@ $database = new Database();
 $db = $database->getConnection();
 
 try {
-    // 1. Iniciamos la Transacción (Seguridad ACID)
     $db->beginTransaction();
 
-    // 2. Obtenemos los datos de la matriz que queremos publicar
-    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz FROM matriz WHERE id_matriz = :id_matriz FOR UPDATE";
+    // 1. Obtener datos de la matriz
+    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, version 
+                   FROM matriz WHERE id_matriz = :id_matriz FOR UPDATE";
     $stmt_info = $db->prepare($query_info);
     $stmt_info->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_info->execute();
@@ -47,8 +47,7 @@ try {
         throw new Exception("La matriz solicitada no existe.");
     }
 
-    // 3. ARCHIVAMOS LA MATRIZ ANTERIOR (Si existe)
-    // Archivamos solo matrices del mismo tipo, misma especialidad y misma sede que estuvieran publicadas (id_estado_matriz = 2)
+    // 2. Archivar versión anterior publicada
     $query_archivar = "UPDATE matriz 
                        SET id_estado_matriz = 3, vigente = 0 
                        WHERE id_cliente_establecimiento = :est 
@@ -56,7 +55,6 @@ try {
                          AND id_especialidad_matriz = :especialidad
                          AND id_estado_matriz = 2 
                          AND id_matriz != :id_matriz";
-    
     $stmt_archivar = $db->prepare($query_archivar);
     $stmt_archivar->bindParam(":est", $matriz_actual['id_cliente_establecimiento'], PDO::PARAM_INT);
     $stmt_archivar->bindParam(":tipo", $matriz_actual['id_tipo_matriz'], PDO::PARAM_INT);
@@ -64,24 +62,100 @@ try {
     $stmt_archivar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_archivar->execute();
 
-    // 4. PUBLICAMOS LA NUEVA MATRIZ (Corregido a estado = 2)
+    // 3. Publicar la nueva matriz
     $query_publicar = "UPDATE matriz 
                        SET id_estado_matriz = 2, vigente = 1, config_columnas = :config 
                        WHERE id_matriz = :id_matriz";
-              
     $stmt_publicar = $db->prepare($query_publicar);
     $stmt_publicar->bindParam(":config", $config_string, PDO::PARAM_STR);
     $stmt_publicar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_publicar->execute();
 
-    // 5. Si todo salió bien, confirmamos los cambios en la Base de Datos
-    $db->commit();
+    // 4. --- DISPARADOR DE ALERTA: nueva versión publicada ---
+    // He validado que la matriz tiene cliente asociado
+    $query_cliente = "SELECT ce.id_cliente 
+                      FROM matriz m
+                      JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
+                      WHERE m.id_matriz = :id_matriz";
+    $stmt_cliente = $db->prepare($query_cliente);
+    $stmt_cliente->execute([':id_matriz' => $id_matriz]);
+    $id_cliente = $stmt_cliente->fetchColumn();
+    
+    if ($id_cliente) {
+        // Obtener nombre de la matriz para el mensaje
+        $query_nombre = "SELECT CONCAT(tm.descripcion, ' - ', em.descripcion, ' - ', ce.descripcion) as nombre_matriz
+                         FROM matriz m
+                         JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
+                         JOIN especialidad_matriz em ON m.id_especialidad_matriz = em.id_especialidad_matriz
+                         JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
+                         WHERE m.id_matriz = :id_matriz";
+        $stmt_nombre = $db->prepare($query_nombre);
+        $stmt_nombre->execute([':id_matriz' => $id_matriz]);
+        $nombre_matriz = $stmt_nombre->fetchColumn();
+        $nombre_matriz = $nombre_matriz ?: "Matriz ID $id_matriz";
+        
+        $version = $matriz_actual['version'];
+        $titulo = "Nueva versión de matriz publicada";
+        $mensaje = "La matriz \"{$nombre_matriz}\" ha sido publicada en su versión {$version}.0. Ya está disponible para consulta.";
+        $url = "/dashboard/matrices/{$id_matriz}";
+        
+        $stmt_alerta = $db->prepare("INSERT INTO alerta (id_cliente, id_matriz, tipo, titulo, mensaje, url, fecha_creacion, leido)
+                                     VALUES (:id_cliente, :id_matriz, 'nueva_version_matriz', :titulo, :mensaje, :url, NOW(), 0)");
+        $stmt_alerta->execute([
+            ':id_cliente' => $id_cliente,
+            ':id_matriz' => $id_matriz,
+            ':titulo' => $titulo,
+            ':mensaje' => $mensaje,
+            ':url' => $url
+        ]);
+    }
+    
+    // 5. --- OPCIONAL: verificar vencimientos próximos inmediatamente ---
+    // He implementado la creación de alertas de vencimiento próximo (≤30 días) si no existe una similar en los últimos 7 días
+    $query_vencimientos = "SELECT im.id_item_matriz, im.vencimiento_plazo, im.resumen_legal
+                           FROM item_matriz im
+                           WHERE im.id_matriz = :id_matriz
+                             AND im.vencimiento_plazo IS NOT NULL
+                             AND im.vencimiento_plazo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
+    $stmt_venc = $db->prepare($query_vencimientos);
+    $stmt_venc->execute([':id_matriz' => $id_matriz]);
+    $items_venc = $stmt_venc->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($items_venc as $item) {
+        // Evitar duplicados: alerta del mismo tipo, mismo ítem, creada en los últimos 7 días
+        $check_duplicate = "SELECT COUNT(*) FROM alerta 
+                            WHERE id_item_matriz = :id_item 
+                              AND tipo = 'vencimiento_proximo' 
+                              AND fecha_creacion > DATE_SUB(NOW(), INTERVAL 7 DAY)";
+        $stmt_check = $db->prepare($check_duplicate);
+        $stmt_check->execute([':id_item' => $item['id_item_matriz']]);
+        $existe = $stmt_check->fetchColumn();
+        
+        if (!$existe && $id_cliente) {
+            $dias = (new DateTime($item['vencimiento_plazo']))->diff(new DateTime())->days;
+            $titulo_venc = "Vencimiento próximo";
+            $mensaje_venc = "El ítem \"{$item['resumen_legal']}\" tiene vencimiento el {$item['vencimiento_plazo']} (dentro de {$dias} días).";
+            $url_venc = "/dashboard/matrices/{$id_matriz}?item={$item['id_item_matriz']}";
+            
+            $stmt_insert_venc = $db->prepare("INSERT INTO alerta (id_cliente, id_matriz, id_item_matriz, tipo, titulo, mensaje, url, fecha_creacion, leido)
+                                              VALUES (:id_cliente, :id_matriz, :id_item, 'vencimiento_proximo', :titulo, :mensaje, :url, NOW(), 0)");
+            $stmt_insert_venc->execute([
+                ':id_cliente' => $id_cliente,
+                ':id_matriz' => $id_matriz,
+                ':id_item' => $item['id_item_matriz'],
+                ':titulo' => $titulo_venc,
+                ':mensaje' => $mensaje_venc,
+                ':url' => $url_venc
+            ]);
+        }
+    }
+    // --- Fin verificación vencimientos ---
 
+    $db->commit();
     http_response_code(200);
     echo json_encode(["mensaje" => "Matriz publicada exitosamente. La versión anterior ha sido archivada."]);
 
 } catch (Exception $e) {
-    // Si algo falla, revertimos TODO (Rollback). Ningún dato queda a medias.
     $db->rollBack();
     http_response_code(500);
     echo json_encode(["mensaje" => "Error interno al publicar.", "error" => $e->getMessage()]);

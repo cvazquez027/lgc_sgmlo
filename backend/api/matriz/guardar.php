@@ -42,6 +42,34 @@ if ($date_obj && $date_obj->format('Y-m-d') === $data->fecha_desde) {
 try {
     $db->beginTransaction();
 
+    // *** VALIDACIÓN DE UNICIDAD PARA BORRADORES ***
+    // He validado que no exista otra matriz en estado BORRADOR (id_estado_matriz = 1)
+    // con la misma combinación de establecimiento, especialidad y tipo.
+    $queryCheck = "SELECT COUNT(*) FROM matriz 
+                   WHERE id_cliente_establecimiento = :est
+                     AND id_especialidad_matriz = :esp
+                     AND id_tipo_matriz = :tipo
+                     AND id_estado_matriz = 1"; // Solo borradores
+    if ($id_matriz) {
+        $queryCheck .= " AND id_matriz != :id_matriz";
+    }
+    $stmtCheck = $db->prepare($queryCheck);
+    $stmtCheck->bindParam(':est', $id_cliente_establecimiento, PDO::PARAM_INT);
+    $stmtCheck->bindParam(':esp', $id_especialidad_matriz, PDO::PARAM_INT);
+    $stmtCheck->bindParam(':tipo', $id_tipo_matriz, PDO::PARAM_INT);
+    if ($id_matriz) {
+        $stmtCheck->bindParam(':id_matriz', $id_matriz, PDO::PARAM_INT);
+    }
+    $stmtCheck->execute();
+    $existeBorrador = $stmtCheck->fetchColumn();
+
+    if ($existeBorrador > 0) {
+        $db->rollBack();
+        http_response_code(409);
+        echo json_encode(["mensaje" => "Ya existe una matriz en estado BORRADOR para la misma combinación de establecimiento, especialidad y tipo. No se puede crear otra hasta que la actual sea publicada o eliminada."]);
+        exit();
+    }
+
     if ($id_matriz) {
         // Edición: no se modifica la versión
         $query = "UPDATE matriz SET 
@@ -119,9 +147,7 @@ try {
     if ($db->inTransaction()) $db->rollBack();
     if ($e->getCode() == 23000) {
         http_response_code(409);
-        echo json_encode([
-            "mensaje" => "Error: Ya existe una Matriz con esta combinación para la especialidad y sede seleccionada. Por favor, asigne un número de versión superior (el sistema lo hace automáticamente)."
-        ]);
+        echo json_encode(["mensaje" => "Error: Ya existe una Matriz para la especialidad, tipo y sede seleccionados."]);
     } else {
         http_response_code(500);
         echo json_encode(["mensaje" => "Error de base de datos.", "error" => $e->getMessage()]);
