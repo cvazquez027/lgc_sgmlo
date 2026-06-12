@@ -254,6 +254,11 @@ export default function NormativaOficialPage() {
   const [searchCat, setSearchCat] = useState("");
   const [savingCategorias, setSavingCategorias] = useState(false);
 
+  // Estados para el modal de eliminación
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [normaToDelete, setNormaToDelete] = useState<Norma | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -365,6 +370,38 @@ export default function NormativaOficialPage() {
       }
     } catch (err) {
       console.error("Error al cargar categorías:", err);
+    }
+  };
+
+  const confirmDelete = (norma: Norma) => {
+    setNormaToDelete(norma);
+    setShowDeleteModal(true);
+  };
+
+  const handleDelete = async () => {
+    if (!normaToDelete) return;
+    setDeleting(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/eliminar.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ id_norma: normaToDelete.id_norma })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // He eliminado la norma correctamente, refresco la lista
+        await fetchData();
+        setShowDeleteModal(false);
+        setNormaToDelete(null);
+      } else {
+        alert(data.mensaje || "Error al eliminar la norma.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error de conexión al eliminar.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -508,7 +545,7 @@ export default function NormativaOficialPage() {
         </div>
       </div>
 
-      {/* PANEL DE FILTROS AVANZADOS - NUEVA DISPOSICIÓN */}
+      {/* PANEL DE FILTROS AVANZADOS */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 transition-all overflow-hidden relative z-20">
          <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
             <div className="flex items-center gap-3">
@@ -524,7 +561,6 @@ export default function NormativaOficialPage() {
                 <div className="space-y-5">
                   {/* Primera fila: Tipo Norma, Nro, Año */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {/* Tipo de Norma (combo) */}
                     <select 
                       className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" 
                       value={filtros.tipo} 
@@ -534,7 +570,6 @@ export default function NormativaOficialPage() {
                        {tipos.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
                     </select>
 
-                    {/* Número de Norma */}
                     <input 
                       type="text" 
                       placeholder="Nro de Norma" 
@@ -543,7 +578,6 @@ export default function NormativaOficialPage() {
                       onChange={e => setFiltros({...filtros, nro: e.target.value})} 
                     />
                     
-                    {/* Año (solo números, 4 dígitos) */}
                     <input 
                       type="text" 
                       placeholder="Año" 
@@ -557,7 +591,6 @@ export default function NormativaOficialPage() {
 
                   {/* Segunda fila: Nivel Jurisdiccional, Jurisdicción, Emisor */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {/* Nivel Jurisdiccional (combo simple, sin escritura) */}
                     <select 
                       className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer"
                       value={filtros.nivel} 
@@ -567,7 +600,6 @@ export default function NormativaOficialPage() {
                       {niveles.map(n => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
                     </select>
                     
-                    {/* Jurisdicción (buscable) */}
                     <SearchableSelect 
                       options={jurisdiccionesDisponibles} 
                       value={filtros.jurisdiccion} 
@@ -575,7 +607,6 @@ export default function NormativaOficialPage() {
                       placeholder="Jurisdicción..." 
                     />
                     
-                    {/* Emisor (buscable) */}
                     <SearchableSelect 
                       options={emisores} 
                       value={filtros.emisor} 
@@ -584,7 +615,7 @@ export default function NormativaOficialPage() {
                     />
                   </div>
 
-                  {/* Tercera fila: Categorías (multiselect) ocupando todo el ancho */}
+                  {/* Tercera fila: Categorías (multiselect) */}
                   <div className="grid grid-cols-1">
                     <MultiSelectCategorias 
                       options={categoriasGlobales} 
@@ -698,6 +729,13 @@ export default function NormativaOficialPage() {
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                           </button>
+                          <button 
+                            onClick={() => confirmDelete(norma)}
+                            className="text-slate-400 hover:text-red-500 bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md"
+                            title="Eliminar Norma"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
                         </div>
                       )}
                     </td>
@@ -709,7 +747,7 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA (sin cambios) */}
+      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA */}
       {isModalOpen && canEdit("normativa") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -785,7 +823,7 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) */}
+      {/* MODAL ASIGNACIÓN DE CATEGORÍAS */}
       {isCategoriasModalOpen && normaSeleccionada && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
@@ -897,6 +935,34 @@ export default function NormativaOficialPage() {
                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
                  )}
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
+      {showDeleteModal && normaToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">Confirmar eliminación</h2>
+              <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-700 text-sm">
+                ¿Está seguro que desea eliminar la norma <strong>{normaToDelete.tipo_norma_desc} {normaToDelete.numero}</strong>?
+                {normaToDelete.categorias && normaToDelete.categorias.length > 0 && (
+                  <span className="block mt-2 text-xs text-amber-600">Se eliminarán también las categorías asociadas.</span>
+                )}
+              </p>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-xs uppercase font-bold shadow-md disabled:opacity-50">
+                  {deleting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
