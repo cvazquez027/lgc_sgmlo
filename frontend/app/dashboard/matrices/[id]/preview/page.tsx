@@ -162,6 +162,7 @@ export default function PreviewMatrizPage() {
     }
   };
 
+  // FUNCIÓN HANDLECOPIAR MODIFICADA PARA MOSTRAR ERROR DEL BACKEND
   const handleCopiar = async () => {
     if (!confirm(`¿Crear una nueva versión en BORRADOR copiando esta matriz? Se clonarán todos los ítems y normativas. La versión actual (${headerInfo?.version}.0) seguirá publicada hasta que la nueva versión sea publicada.`)) return;
 
@@ -178,6 +179,7 @@ export default function PreviewMatrizPage() {
             alert(`Nueva versión ${data.version}.0 creada en borrador (#${data.id_matriz}). Serás redirigido al nuevo workspace.`);
             router.push(`/dashboard/matrices/${data.id_matriz}`);
         } else {
+            // He mejorado el mensaje de error: se muestra el mensaje devuelto por el backend
             alert("Error al copiar: " + (data.mensaje || "Error desconocido"));
         }
     } catch (error) {
@@ -449,7 +451,7 @@ export default function PreviewMatrizPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
               {items.length === 0 ? (
-                <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
+                 <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
               ) : (
                 items.map((item, idx) => (
                   <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">

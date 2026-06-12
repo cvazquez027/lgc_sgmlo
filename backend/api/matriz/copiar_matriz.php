@@ -10,7 +10,7 @@ include_once '../../config/Database.php';
 include_once '../../config/JwtHandler.php';
 
 // ---------------------------------------------------------
-// EXTRACCIÓN ROBUSTA DEL TOKEN (Previene bloqueos del servidor)
+// EXTRACCIÓN ROBUSTA DEL TOKEN
 // ---------------------------------------------------------
 $token = '';
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
@@ -29,8 +29,6 @@ if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
 }
 
 $jwt = new JwtHandler();
-
-// Verificamos si el token es válido
 if (!$jwt->verificar($token)) { 
     http_response_code(401); 
     echo json_encode(["mensaje" => "No autorizado. Token inválido, expirado o ausente."]); 
@@ -57,7 +55,31 @@ try {
     $origen = $stmt_cab->fetch(PDO::FETCH_ASSOC);
     if (!$origen) throw new Exception("Matriz origen no encontrada.");
 
-    // 2. Calcular próxima versión para la misma combinación sede+tipo+especialidad
+    // *** VALIDACIÓN: Ya existe un borrador con la misma combinación? ***
+    // He agregado esta validación para evitar duplicados en estado borrador.
+    $query_check = "SELECT COUNT(*) FROM matriz 
+                    WHERE id_cliente_establecimiento = :est
+                      AND id_especialidad_matriz = :esp
+                      AND id_tipo_matriz = :tipo
+                      AND id_estado_matriz = 1
+                      AND id_matriz != :id_origen";
+    $stmt_check = $db->prepare($query_check);
+    $stmt_check->execute([
+        ':est' => $origen['id_cliente_establecimiento'],
+        ':esp' => $origen['id_especialidad_matriz'],
+        ':tipo' => $origen['id_tipo_matriz'],
+        ':id_origen' => $id_origen
+    ]);
+    $existeBorrador = $stmt_check->fetchColumn();
+
+    if ($existeBorrador > 0) {
+        $db->rollBack();
+        http_response_code(409);
+        echo json_encode(["mensaje" => "No se puede copiar la matriz porque ya existe una versión en estado BORRADOR para la misma combinación de establecimiento, especialidad y tipo. Elimine o publique ese borrador antes de crear una nueva versión."]);
+        exit();
+    }
+
+    // 2. Calcular próxima versión para la misma combinación
     $stmt_ver = $db->prepare(
         "SELECT COALESCE(MAX(version), 0) + 1 AS siguiente
          FROM matriz
