@@ -17,13 +17,14 @@ $token = null;
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
 }
-if (!$jwt->verificar($token)) {
+// He verificado que el token sea válido y obtengo el payload directamente
+$payload = $jwt->verificar($token);
+if (!$payload) {
     http_response_code(401);
     echo json_encode(["mensaje" => "No autorizado."]);
     exit();
 }
 
-$payload = $jwt->obtenerPayload($token);
 $id_cliente = $payload->id_cliente ?? null;
 if (!$id_cliente) {
     echo json_encode(["alertas" => []]);

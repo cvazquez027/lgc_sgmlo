@@ -17,13 +17,14 @@ $token = null;
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
 }
-if (!$jwt->verificar($token)) {
+// He verificado que el token sea válido y obtengo el payload directamente
+$payload = $jwt->verificar($token);
+if (!$payload) {
     http_response_code(401);
     echo json_encode(["mensaje" => "No autorizado."]);
     exit();
 }
 
-$payload = $jwt->obtenerPayload($token);
 $id_cliente = $payload->id_cliente ?? null;
 if (!$id_cliente) {
     echo json_encode(["vencimientos" => []]);
@@ -36,9 +37,11 @@ $db = $database->getConnection();
 $fecha_hoy = date('Y-m-d');
 $dias_limite = 30;
 
+// He corregido la consulta: no usar "nombre_fantasia" en matriz porque esa columna no existe
+// Se debe obtener el nombre de la matriz desde las tablas relacionadas
 $query = "SELECT 
             m.id_matriz,
-            m.nombre_fantasia AS nombre_matriz,
+            CONCAT(tm.descripcion, ' - ', em.descripcion, ' - ', ce.descripcion) AS nombre_matriz,
             im.id_item_matriz,
             im.resumen_legal AS item_resumen,
             im.vencimiento_plazo,
@@ -49,11 +52,13 @@ $query = "SELECT
           JOIN matriz m ON im.id_matriz = m.id_matriz
           JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
           JOIN cliente c ON ce.id_cliente = c.id_cliente
+          JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
+          JOIN especialidad_matriz em ON m.id_especialidad_matriz = em.id_especialidad_matriz
           LEFT JOIN estado_cumplimiento ec ON im.id_estado_cumplimiento = ec.id_estado_cumplimiento
           WHERE c.id_cliente = :id_cliente
             AND m.id_estado_matriz = 2
             AND im.vencimiento_plazo IS NOT NULL
-            AND (im.vencimiento_plazo <= DATE_ADD(CURDATE(), INTERVAL :dias_limite DAY))
+            AND im.vencimiento_plazo <= DATE_ADD(CURDATE(), INTERVAL :dias_limite DAY)
           ORDER BY im.vencimiento_plazo ASC";
 $stmt = $db->prepare($query);
 $stmt->bindParam(':id_cliente', $id_cliente, PDO::PARAM_INT);

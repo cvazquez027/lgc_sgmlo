@@ -1,13 +1,13 @@
 <?php
 // cron_alertas.php – Ejecutar diariamente (por ejemplo, a las 6 AM)
-// Configuración de conexión a BD (puedes incluir Database.php)
+// Configuración de conexión a BD
 require_once '../../config/Database.php';
 
 $database = new Database();
 $db = $database->getConnection();
 
-// 1. Obtener todas las matrices publicadas (id_estado_matriz = 2)
-$query_matrices = "SELECT m.id_matriz, m.id_cliente_establecimiento, c.id_cliente, c.nombre_fantasia
+// He corregido la consulta: obtener matrices publicadas sin usar nombre_fantasia en matriz
+$query_matrices = "SELECT m.id_matriz, m.id_cliente_establecimiento, c.id_cliente
                    FROM matriz m
                    JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
                    JOIN cliente c ON ce.id_cliente = c.id_cliente
@@ -22,12 +22,10 @@ $dias_proximos = 30;
 foreach ($matrices as $mat) {
     $id_matriz = $mat['id_matriz'];
     $id_cliente = $mat['id_cliente'];
-    $nombre_cliente = $mat['nombre_fantasia'];
 
     // --- Alertas por vencimiento de ítems ---
-    $query_items = "SELECT id_item_matriz, vencimiento_plazo, resumen_legal, estado_cumplimiento_desc
-                    FROM item_matriz im
-                    LEFT JOIN estado_cumplimiento ec ON im.id_estado_cumplimiento = ec.id_estado_cumplimiento
+    $query_items = "SELECT id_item_matriz, vencimiento_plazo, resumen_legal
+                    FROM item_matriz
                     WHERE id_matriz = :id_matriz AND vencimiento_plazo IS NOT NULL";
     $stmt_items = $db->prepare($query_items);
     $stmt_items->bindParam(':id_matriz', $id_matriz, PDO::PARAM_INT);
