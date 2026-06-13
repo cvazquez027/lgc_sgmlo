@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
+import { useToast } from "../../providers/ToastProvider";
+import { useConfirm } from "../../providers/ConfirmProvider";
 
 interface Usuario {
   id_usuario: number;
@@ -47,9 +49,11 @@ export default function UsuariosPage() {
   const router = useRouter();
 
   const { canRead, canEdit } = usePermissions();
-  const canViewAudit = canRead("auditoria"); // Ajusta según tu permiso real
-  const [isCheckingPerms, setIsCheckingPerms] = useState(true);
+  const canViewAudit = canRead("auditoria");
+  const toast = useToast();
+  const confirm = useConfirm(); // reservado para futuras acciones destructivas
 
+  const [isCheckingPerms, setIsCheckingPerms] = useState(true);
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditoriaLog | null>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
@@ -84,6 +88,7 @@ export default function UsuariosPage() {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const dataUser = await resUser.json();
+      if (!resUser.ok) throw new Error(dataUser.mensaje || "Error al cargar usuarios");
       setUsuarios(dataUser.registros || []);
 
       const resRoles = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles/leer.php`, {
@@ -100,10 +105,11 @@ export default function UsuariosPage() {
 
     } catch (err: any) {
       console.error(err);
+      toast.showToast("Error", err.message || "Error al cargar datos", "error");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, toast]);
 
   const fetchAuditoria = useCallback(async () => {
     if (!canViewAudit) return;
@@ -115,15 +121,16 @@ export default function UsuariosPage() {
         headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
-      console.log("Respuesta de auditoría:", data); // Depuración
+      if (!res.ok) throw new Error(data.mensaje || "Error al cargar auditoría");
       setLogs(data.registros || []);
     } catch (err: any) {
       console.error("Error cargando auditoría", err);
+      toast.showToast("Error", err.message, "error");
       setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [canViewAudit, router]);
+  }, [canViewAudit, router, toast]);
 
   useEffect(() => {
     if (!isCheckingPerms && canRead("usuarios")) {
@@ -136,14 +143,20 @@ export default function UsuariosPage() {
   }, [fetchData, fetchAuditoria, isCheckingPerms, canRead, activeTab, canViewAudit]);
 
   const openCrearModal = () => {
-    if (!canEdit("usuarios")) return; 
+    if (!canEdit("usuarios")) {
+      toast.showToast("Permiso denegado", "No tienes permiso para crear usuarios", "warning");
+      return;
+    }
     setModalMode("crear");
     setFormData({ id_usuario: "", nombre: "", apellido: "", email: "", password: "", id_rol: "", id_cliente: "", vigente: 1 });
     setIsModalOpen(true);
   };
 
   const openEditarModal = (user: Usuario) => {
-    if (!canEdit("usuarios")) return;
+    if (!canEdit("usuarios")) {
+      toast.showToast("Permiso denegado", "No tienes permiso para editar usuarios", "warning");
+      return;
+    }
     setModalMode("editar");
     const nombres = user.nombre_completo.split(" ");
     const rolId = roles.find(r => r.descripcion === user.rol_nombre)?.id_rol.toString() || "";
@@ -163,7 +176,10 @@ export default function UsuariosPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit("usuarios")) return;
+    if (!canEdit("usuarios")) {
+      toast.showToast("Permiso denegado", "No tienes permiso para realizar esta acción", "warning");
+      return;
+    }
 
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
@@ -181,11 +197,11 @@ export default function UsuariosPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error en la operación");
 
-      alert(data.mensaje);
+      toast.showToast("Éxito", data.mensaje || "Usuario guardado correctamente", "success");
       setIsModalOpen(false);
       fetchData(); 
     } catch (err: any) {
-      alert("Error crítico: " + err.message);
+      toast.showToast("Error", err.message, "error");
     } finally {
       setFormLoading(false);
     }
@@ -215,19 +231,21 @@ export default function UsuariosPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        <div className="flex items-center gap-3">
+    <div className="space-y-4 animate-fade-in">
+      {/* HEADER UNIFICADO (estilo Matrices) */}
+      <div className="bg-[#005F78] text-white flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4 border-b border-[#004D62] rounded-t-xl">
+        <div className="flex items-center gap-4">
           <Link 
             href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
             title="Volver al inicio"
           >
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
-          <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
+          <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+          <h1 className="text-xl font-heading font-bold uppercase tracking-tight m-0 leading-none">
             Gestión de Usuarios y Seguridad
           </h1>
         </div>
@@ -235,9 +253,10 @@ export default function UsuariosPage() {
         {activeTab === "usuarios" && canEdit("usuarios") && (
           <button 
             onClick={openCrearModal}
-            className="bg-lgc-primary hover:bg-lgc-accent text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest"
+            className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2"
           >
-            + Nuevo Usuario
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
+            Nuevo Usuario
           </button>
         )}
       </div>
@@ -374,8 +393,6 @@ export default function UsuariosPage() {
                       <td className="p-3">
                         <button
                           onClick={() => {
-                            console.log("Log seleccionado:", log);
-                            console.log("datos_json:", log.datos_json);
                             setSelectedAuditLog(log);
                             setIsAuditModalOpen(true);
                           }}
@@ -480,7 +497,7 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Modal para visualizar JSON de auditoría (con depuración) */}
+      {/* Modal para visualizar JSON de auditoría */}
       {isAuditModalOpen && selectedAuditLog && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">

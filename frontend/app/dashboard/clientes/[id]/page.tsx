@@ -2,10 +2,13 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useToast } from "../../../providers/ToastProvider";
+import { useConfirm } from "../../../providers/ConfirmProvider";
 
 interface DatoContacto {
   id_tipo_contacto: string;
@@ -19,7 +22,7 @@ interface Establecimiento {
   id_jurisdiccion: number;
   vigente: number;
   contactos?: DatoContacto[];
-  categorias?: { id_categoria: number; descripcion: string }[]; // <-- NUEVO
+  categorias?: { id_categoria: number; descripcion: string }[];
 }
 
 interface Jurisdiccion {
@@ -45,40 +48,40 @@ interface Responsable {
 }
 
 // Subcomponente para el Drag and Drop de las categorías asignadas
-const SortableCategoriaItem = ({ cat, onRemove }: { cat: Categoria, onRemove: (id: number) => void }) => {
+const SortableCategoriaItem = ({ cat, onRemove }: { cat: Categoria; onRemove: (id: number) => void }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id_categoria });
-  const style = { 
-    transform: CSS.Transform.toString(transform), 
-    transition, 
-    zIndex: isDragging ? 50 : 1, 
-    opacity: isDragging ? 0.5 : 1, 
-    position: isDragging ? 'relative' as 'relative' : 'static' as 'static' 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 1,
+    opacity: isDragging ? 0.5 : 1,
+    position: isDragging ? ('relative' as const) : ('static' as const),
   };
   
   return (
     <div ref={setNodeRef} style={style} className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm mb-2 group hover:border-lgc-primary transition-colors">
-       <div className="flex items-center gap-3">
-         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-lgc-primary touch-none">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
-         </div>
-         <span className="text-xs font-bold text-slate-700">{cat.descripcion}</span>
-       </div>
-       <button onClick={() => onRemove(cat.id_categoria)} className="text-slate-300 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded" title="Quitar categoría">
-         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-       </button>
+      <div className="flex items-center gap-3">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-lgc-primary touch-none">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+        </div>
+        <span className="text-xs font-bold text-slate-700">{cat.descripcion}</span>
+      </div>
+      <button onClick={() => onRemove(cat.id_categoria)} className="text-slate-300 hover:text-red-500 transition-colors bg-slate-50 hover:bg-red-50 p-1.5 rounded" title="Quitar categoría">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
     </div>
   );
 };
 
 // Subcomponente para el Drag and Drop de los responsables
-const SortableResponsableItem = ({ resp, onEdit, onDelete }: { resp: Responsable, onEdit: (r: Responsable) => void, onDelete: (id: number) => void }) => {
+const SortableResponsableItem = ({ resp, onEdit, onDelete }: { resp: Responsable; onEdit: (r: Responsable) => void; onDelete: (id: number) => void }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: resp.id_responsable_establecimiento });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : 1,
     opacity: isDragging ? 0.5 : 1,
-    position: isDragging ? 'relative' as 'relative' : 'static' as 'static'
+    position: isDragging ? ('relative' as const) : ('static' as const),
   };
 
   return (
@@ -111,7 +114,6 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar menú al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -122,7 +124,6 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Opciones filtradas: excluir ya seleccionadas y que coincidan con query
   const filtered = options.filter((o: any) => {
     const matchesQuery = o.descripcion?.toLowerCase().includes(query.toLowerCase());
     const alreadySelected = selected.some((s: any) => s.id_categoria === o.id_categoria);
@@ -133,15 +134,13 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
     if (!selected.some((s: any) => s.id_categoria === cat.id_categoria)) {
       onChange([...selected, cat]);
     }
-    setQuery("");        // Limpiar búsqueda
-    setIsOpen(false);    // Cerrar menú
-    // Mantener el foco en el input para seguir escribiendo
+    setQuery("");
+    setIsOpen(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const removeTag = (cat: any) => {
     onChange(selected.filter((s: any) => s.id_categoria !== cat.id_categoria));
-    // Al quitar una categoría, reabrir menú si hay query o estaba abierto
     if (!isOpen) setIsOpen(true);
   };
 
@@ -151,7 +150,7 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
-    if (!isOpen) setIsOpen(true);  // Si estaba cerrado, lo abrimos al escribir
+    if (!isOpen) setIsOpen(true);
   };
 
   return (
@@ -190,10 +189,11 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
 };
 
 export default function EstablecimientosPage() {
-  const { id } = useParams(); 
+  const { id } = useParams();
   const router = useRouter();
-  
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
   useEffect(() => {
@@ -204,30 +204,28 @@ export default function EstablecimientosPage() {
   const [establecimientos, setEstablecimientos] = useState<Establecimiento[]>([]);
   const [jurisdicciones, setJurisdicciones] = useState<Jurisdiccion[]>([]);
   const [tiposContacto, setTiposContacto] = useState<TipoContacto[]>([]);
-  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]); // <-- para filtros
-  
-  const [clienteActual, setClienteActual] = useState<{ nombre_fantasia: string, logo_path: string | null } | null>(null);
-  
+  const [todasLasCategorias, setTodasLasCategorias] = useState<Categoria[]>([]);
+  const [clienteActual, setClienteActual] = useState<{ nombre_fantasia: string; logo_path: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-  
-  const [formData, setFormData] = useState({ 
-    id_cliente_establecimiento: "", 
-    id_jurisdiccion: "", 
-    descripcion: "", 
+
+  const [formData, setFormData] = useState({
+    id_cliente_establecimiento: "",
+    id_jurisdiccion: "",
+    descripcion: "",
     vigente: 1,
-    contactos: [] as DatoContacto[]
+    contactos: [] as DatoContacto[],
   });
 
-  // --- NUEVOS ESTADOS PARA MODAL DE CATEGORÍAS ---
+  // Estados para modal de categorías
   const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [establecimientoSeleccionado, setEstablecimientoSeleccionado] = useState<Establecimiento | null>(null);
   const [categoriasAsignadas, setCategoriasAsignadas] = useState<Categoria[]>([]);
   const [searchCat, setSearchCat] = useState("");
   const [savingCategorias, setSavingCategorias] = useState(false);
 
-  // --- NUEVOS ESTADOS PARA MODAL DE RESPONSABLES ---
+  // Estados para modal de responsables
   const [isResponsablesModalOpen, setIsResponsablesModalOpen] = useState(false);
   const [establecimientoResponsables, setEstablecimientoResponsables] = useState<Establecimiento | null>(null);
   const [responsables, setResponsables] = useState<Responsable[]>([]);
@@ -235,13 +233,13 @@ export default function EstablecimientosPage() {
   const [savingResponsable, setSavingResponsable] = useState(false);
   const [formResponsable, setFormResponsable] = useState<{ id_responsable_establecimiento: string; descripcion: string; observacion: string; vigente: number } | null>(null);
 
-  // --- ESTADOS DE FILTROS ---
+  // Filtros
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filtros, setFiltros] = useState({
     descripcion: "",
     id_jurisdiccion: "",
-    vigente: "todos", // "todos", "1", "0"
-    categorias: [] as Categoria[] // array de objetos { id, descripcion }
+    vigente: "todos" as "todos" | "1" | "0",
+    categorias: [] as Categoria[],
   });
 
   const sensors = useSensors(
@@ -249,109 +247,103 @@ export default function EstablecimientosPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Cargar todas las categorías globales para usar en el filtro
   const fetchCategoriasGlobales = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, {
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       const cats = data.registros?.map((c: any) => ({
         id_categoria: c.id_categoria || c.id,
-        descripcion: c.descripcion
+        descripcion: c.descripcion,
       })) || [];
       setTodasLasCategorias(cats);
     } catch (err) {
       console.error("Error cargando categorías globales:", err);
+      toast.showToast("Error", "No se pudieron cargar las categorías.", "error");
     }
-  }, []);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
-    if (!token) { router.push("/"); return; }
+    if (!token) {
+      router.push("/");
+      return;
+    }
 
     try {
       setLoading(true);
-      
       const [resEst, resJur, resTipos, resClientes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${id}`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/jurisdicciones/leer.php`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_contacto`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer.php?id_cliente=${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/jurisdicciones/leer.php`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_contacto`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/clientes/leer.php`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
 
       const [dataEst, dataJur, dataTipos, dataClientes] = await Promise.all([
-        resEst.json(), resJur.json(), resTipos.json(), resClientes.json()
+        resEst.json(),
+        resJur.json(),
+        resTipos.json(),
+        resClientes.json(),
       ]);
 
-      // El backend ahora devuelve categorías en cada registro
       setEstablecimientos(dataEst.registros || []);
       setJurisdicciones(dataJur.registros || []);
       setTiposContacto(dataTipos.registros || []);
-      
+
       if (dataClientes.registros) {
         const clienteFind = dataClientes.registros.find((c: any) => c.id_cliente.toString() === id);
         if (clienteFind) {
           setClienteActual({
             nombre_fantasia: clienteFind.nombre_fantasia || clienteFind.razon_social,
-            logo_path: clienteFind.logo_path
+            logo_path: clienteFind.logo_path,
           });
         }
       }
-      
     } catch (error) {
       console.error("Error al sincronizar datos:", error);
+      toast.showToast("Error", "No se pudieron cargar los establecimientos.", "error");
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id, router, toast]);
 
-  useEffect(() => { 
+  useEffect(() => {
     if (!isCheckingPerms && canRead("clientes")) {
       fetchData();
       fetchCategoriasGlobales();
     }
   }, [fetchData, fetchCategoriasGlobales, isCheckingPerms, canRead]);
 
-  // Lógica de filtrado
   const establecimientosFiltrados = useMemo(() => {
-    return establecimientos.filter(est => {
-      // Filtro descripción
-      if (filtros.descripcion.trim() !== "" && !est.descripcion.toLowerCase().includes(filtros.descripcion.toLowerCase())) return false;
-      
-      // Filtro jurisdicción
+    return establecimientos.filter((est) => {
+      if (filtros.descripcion.trim() !== "" && !est.descripcion.toLowerCase().includes(filtros.descripcion.toLowerCase()))
+        return false;
       if (filtros.id_jurisdiccion !== "" && est.id_jurisdiccion.toString() !== filtros.id_jurisdiccion) return false;
-      
-      // Filtro estado vigente
       if (filtros.vigente !== "todos" && est.vigente.toString() !== filtros.vigente) return false;
-      
-      // Filtro categorías (AND: todas las categorías seleccionadas deben estar presentes)
       if (filtros.categorias.length > 0) {
-        const categoriasEst = est.categorias?.map(c => c.id_categoria) || [];
-        const todasPresentes = filtros.categorias.every(catFiltro => 
+        const categoriasEst = est.categorias?.map((c) => c.id_categoria) || [];
+        const todasPresentes = filtros.categorias.every((catFiltro) =>
           categoriasEst.includes(catFiltro.id_categoria)
         );
         if (!todasPresentes) return false;
       }
-      
       return true;
     });
   }, [establecimientos, filtros]);
 
-  const handleAddContacto = () => setFormData(prev => ({ ...prev, contactos: [...prev.contactos, { id_tipo_contacto: "", valor: "" }] }));
-  const handleRemoveContacto = (index: number) => setFormData(prev => ({ ...prev, contactos: prev.contactos.filter((_, i) => i !== index) }));
-  const handleContactoChange = (index: number, field: keyof DatoContacto, value: string) => {
-    setFormData(prev => {
-      const nuevosContactos = [...prev.contactos];
-      nuevosContactos[index] = { ...nuevosContactos[index], [field]: value };
-      return { ...prev, contactos: nuevosContactos };
-    });
-  };
-
   const getInputType = (id_tipo: string) => {
-    const tipo = tiposContacto.find(t => t.id_tipo_contacto.toString() === id_tipo);
+    const tipo = tiposContacto.find((t) => t.id_tipo_contacto.toString() === id_tipo);
     if (!tipo) return "text";
     const desc = tipo.descripcion.toLowerCase();
     if (desc.includes("mail")) return "email";
@@ -360,55 +352,82 @@ export default function EstablecimientosPage() {
     return "text";
   };
 
+  const handleAddContacto = () => {
+    setFormData((prev) => ({
+      ...prev,
+      contactos: [...prev.contactos, { id_tipo_contacto: "", valor: "" }],
+    }));
+  };
+
+  const handleRemoveContacto = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      contactos: prev.contactos.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleContactoChange = (index: number, field: keyof DatoContacto, value: string) => {
+    setFormData((prev) => {
+      const nuevosContactos = [...prev.contactos];
+      nuevosContactos[index] = { ...nuevosContactos[index], [field]: value };
+      return { ...prev, contactos: nuevosContactos };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit("clientes")) return;
-
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/guardar.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ ...formData, id_cliente: id }) 
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...formData, id_cliente: id }),
       });
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
+        toast.showToast("Éxito", "Establecimiento guardado correctamente.", "success");
       } else {
-        alert("Ocurrió un error al guardar la sede.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar la sede.", "error");
       }
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "Error de conexión al guardar.", "error");
     } finally {
       setFormLoading(false);
     }
   };
 
-  // --- LÓGICA DEL MODAL DE CATEGORÍAS ---
+  // MODAL DE CATEGORÍAS
   const abrirModalCategorias = async (est: Establecimiento) => {
     setEstablecimientoSeleccionado(est);
     setIsCategoriasModalOpen(true);
     setSearchCat("");
-    
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
-
     try {
-      // 1. Cargamos TODAS las categorías maestras
-      const resMaestras = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers: { "Authorization": `Bearer ${token}` } });
+      const resMaestras = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const dataMaestras = await resMaestras.json();
-      const todas = dataMaestras.registros?.map((c:any) => ({ id_categoria: c.id_categoria || c.id, descripcion: c.descripcion })) || [];
-      setTodasLasCategorias(todas); // Actualizar global también
+      const todas = dataMaestras.registros?.map((c: any) => ({
+        id_categoria: c.id_categoria || c.id,
+        descripcion: c.descripcion,
+      })) || [];
+      setTodasLasCategorias(todas);
 
-      // 2. Cargamos las categorías ya asignadas a este establecimiento
-      const resAsignadas = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer_categorias.php?id_cliente_establecimiento=${est.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
+      const resAsignadas = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/establecimientos/leer_categorias.php?id_cliente_establecimiento=${est.id_cliente_establecimiento}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       const dataAsignadas = await resAsignadas.json();
-      
       if (dataAsignadas.registros) {
         const asignadas = dataAsignadas.registros.map((c: any) => ({
           id_categoria: c.id_categoria,
-          descripcion: c.descripcion
+          descripcion: c.descripcion,
         }));
         setCategoriasAsignadas(asignadas);
       } else {
@@ -416,32 +435,33 @@ export default function EstablecimientosPage() {
       }
     } catch (err) {
       console.error("Error al cargar categorías:", err);
+      toast.showToast("Error", "No se pudieron cargar las categorías.", "error");
     }
+  };
+
+  const moverADerecha = (cat: Categoria) => {
+    setCategoriasAsignadas((prev) => [...prev, cat]);
+  };
+
+  const moverAIzquierda = (id_cat: number) => {
+    setCategoriasAsignadas((prev) => prev.filter((c) => c.id_categoria !== id_cat));
+  };
+
+  const moverTodasADerecha = (disponiblesFiltradas: Categoria[]) => {
+    setCategoriasAsignadas((prev) => [...prev, ...disponiblesFiltradas]);
+  };
+
+  const moverTodasAIzquierda = () => {
+    setCategoriasAsignadas([]);
   };
 
   const handleDragEndCategorias = (event: any) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      const oldIndex = categoriasAsignadas.findIndex(c => c.id_categoria === active.id);
-      const newIndex = categoriasAsignadas.findIndex(c => c.id_categoria === over.id);
+      const oldIndex = categoriasAsignadas.findIndex((c) => c.id_categoria === active.id);
+      const newIndex = categoriasAsignadas.findIndex((c) => c.id_categoria === over.id);
       setCategoriasAsignadas(arrayMove(categoriasAsignadas, oldIndex, newIndex));
     }
-  };
-
-  const moverADerecha = (cat: Categoria) => {
-    setCategoriasAsignadas(prev => [...prev, cat]);
-  };
-
-  const moverAIzquierda = (id_cat: number) => {
-    setCategoriasAsignadas(prev => prev.filter(c => c.id_categoria !== id_cat));
-  };
-
-  const moverTodasADerecha = (disponiblesFiltradas: Categoria[]) => {
-    setCategoriasAsignadas(prev => [...prev, ...disponiblesFiltradas]);
-  };
-
-  const moverTodasAIzquierda = () => {
-    setCategoriasAsignadas([]);
   };
 
   const guardarCategorias = async () => {
@@ -450,29 +470,30 @@ export default function EstablecimientosPage() {
     try {
       const payload = {
         id_cliente_establecimiento: establecimientoSeleccionado?.id_cliente_establecimiento,
-        categorias: categoriasAsignadas.map(c => c.id_categoria)
+        categorias: categoriasAsignadas.map((c) => c.id_categoria),
       };
-
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/establecimientos/guardar_categorias.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
       });
-
       if (res.ok) {
         setIsCategoriasModalOpen(false);
-        fetchData(); // Recargar para actualizar las categorías en la tabla
+        fetchData();
+        toast.showToast("Éxito", "Categorías guardadas correctamente.", "success");
       } else {
-        alert("Error al guardar categorías.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar categorías.", "error");
       }
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "Error de conexión al guardar categorías.", "error");
     } finally {
       setSavingCategorias(false);
     }
   };
 
-  // --- LÓGICA DEL MODAL DE RESPONSABLES ---
+  // MODAL DE RESPONSABLES
   const abrirModalResponsables = async (est: Establecimiento) => {
     setEstablecimientoResponsables(est);
     setIsResponsablesModalOpen(true);
@@ -485,12 +506,13 @@ export default function EstablecimientosPage() {
     const token = localStorage.getItem("sgml_token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${id_est}`, {
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setResponsables(data.registros || []);
     } catch (err) {
       console.error("Error al cargar responsables:", err);
+      toast.showToast("Error", "No se pudieron cargar los responsables.", "error");
     } finally {
       setLoadingResponsables(false);
     }
@@ -499,16 +521,16 @@ export default function EstablecimientosPage() {
   const handleDragEndResponsables = async (event: any) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = responsables.findIndex(r => r.id_responsable_establecimiento === active.id);
-    const newIndex = responsables.findIndex(r => r.id_responsable_establecimiento === over.id);
+    const oldIndex = responsables.findIndex((r) => r.id_responsable_establecimiento === active.id);
+    const newIndex = responsables.findIndex((r) => r.id_responsable_establecimiento === over.id);
     const reordenados = arrayMove(responsables, oldIndex, newIndex);
     setResponsables(reordenados);
     const token = localStorage.getItem("sgml_token");
     try {
       await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ accion: "reordenar", orden: reordenados.map(r => r.id_responsable_establecimiento) })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ accion: "reordenar", orden: reordenados.map((r) => r.id_responsable_establecimiento) }),
       });
     } catch (err) {
       console.error("Error al reordenar:", err);
@@ -516,23 +538,32 @@ export default function EstablecimientosPage() {
   };
 
   const handleEliminarResponsable = async (id: number) => {
+    const ok = await confirm({
+      title: "Eliminar responsable",
+      message: "¿Está seguro que desea eliminar este responsable? Si está vinculado a ítems de matrices, no podrá eliminarse.",
+      confirmText: "Eliminar",
+      cancelText: "Cancelar",
+    });
+    if (!ok) return;
     const token = localStorage.getItem("sgml_token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ accion: "borrar", id_responsable_establecimiento: id })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ accion: "borrar", id_responsable_establecimiento: id }),
       });
       const data = await res.json();
       if (res.status === 409) {
-        alert(`⚠️ ${data.mensaje}`);
+        toast.showToast("Atención", data.mensaje, "warning");
       } else if (res.ok) {
-        setResponsables(prev => prev.filter(r => r.id_responsable_establecimiento !== id));
+        setResponsables((prev) => prev.filter((r) => r.id_responsable_establecimiento !== id));
+        toast.showToast("Éxito", "Responsable eliminado correctamente.", "success");
       } else {
-        alert("Error al eliminar el responsable.");
+        toast.showToast("Error", data.mensaje || "Error al eliminar el responsable.", "error");
       }
     } catch (err) {
       console.error(err);
+      toast.showToast("Error", "Error de conexión al eliminar.", "error");
     }
   };
 
@@ -548,42 +579,45 @@ export default function EstablecimientosPage() {
         id_responsable_establecimiento: formResponsable.id_responsable_establecimiento || undefined,
         descripcion: formResponsable.descripcion,
         observacion: formResponsable.observacion,
-        vigente: formResponsable.vigente
+        vigente: formResponsable.vigente,
       };
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/guardar_responsable.php`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         setFormResponsable(null);
         await cargarResponsables(establecimientoResponsables.id_cliente_establecimiento);
+        toast.showToast("Éxito", "Responsable guardado correctamente.", "success");
       } else {
-        alert("Error al guardar el responsable.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar el responsable.", "error");
       }
     } catch (err) {
       console.error(err);
+      toast.showToast("Error", "Error de conexión al guardar.", "error");
     } finally {
       setSavingResponsable(false);
     }
   };
 
-  // Limpiar filtros
   const limpiarFiltros = () => {
     setFiltros({
       descripcion: "",
       id_jurisdiccion: "",
       vigente: "todos",
-      categorias: []
+      categorias: [],
     });
   };
 
-  // Verificar si hay filtros activos
   const hayFiltrosActivos = useMemo(() => {
-    return filtros.descripcion !== "" ||
-           filtros.id_jurisdiccion !== "" ||
-           filtros.vigente !== "todos" ||
-           filtros.categorias.length > 0;
+    return (
+      filtros.descripcion !== "" ||
+      filtros.id_jurisdiccion !== "" ||
+      filtros.vigente !== "todos" ||
+      filtros.categorias.length > 0
+    );
   }, [filtros]);
 
   if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
@@ -591,49 +625,65 @@ export default function EstablecimientosPage() {
 
   return (
     <div className="space-y-6 font-sans animate-fade-in">
-      <div className="flex items-center gap-4">
-        <button onClick={() => router.back()} className="text-slate-400 hover:text-lgc-primary transition-colors text-sm font-bold uppercase tracking-widest flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          Volver a Clientes
-        </button>
-      </div>
-
-      {/* HEADER CON FONDO PRINCIPAL */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-lgc-primary p-6 rounded-2xl shadow-lg gap-4">
-        <div className="flex items-center gap-4">
-          {clienteActual?.logo_path ? (
-            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
-              <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${clienteActual.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
-            </div>
-          ) : (
-            <div className="w-14 h-14 rounded-xl border border-slate-200 bg-white flex items-center justify-center shrink-0 shadow-sm">
-              <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-            </div>
-          )}
-          <div>
-            <h1 className="text-2xl font-heading text-white uppercase tracking-tight flex items-center gap-2">
-              ESTABLECIMIENTOS
-              <span className="bg-white/20 text-white px-3 py-0.5 rounded-full text-sm font-normal tracking-normal">
-                {establecimientosFiltrados.length}
-              </span>
-            </h1>
-            <p className="text-white/70 text-sm mt-0.5">
-              Gestionando sedes de <strong className="text-white font-bold uppercase tracking-widest text-[10px] bg-white/20 px-2 py-1 rounded ml-1">{clienteActual?.nombre_fantasia || `Cliente #${id}`}</strong>
-            </p>
-          </div>
-        </div>
-        
-        {canEdit("clientes") && (
-          <button 
-              onClick={() => { 
-                setFormData({id_cliente_establecimiento: "", id_jurisdiccion: "", descripcion: "", vigente: 1, contactos: []}); 
-                setIsModalOpen(true); 
-              }}
-              className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-white/70 hover:text-lgc-primary transition-all shadow-md shrink-0 flex items-center gap-2"
+      <div className="bg-[#005F78] text-white rounded-2xl shadow-lg border border-[#004D62] p-6">
+        <div className="flex items-center gap-4 mb-4">
+          <Link
+            href="/dashboard/clientes"
+            className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest"
           >
-            <span>+</span> Agregar Establecimiento
-          </button>
-        )}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Volver a Clientes
+          </Link>
+        </div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center gap-4">
+            {clienteActual?.logo_path ? (
+              <div className="w-14 h-14 rounded-xl border border-white/30 bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${clienteActual.logo_path}`} alt="Logo" className="w-full h-full object-contain p-1" />
+              </div>
+            ) : (
+              <div className="w-14 h-14 rounded-xl border border-white/30 bg-white/10 flex items-center justify-center shrink-0 shadow-sm">
+                <svg className="w-6 h-6 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+            )}
+            <div>
+              <h1 className="text-2xl font-heading uppercase tracking-tight flex items-center gap-2">
+                ESTABLECIMIENTOS
+                <span className="bg-white/20 text-white px-3 py-0.5 rounded-full text-sm font-normal tracking-normal">
+                  {establecimientosFiltrados.length}
+                </span>
+              </h1>
+              <p className="text-white/70 text-sm mt-0.5">
+                Gestionando sedes de{" "}
+                <strong className="text-white font-bold uppercase tracking-widest text-[10px] bg-white/20 px-2 py-1 rounded ml-1">
+                  {clienteActual?.nombre_fantasia || `Cliente #${id}`}
+                </strong>
+              </p>
+            </div>
+          </div>
+
+          {canEdit("clientes") && (
+            <button
+              onClick={() => {
+                setFormData({
+                  id_cliente_establecimiento: "",
+                  id_jurisdiccion: "",
+                  descripcion: "",
+                  vigente: 1,
+                  contactos: [],
+                });
+                setIsModalOpen(true);
+              }}
+              className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-slate-100 transition-all shadow-md shrink-0 flex items-center gap-2"
+            >
+              <span>+</span> Agregar Establecimiento
+            </button>
+          )}
+        </div>
       </div>
 
       {/* SECCIÓN DE FILTROS PLEGABLE */}
@@ -643,19 +693,22 @@ export default function EstablecimientosPage() {
           className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
         >
           <div className="flex items-center gap-3">
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
             <span className="font-bold uppercase text-xs tracking-widest text-slate-600">Filtros de búsqueda</span>
             {hayFiltrosActivos && (
               <span className="bg-lgc-accent text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase shadow-sm">Activo</span>
             )}
           </div>
-          <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         </button>
 
         {isFilterOpen && (
           <div className="p-5 border-t border-slate-200 bg-white space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Filtro descripción */}
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Descripción</label>
                 <input
@@ -663,51 +716,46 @@ export default function EstablecimientosPage() {
                   className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none focus:border-lgc-primary"
                   placeholder="Nombre o descripción..."
                   value={filtros.descripcion}
-                  onChange={e => setFiltros({...filtros, descripcion: e.target.value})}
+                  onChange={(e) => setFiltros({ ...filtros, descripcion: e.target.value })}
                 />
               </div>
-
-              {/* Filtro jurisdicción */}
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Jurisdicción</label>
                 <select
                   className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer"
                   value={filtros.id_jurisdiccion}
-                  onChange={e => setFiltros({...filtros, id_jurisdiccion: e.target.value})}
+                  onChange={(e) => setFiltros({ ...filtros, id_jurisdiccion: e.target.value })}
                 >
                   <option value="">Todas</option>
-                  {jurisdicciones.map(j => (
-                    <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>{j.descripcion}</option>
+                  {jurisdicciones.map((j) => (
+                    <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>
+                      {j.descripcion}
+                    </option>
                   ))}
                 </select>
               </div>
-
-              {/* Filtro estado */}
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Estado</label>
                 <select
                   className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer"
                   value={filtros.vigente}
-                  onChange={e => setFiltros({...filtros, vigente: e.target.value})}
+                  onChange={(e) => setFiltros({ ...filtros, vigente: e.target.value as "todos" | "1" | "0" })}
                 >
                   <option value="todos">Todos</option>
                   <option value="1">Activos</option>
                   <option value="0">Inactivos</option>
                 </select>
               </div>
-
-              {/* Filtro categorías (multiselect) */}
               <div className="lg:col-span-2">
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Categorías (todas deben coincidir)</label>
                 <MultiSelectCategorias
                   options={todasLasCategorias}
                   selected={filtros.categorias}
-                  onChange={(cats: Categoria[]) => setFiltros({...filtros, categorias: cats})}
+                  onChange={(cats: Categoria[]) => setFiltros({ ...filtros, categorias: cats })}
                   placeholder="Seleccionar categorías..."
                 />
               </div>
             </div>
-
             <div className="flex justify-end pt-2">
               <button
                 onClick={limpiarFiltros}
@@ -737,18 +785,23 @@ export default function EstablecimientosPage() {
             <tbody className="divide-y divide-slate-50">
               {establecimientosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-10 text-center text-slate-400 italic">No hay establecimientos que coincidan con los filtros.</td>
+                  <td colSpan={5} className="p-10 text-center text-slate-400 italic">
+                    No hay establecimientos que coincidan con los filtros.
+                  </td>
                 </tr>
               ) : (
-                establecimientosFiltrados.map(est => (
+                establecimientosFiltrados.map((est) => (
                   <tr key={est.id_cliente_establecimiento} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="p-5 font-bold text-slate-700 text-sm">{est.descripcion}</td>
                     <td className="p-5 text-xs text-slate-500 font-medium uppercase tracking-widest">{est.jurisdiccion_nombre}</td>
                     <td className="p-5">
                       <div className="flex flex-wrap gap-1.5">
                         {est.categorias && est.categorias.length > 0 ? (
-                          est.categorias.slice(0, 3).map(cat => (
-                            <span key={cat.id_categoria} className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider">
+                          est.categorias.slice(0, 3).map((cat) => (
+                            <span
+                              key={cat.id_categoria}
+                              className="bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider"
+                            >
                               {cat.descripcion}
                             </span>
                           ))
@@ -763,49 +816,59 @@ export default function EstablecimientosPage() {
                       </div>
                     </td>
                     <td className="p-5">
-                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${est.vigente ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                            {est.vigente ? 'OPERATIVO' : 'INACTIVO'}
-                        </span>
-                     </td>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${
+                          est.vigente ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                        }`}
+                      >
+                        {est.vigente ? "OPERATIVO" : "INACTIVO"}
+                      </span>
+                    </td>
                     <td className="p-5 text-right">
                       {canEdit("clientes") ? (
                         <div className="flex justify-end gap-2">
-                          <button 
+                          <button
                             onClick={() => abrirModalCategorias(est)}
                             className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
                             title="Asignar Categorías y Rubros"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => abrirModalResponsables(est)}
                             className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm flex items-center gap-2"
                             title="Gestionar Responsables"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                           </button>
-                          <button 
-                            onClick={() => { 
+                          <button
+                            onClick={() => {
                               setFormData({
                                 id_cliente_establecimiento: est.id_cliente_establecimiento.toString(),
                                 descripcion: est.descripcion,
                                 id_jurisdiccion: est.id_jurisdiccion.toString(),
                                 vigente: est.vigente,
-                                contactos: est.contactos || [] 
-                              }); 
-                              setIsModalOpen(true); 
+                                contactos: est.contactos || [],
+                              });
+                              setIsModalOpen(true);
                             }}
                             className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm"
                             title="Editar Sede"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
                           </button>
                         </div>
                       ) : (
                         <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest cursor-not-allowed">Solo Lectura</span>
                       )}
-                     </td>
-                   </tr>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
@@ -813,7 +876,7 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
-      {/* --- MODAL ESTÁNDAR DE EDICIÓN DE ESTABLECIMIENTO (sin cambios) --- */}
+      {/* MODAL ESTÁNDAR DE EDICIÓN DE ESTABLECIMIENTO */}
       {isModalOpen && canEdit("clientes") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -821,30 +884,50 @@ export default function EstablecimientosPage() {
               <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">
                 {formData.id_cliente_establecimiento ? "Editar Sede" : "Nueva Sede Operativa"}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">
+                &times;
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              
               <div>
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b pb-2 mb-4">Datos Operativos</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Nombre / Descripción de la Sede *</label>
-                    <input required className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm" placeholder="Ej: Planta Industrial Pilar" value={formData.descripcion} onChange={e => setFormData({...formData, descripcion: e.target.value})} />
+                    <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">
+                      Nombre / Descripción de la Sede *
+                    </label>
+                    <input
+                      required
+                      className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm"
+                      placeholder="Ej: Planta Industrial Pilar"
+                      value={formData.descripcion}
+                      onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Jurisdicción Aplicable *</label>
-                    <select required className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm cursor-pointer" value={formData.id_jurisdiccion} onChange={e => setFormData({...formData, id_jurisdiccion: e.target.value})}>
+                    <select
+                      required
+                      className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm cursor-pointer"
+                      value={formData.id_jurisdiccion}
+                      onChange={(e) => setFormData({ ...formData, id_jurisdiccion: e.target.value })}
+                    >
                       <option value="">Seleccione...</option>
-                      {jurisdicciones.map(j => (
-                        <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>{j.descripcion}</option>
+                      {jurisdicciones.map((j) => (
+                        <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>
+                          {j.descripcion}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div>
                     <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado *</label>
-                    <select className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm cursor-pointer" value={formData.vigente} onChange={e => setFormData({...formData, vigente: parseInt(e.target.value)})}>
+                    <select
+                      className="w-full p-3 bg-slate-50 border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm cursor-pointer"
+                      value={formData.vigente}
+                      onChange={(e) => setFormData({ ...formData, vigente: parseInt(e.target.value) })}
+                    >
                       <option value={1}>OPERATIVO</option>
                       <option value={0}>INACTIVO</option>
                     </select>
@@ -855,26 +938,52 @@ export default function EstablecimientosPage() {
               <div>
                 <div className="flex justify-between items-center border-b pb-2 mb-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Contacto Directo de Sede</h3>
-                  <button type="button" onClick={handleAddContacto} className="text-[10px] text-lgc-primary font-bold uppercase tracking-widest hover:text-lgc-accent transition-colors">+ Agregar Medio</button>
+                  <button type="button" onClick={handleAddContacto} className="text-[10px] text-lgc-primary font-bold uppercase tracking-widest hover:text-lgc-accent transition-colors">
+                    + Agregar Medio
+                  </button>
                 </div>
-                
                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                   {formData.contactos.length === 0 ? (
-                    <p className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 rounded-lg border border-dashed">No hay contactos registrados en esta sede.</p>
+                    <p className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 rounded-lg border border-dashed">
+                      No hay contactos registrados en esta sede.
+                    </p>
                   ) : (
                     formData.contactos.map((contacto, index) => (
                       <div key={index} className="flex gap-3 items-start animate-fade-in">
-                        <select required className="w-1/3 p-3 text-sm bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none cursor-pointer" value={contacto.id_tipo_contacto} onChange={(e) => handleContactoChange(index, 'id_tipo_contacto', e.target.value)}>
+                        <select
+                          required
+                          className="w-1/3 p-3 text-sm bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none cursor-pointer"
+                          value={contacto.id_tipo_contacto}
+                          onChange={(e) => handleContactoChange(index, "id_tipo_contacto", e.target.value)}
+                        >
                           <option value="">Tipo...</option>
-                          {tiposContacto.map(tipo => (
-                            <option key={tipo.id_tipo_contacto} value={tipo.id_tipo_contacto}>{tipo.descripcion}</option>
+                          {tiposContacto.map((tipo) => (
+                            <option key={tipo.id_tipo_contacto} value={tipo.id_tipo_contacto}>
+                              {tipo.descripcion}
+                            </option>
                           ))}
                         </select>
-                        
-                        <input required type={getInputType(contacto.id_tipo_contacto)} placeholder="Valor..." className="grow p-3 text-sm bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none" value={contacto.valor} onChange={(e) => handleContactoChange(index, 'valor', e.target.value)} />
-                        
-                        <button type="button" onClick={() => handleRemoveContacto(index)} className="p-3 text-red-400 hover:text-white hover:bg-red-500 rounded-lg transition-colors shrink-0" title="Eliminar contacto">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                        <input
+                          required
+                          type={getInputType(contacto.id_tipo_contacto)}
+                          placeholder="Valor..."
+                          className="grow p-3 text-sm bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none"
+                          value={contacto.valor}
+                          onChange={(e) => handleContactoChange(index, "valor", e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveContacto(index)}
+                          className="p-3 text-red-400 hover:text-white hover:bg-red-500 rounded-lg transition-colors shrink-0"
+                          title="Eliminar contacto"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path
+                              fillRule="evenodd"
+                              d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
                         </button>
                       </div>
                     ))
@@ -883,9 +992,11 @@ export default function EstablecimientosPage() {
               </div>
 
               <div className="flex gap-4 pt-6 mt-6 border-t border-slate-100">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Cancelar</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
                 <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-lgc-accent transition-all">
-                  {formLoading ? 'Guardando...' : 'Guardar Sede'}
+                  {formLoading ? "Guardando..." : "Guardar Sede"}
                 </button>
               </div>
             </form>
@@ -893,14 +1004,16 @@ export default function EstablecimientosPage() {
         </div>
       )}
 
-      {/* --- MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) --- */}
+      {/* MODAL ASIGNACIÓN DE CATEGORÍAS */}
       {isCategoriasModalOpen && establecimientoSeleccionado && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
             <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
                   Categorización de Sede
                 </h2>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
@@ -911,63 +1024,86 @@ export default function EstablecimientosPage() {
             </div>
 
             <div className="p-6 flex-1 overflow-hidden flex flex-col md:flex-row gap-6 bg-white min-h-100">
-              
-              {/* PANEL IZQUIERDO: DISPONIBLES */}
+              {/* Panel izquierdo: disponibles */}
               <div className="flex-1 flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="bg-slate-50 p-3 border-b border-slate-200 flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Categorías Disponibles</h3>
-                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">{todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria)).length}</span>
+                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded">
+                      {todasLasCategorias.filter((c) => !categoriasAsignadas.some((as) => as.id_categoria === c.id_categoria)).length}
+                    </span>
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="Buscar rubro o categoría..." 
+                  <input
+                    type="text"
+                    placeholder="Buscar rubro o categoría..."
                     value={searchCat}
-                    onChange={e => setSearchCat(e.target.value)}
+                    onChange={(e) => setSearchCat(e.target.value)}
                     className="w-full text-xs p-2 border border-slate-300 rounded outline-none focus:border-lgc-primary bg-white"
                   />
                 </div>
                 <div className="flex-1 overflow-y-auto p-2 bg-slate-50/50">
-                  {todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).length === 0 ? (
-                    <div className="text-center text-xs text-slate-400 italic p-6">No hay categorías que coincidan.</div>
-                  ) : (
-                    todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).map(cat => (
-                      <button 
-                        key={cat.id_categoria} 
+                  {todasLasCategorias
+                    .filter((c) => !categoriasAsignadas.some((as) => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase()))
+                    .map((cat) => (
+                      <button
+                        key={cat.id_categoria}
                         onClick={() => moverADerecha(cat)}
                         className="w-full text-left p-2.5 bg-white border border-slate-200 rounded-lg hover:border-lgc-primary hover:text-lgc-primary transition-all text-xs font-bold text-slate-600 flex justify-between items-center group mb-2 shadow-sm"
                       >
                         {cat.descripcion}
-                        <svg className="w-4 h-4 text-slate-300 group-hover:text-lgc-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        <svg className="w-4 h-4 text-slate-300 group-hover:text-lgc-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </button>
-                    ))
-                  )}
+                    ))}
                 </div>
               </div>
 
-              {/* BOTONERA CENTRAL */}
+              {/* Botonera central */}
               <div className="flex md:flex-col justify-center gap-3 shrink-0 py-4">
-                 <button 
-                   onClick={() => moverTodasADerecha(todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())))} 
-                   disabled={todasLasCategorias.filter(c => !categoriasAsignadas.some(as => as.id_categoria === c.id_categoria) && c.descripcion.toLowerCase().includes(searchCat.toLowerCase())).length === 0}
-                   className="bg-slate-100 hover:bg-lgc-primary hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
-                   title="Mover todas a la derecha"
-                 >
-                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
-                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 13l-7 7-7-7m14-8l-7 7-7-7" /></svg>
-                 </button>
-                 <button 
-                   onClick={moverTodasAIzquierda} 
-                   disabled={categoriasAsignadas.length === 0}
-                   className="bg-slate-100 hover:bg-red-500 hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
-                   title="Quitar todas"
-                 >
-                   <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-                   <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 11l7-7 7 7M5 19l7-7 7 7" /></svg>
-                 </button>
+                <button
+                  onClick={() =>
+                    moverTodasADerecha(
+                      todasLasCategorias.filter(
+                        (c) =>
+                          !categoriasAsignadas.some((as) => as.id_categoria === c.id_categoria) &&
+                          c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
+                      )
+                    )
+                  }
+                  disabled={
+                    todasLasCategorias.filter(
+                      (c) =>
+                        !categoriasAsignadas.some((as) => as.id_categoria === c.id_categoria) &&
+                        c.descripcion.toLowerCase().includes(searchCat.toLowerCase())
+                    ).length === 0
+                  }
+                  className="bg-slate-100 hover:bg-lgc-primary hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
+                  title="Mover todas a la derecha"
+                >
+                  <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  </svg>
+                  <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 13l-7 7-7-7m14-8l-7 7-7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={moverTodasAIzquierda}
+                  disabled={categoriasAsignadas.length === 0}
+                  className="bg-slate-100 hover:bg-red-500 hover:text-white text-slate-500 p-2 rounded-lg transition-colors disabled:opacity-30 border border-slate-200 shadow-sm"
+                  title="Quitar todas"
+                >
+                  <svg className="w-5 h-5 hidden md:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  </svg>
+                  <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 11l7-7 7 7M5 19l7-7 7 7" />
+                  </svg>
+                </button>
               </div>
 
-              {/* PANEL DERECHO: ASIGNADAS (SORTABLE) */}
+              {/* Panel derecho: asignadas */}
               <div className="flex-1 flex flex-col border border-lgc-primary/30 rounded-xl overflow-hidden shadow-sm bg-lgc-primary/5">
                 <div className="bg-white p-3 border-b border-lgc-primary/20">
                   <div className="flex justify-between items-center mb-1">
@@ -979,14 +1115,16 @@ export default function EstablecimientosPage() {
                 <div className="flex-1 overflow-y-auto p-2">
                   {categoriasAsignadas.length === 0 ? (
                     <div className="text-center text-xs text-slate-400 italic p-6 flex flex-col items-center gap-2">
-                      <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                      <svg className="w-8 h-8 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
                       Seleccioná categorías del panel izquierdo.
                     </div>
                   ) : (
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndCategorias}>
-                      <SortableContext items={categoriasAsignadas.map(c => c.id_categoria)} strategy={verticalListSortingStrategy}>
-                        {categoriasAsignadas.map(cat => (
-                           <SortableCategoriaItem key={cat.id_categoria} cat={cat} onRemove={moverAIzquierda} />
+                      <SortableContext items={categoriasAsignadas.map((c) => c.id_categoria)} strategy={verticalListSortingStrategy}>
+                        {categoriasAsignadas.map((cat) => (
+                          <SortableCategoriaItem key={cat.id_categoria} cat={cat} onRemove={moverAIzquierda} />
                         ))}
                       </SortableContext>
                     </DndContext>
@@ -995,33 +1133,47 @@ export default function EstablecimientosPage() {
               </div>
             </div>
 
-            {/* PIE DEL MODAL */}
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0">
-               <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg">
-                 Cancelar
-               </button>
-               <button onClick={guardarCategorias} disabled={savingCategorias} className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors">
-                 {savingCategorias ? (
-                   <><svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...</>
-                 ) : (
-                   <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
-                 )}
-               </button>
+              <button onClick={() => setIsCategoriasModalOpen(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-100 transition-colors rounded-lg">
+                Cancelar
+              </button>
+              <button
+                onClick={guardarCategorias}
+                disabled={savingCategorias}
+                className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md disabled:opacity-50 flex items-center gap-2 transition-colors"
+              >
+                {savingCategorias ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Guardar Categorización
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- MODAL GESTIÓN DE RESPONSABLES (sin cambios) --- */}
+      {/* MODAL GESTIÓN DE RESPONSABLES */}
       {isResponsablesModalOpen && establecimientoResponsables && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
-
-            {/* CABECERA */}
             <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                   Responsables de Sede
                 </h2>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
@@ -1031,10 +1183,7 @@ export default function EstablecimientosPage() {
               <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="text-slate-400 hover:text-red-500 text-2xl transition-colors">&times;</button>
             </div>
 
-            {/* CUERPO */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white">
-
-              {/* FORMULARIO INLINE PARA CREAR / EDITAR */}
               {formResponsable !== null ? (
                 <form onSubmit={handleGuardarResponsable} className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4 animate-fade-in">
                   <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b pb-2">
@@ -1047,7 +1196,7 @@ export default function EstablecimientosPage() {
                       className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm"
                       placeholder="Ej: Gerencia de Sistemas"
                       value={formResponsable.descripcion}
-                      onChange={e => setFormResponsable(prev => prev ? { ...prev, descripcion: e.target.value } : prev)}
+                      onChange={(e) => setFormResponsable((prev) => (prev ? { ...prev, descripcion: e.target.value } : prev))}
                     />
                   </div>
                   <div>
@@ -1056,7 +1205,7 @@ export default function EstablecimientosPage() {
                       className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary focus:ring-2 focus:ring-lgc-primary text-sm"
                       placeholder="Información adicional (opcional)"
                       value={formResponsable.observacion}
-                      onChange={e => setFormResponsable(prev => prev ? { ...prev, observacion: e.target.value } : prev)}
+                      onChange={(e) => setFormResponsable((prev) => (prev ? { ...prev, observacion: e.target.value } : prev))}
                     />
                   </div>
                   <div>
@@ -1064,7 +1213,7 @@ export default function EstablecimientosPage() {
                     <select
                       className="w-full p-3 bg-white border rounded-lg outline-none focus:border-lgc-primary text-sm cursor-pointer"
                       value={formResponsable.vigente}
-                      onChange={e => setFormResponsable(prev => prev ? { ...prev, vigente: parseInt(e.target.value) } : prev)}
+                      onChange={(e) => setFormResponsable((prev) => (prev ? { ...prev, vigente: parseInt(e.target.value) } : prev))}
                     >
                       <option value={1}>ACTIVO</option>
                       <option value={0}>INACTIVO</option>
@@ -1075,7 +1224,7 @@ export default function EstablecimientosPage() {
                       Cancelar
                     </button>
                     <button type="submit" disabled={savingResponsable} className="flex-1 bg-lgc-primary text-white py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-lgc-accent transition-all disabled:opacity-50">
-                      {savingResponsable ? 'Guardando...' : 'Guardar Responsable'}
+                      {savingResponsable ? "Guardando..." : "Guardar Responsable"}
                     </button>
                   </div>
                 </form>
@@ -1088,7 +1237,6 @@ export default function EstablecimientosPage() {
                 </button>
               )}
 
-              {/* LISTA ORDENABLE */}
               <div>
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Responsables Asignados</h3>
@@ -1104,12 +1252,19 @@ export default function EstablecimientosPage() {
                   <>
                     <p className="text-[9px] text-slate-400 uppercase tracking-widest mb-2">Arrastrá para ordenar por prioridad</p>
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndResponsables}>
-                      <SortableContext items={responsables.map(r => r.id_responsable_establecimiento)} strategy={verticalListSortingStrategy}>
-                        {responsables.map(resp => (
+                      <SortableContext items={responsables.map((r) => r.id_responsable_establecimiento)} strategy={verticalListSortingStrategy}>
+                        {responsables.map((resp) => (
                           <SortableResponsableItem
                             key={resp.id_responsable_establecimiento}
                             resp={resp}
-                            onEdit={(r) => setFormResponsable({ id_responsable_establecimiento: r.id_responsable_establecimiento.toString(), descripcion: r.descripcion, observacion: r.observacion || "", vigente: r.vigente })}
+                            onEdit={(r) =>
+                              setFormResponsable({
+                                id_responsable_establecimiento: r.id_responsable_establecimiento.toString(),
+                                descripcion: r.descripcion,
+                                observacion: r.observacion || "",
+                                vigente: r.vigente,
+                              })
+                            }
                             onDelete={handleEliminarResponsable}
                           />
                         ))}
@@ -1120,16 +1275,20 @@ export default function EstablecimientosPage() {
               </div>
             </div>
 
-            {/* PIE DEL MODAL */}
             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
-              <button onClick={() => { setIsResponsablesModalOpen(false); setFormResponsable(null); }} className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors">
+              <button
+                onClick={() => {
+                  setIsResponsablesModalOpen(false);
+                  setFormResponsable(null);
+                }}
+                className="px-8 py-2.5 bg-lgc-primary hover:bg-lgc-accent text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors"
+              >
                 Cerrar
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

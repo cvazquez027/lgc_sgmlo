@@ -173,9 +173,9 @@ export default function DashboardHome() {
 
                   <div className="flex justify-end pt-2.5 border-t border-white/10">
                     <span className="text-white/30 group-hover:text-lgc-accent transition-colors duration-300 transform group-hover:translate-x-1">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4-4m4-4H3" />
-                      </svg>
+                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14m-4-4l4 4-4 4" />
+                    </svg>
                     </span>
                   </div>
                 </div>

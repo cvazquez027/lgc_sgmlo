@@ -139,14 +139,14 @@ export default function MiPerfilPage() {
     }
   };
 
-  if (loading) return <div className="py-20 text-center text-lgc-accent animate-pulse font-bold">Cargando perfil...</div>;
+  if (loading) return <div className="py-20 text-center text-lgc-primary animate-pulse font-bold">Cargando perfil...</div>;
 
   return (
     <div className="h-[calc(100vh-80px)] flex items-center justify-center animate-fade-in px-4">
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full max-w-3xl">
         
         {/* CABECERA ACCENT */}
-        <div className="bg-lgc-accent p-5 text-white flex items-center gap-4">
+        <div className="bg-lgc-primary p-5 text-white flex items-center gap-4">
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-xl font-bold uppercase shadow-inner shrink-0">
             {formData.nombre ? formData.nombre.charAt(0) : "U"}
           </div>
@@ -181,17 +181,17 @@ export default function MiPerfilPage() {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nombre</label>
                 <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-primary transition-colors" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Apellido</label>
                 <input type="text" name="apellido" value={formData.apellido} onChange={handleChange} required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-primary transition-colors" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</label>
                 <input type="email" name="email" value={formData.email} onChange={handleChange} required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-primary transition-colors" />
               </div>
             </div>
 
@@ -201,12 +201,12 @@ export default function MiPerfilPage() {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Nueva Clave</label>
                 <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Dejar en blanco para no cambiar"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-primary transition-colors" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Confirmar Clave</label>
                 <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repetir nueva clave"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-accent transition-colors" />
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-slate-700 text-sm focus:border-lgc-primary transition-colors" />
               </div>
               <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
                 Si no querés cambiar tu contraseña, dejá los campos en blanco. La clave actual seguirá siendo válida.
@@ -217,7 +217,7 @@ export default function MiPerfilPage() {
 
           <div className="pt-5 flex justify-end border-t border-slate-100 mt-5">
             <button type="submit" disabled={saving || showToast}
-              className="bg-lgc-accent hover:bg-[#7A8A1E] text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all disabled:opacity-50 text-sm uppercase tracking-widest">
+              className="bg-lgc-primary hover:bg-lgc-primary/60 text-white font-bold py-2.5 px-8 rounded-lg shadow-md transition-all disabled:opacity-50 text-sm uppercase tracking-widest">
               {saving ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </div>
@@ -236,7 +236,7 @@ export default function MiPerfilPage() {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="bg-green-500/20 text-green-400 p-2 rounded-full shrink-0">
+          <div className="bg-lgc-primary/20 text-blue-400 p-2 rounded-full shrink-0">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>

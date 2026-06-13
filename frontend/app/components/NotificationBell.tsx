@@ -3,20 +3,25 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 export default function NotificationBell() {
-  const [count, setCount] = useState<number | null>(null); // null = aún cargando
+  const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchCount = async () => {
       const token = localStorage.getItem("sgml_token");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      console.log("🔔 API URL:", apiUrl);
       if (!token) {
         setCount(0);
         return;
       }
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/alertas/contador.php`, {
+        const url = `${apiUrl}/alertas/contador.php`;
+        console.log("🔔 Fetching:", url);
+        const res = await fetch(url, {
           headers: { "Authorization": `Bearer ${token}` }
         });
+        console.log("🔔 Response status:", res.status);
         
         if (!res.ok) {
           console.error("Error en contador.php (status:", res.status, ")");
@@ -24,15 +29,8 @@ export default function NotificationBell() {
           return;
         }
         
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          console.error("Respuesta no es JSON en contador.php");
-          setCount(0);
-          return;
-        }
-        
         const data = await res.json();
-        // He corregido: el backend devuelve "total", no "count"
+        console.log("🔔 Datos recibidos:", data);
         setCount(data.total || 0);
       } catch (error) {
         console.error("Error fetching alerts count:", error);
@@ -41,14 +39,12 @@ export default function NotificationBell() {
     };
 
     fetchCount();
-    const interval = setInterval(fetchCount, 300000); // cada 5 minutos
+    const interval = setInterval(fetchCount, 300000);
     return () => clearInterval(interval);
   }, []);
 
-  // Mientras carga, no mostramos nada (evita parpadeo)
   if (count === null) return null;
 
-  // Siempre mostramos el ícono, aunque count sea 0 (así el usuario puede entrar al reporte)
   return (
     <Link href="/dashboard/reportes" className="relative inline-flex items-center">
       <svg className="w-6 h-6 text-slate-500 hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">

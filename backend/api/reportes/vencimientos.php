@@ -12,12 +12,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 include_once '../../config/Database.php';
 include_once '../../config/JwtHandler.php';
 
-$jwt = new JwtHandler();
-$token = null;
+// Extracción robusta del token
+$token = '';
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
+} elseif (function_exists('apache_request_headers')) {
+    $requestHeaders = apache_request_headers();
+    $requestHeaders = array_combine(array_map('ucwords', array_keys($requestHeaders)), array_values($requestHeaders));
+    if (isset($requestHeaders['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $requestHeaders['Authorization']));
+    }
+} else {
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $headers['Authorization']));
+    }
 }
-// He verificado que el token sea válido y obtengo el payload directamente
+
+$jwt = new JwtHandler();
 $payload = $jwt->verificar($token);
 if (!$payload) {
     http_response_code(401);
@@ -34,11 +46,8 @@ if (!$id_cliente) {
 $database = new Database();
 $db = $database->getConnection();
 
-$fecha_hoy = date('Y-m-d');
 $dias_limite = 30;
 
-// He corregido la consulta: no usar "nombre_fantasia" en matriz porque esa columna no existe
-// Se debe obtener el nombre de la matriz desde las tablas relacionadas
 $query = "SELECT 
             m.id_matriz,
             CONCAT(tm.descripcion, ' - ', em.descripcion, ' - ', ce.descripcion) AS nombre_matriz,
@@ -60,6 +69,7 @@ $query = "SELECT
             AND im.vencimiento_plazo IS NOT NULL
             AND im.vencimiento_plazo <= DATE_ADD(CURDATE(), INTERVAL :dias_limite DAY)
           ORDER BY im.vencimiento_plazo ASC";
+
 $stmt = $db->prepare($query);
 $stmt->bindParam(':id_cliente', $id_cliente, PDO::PARAM_INT);
 $stmt->bindParam(':dias_limite', $dias_limite, PDO::PARAM_INT);

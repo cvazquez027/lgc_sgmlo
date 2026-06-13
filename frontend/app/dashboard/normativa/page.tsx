@@ -6,6 +6,8 @@ import Link from "next/link";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useToast } from "../../providers/ToastProvider";
+import { useConfirm } from "../../providers/ConfirmProvider";
 
 interface Norma {
   id_norma: number;
@@ -47,7 +49,6 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
 
   useEffect(() => { setQuery(value || ""); }, [value]);
 
-  // Cerrar menú al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -212,6 +213,8 @@ const SortableCategoriaItem = ({ cat, onRemove }: { cat: Categoria, onRemove: (i
 
 export default function NormativaOficialPage() {
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
   const [normas, setNormas] = useState<Norma[]>([]);
@@ -234,7 +237,7 @@ export default function NormativaOficialPage() {
 
   // --- Paginación ---
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50); // Por defecto 50
+  const [pageSize, setPageSize] = useState(50);
   const pageSizeOptions = [10, 30, 50, 100];
 
   const defaultForm = {
@@ -258,11 +261,6 @@ export default function NormativaOficialPage() {
   const [categoriasAsignadas, setCategoriasAsignadas] = useState<Categoria[]>([]);
   const [searchCat, setSearchCat] = useState("");
   const [savingCategorias, setSavingCategorias] = useState(false);
-
-  // Estados para el modal de eliminación
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [normaToDelete, setNormaToDelete] = useState<Norma | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -295,8 +293,9 @@ export default function NormativaOficialPage() {
       setNiveles(dataNiveles.registros?.map((e:any) => ({ id: e.id_nivel_jurisdiccion || e.id, descripcion: e.descripcion })) || []);
     } catch (err) {
       console.error("Error cargando diccionarios", err);
+      toast.showToast("Error", "No se pudieron cargar los diccionarios.", "error");
     }
-  }, []);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
@@ -313,10 +312,11 @@ export default function NormativaOficialPage() {
       setNormas(data.registros || []);
     } catch (err) {
       console.error("Error cargando normas", err);
+      toast.showToast("Error", "No se pudieron cargar las normas.", "error");
     } finally {
       setLoading(false);
     }
-  }, [fetchDiccionarios]);
+  }, [fetchDiccionarios, toast]);
 
   useEffect(() => {
     if (!isCheckingPerms && canRead("normativa")) fetchData();
@@ -337,11 +337,14 @@ export default function NormativaOficialPage() {
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
+        toast.showToast("Éxito", "Norma guardada correctamente.", "success");
       } else {
-        alert("Ocurrió un error al guardar la normativa.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar la normativa.", "error");
       }
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "Error de conexión al guardar.", "error");
     } finally {
       setFormLoading(false);
     }
@@ -375,39 +378,41 @@ export default function NormativaOficialPage() {
       }
     } catch (err) {
       console.error("Error al cargar categorías:", err);
+      toast.showToast("Error", "No se pudieron cargar las categorías.", "error");
     }
   };
 
-  const confirmDelete = (norma: Norma) => {
-    setNormaToDelete(norma);
-    setShowDeleteModal(true);
-  };
+  const handleDeleteNorma = async (norma: Norma) => {
+    const mensaje = norma.categorias && norma.categorias.length > 0
+      ? `¿Está seguro que desea eliminar la norma ${norma.tipo_norma_desc} ${norma.numero}? Se eliminarán también las categorías asociadas.`
+      : `¿Está seguro que desea eliminar la norma ${norma.tipo_norma_desc} ${norma.numero}?`;
+    
+    const ok = await confirm({
+      title: "Eliminar norma",
+      message: mensaje,
+      confirmText: "Eliminar",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
 
-  const handleDelete = async () => {
-    if (!normaToDelete) return;
-    setDeleting(true);
     const token = localStorage.getItem("sgml_token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/eliminar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ id_norma: normaToDelete.id_norma })
+        body: JSON.stringify({ id_norma: norma.id_norma })
       });
       const data = await res.json();
       if (res.ok) {
         await fetchData();
-        setShowDeleteModal(false);
-        setNormaToDelete(null);
-        // Reiniciar a la primera página después de eliminar
         setCurrentPage(1);
+        toast.showToast("Éxito", "Norma eliminada correctamente.", "success");
       } else {
-        alert(data.mensaje || "Error al eliminar la norma.");
+        toast.showToast("Error", data.mensaje || "Error al eliminar la norma.", "error");
       }
     } catch (error) {
       console.error(error);
-      alert("Error de conexión al eliminar.");
-    } finally {
-      setDeleting(false);
+      toast.showToast("Error", "Error de conexión al eliminar.", "error");
     }
   };
 
@@ -454,11 +459,14 @@ export default function NormativaOficialPage() {
       if (res.ok) {
         setIsCategoriasModalOpen(false);
         fetchData();
+        toast.showToast("Éxito", "Categorías guardadas correctamente.", "success");
       } else {
-        alert("Error al guardar categorías.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar categorías.", "error");
       }
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "Error de conexión al guardar categorías.", "error");
     } finally {
       setSavingCategorias(false);
     }
@@ -510,7 +518,6 @@ export default function NormativaOficialPage() {
   // --- Lógica de paginación ---
   const totalItems = normasFiltradas.length;
   const totalPages = Math.ceil(totalItems / pageSize);
-  // Asegurar que currentPage esté dentro de los límites
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(totalPages);
@@ -523,7 +530,6 @@ export default function NormativaOficialPage() {
   const endIndex = startIndex + pageSize;
   const paginatedNormas = normasFiltradas.slice(startIndex, endIndex);
 
-  // Reiniciar a página 1 cuando cambien los filtros o el tamaño de página
   useEffect(() => {
     setCurrentPage(1);
   }, [filtros, searchTerm, pageSize]);
@@ -578,20 +584,19 @@ export default function NormativaOficialPage() {
     <div className="space-y-6 font-sans animate-fade-in relative z-10">
       
       {/* HEADER PRINCIPAL AZUL CORPORATIVO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-lgc-primary text-white p-6 rounded-2xl shadow-lg border border-lgc-primary gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <Link 
-              href="/dashboard" 
-              className="flex items-center justify-center w-8 h-8 rounded-full text-white/70 hover:bg-white/10 hover:text-white transition-all group"
-              title="Volver al inicio"
-            >
-              <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-heading uppercase tracking-tight">Base Actualizada de Normativa</h1>
-          </div>
+      <div className="bg-[#005F78] text-white p-6 rounded-2xl shadow-lg border border-[#004D62] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <Link 
+            href="/dashboard" 
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all group"
+            title="Volver al inicio"
+          >
+            <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+          <h1 className="text-2xl font-heading uppercase tracking-tight">Base Actualizada de Normativa</h1>
         </div>
         
         <div className="flex gap-3 w-full md:w-auto shrink-0">
@@ -799,7 +804,7 @@ export default function NormativaOficialPage() {
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                             </button>
                             <button 
-                              onClick={() => confirmDelete(norma)}
+                              onClick={() => handleDeleteNorma(norma)}
                               className="text-slate-400 hover:text-red-500 bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md"
                               title="Eliminar Norma"
                             >
@@ -1047,34 +1052,6 @@ export default function NormativaOficialPage() {
                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
                  )}
                </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
-      {showDeleteModal && normaToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">Confirmar eliminación</h2>
-              <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
-            </div>
-            <div className="p-6">
-              <p className="text-slate-700 text-sm">
-                ¿Está seguro que desea eliminar la norma <strong>{normaToDelete.tipo_norma_desc} {normaToDelete.numero}</strong>?
-                {normaToDelete.categorias && normaToDelete.categorias.length > 0 && (
-                  <span className="block mt-2 text-xs text-amber-600">Se eliminarán también las categorías asociadas.</span>
-                )}
-              </p>
-              <div className="flex gap-3 mt-6">
-                <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-xs uppercase font-bold shadow-md disabled:opacity-50">
-                  {deleting ? 'Eliminando...' : 'Eliminar'}
-                </button>
-              </div>
             </div>
           </div>
         </div>

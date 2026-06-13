@@ -9,14 +9,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Ajusta la ruta según tu estructura
 include_once dirname(__FILE__) . '/../../config/Database.php';
 include_once dirname(__FILE__) . '/../../config/JwtHandler.php';
 
 $jwt = new JwtHandler();
 $token = null;
 
-// Extraer token del header Authorization
+// Extraer token
 $headers = getallheaders();
 if (isset($headers['Authorization'])) {
     $token = trim(str_ireplace('Bearer', '', $headers['Authorization']));
@@ -24,17 +23,38 @@ if (isset($headers['Authorization'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
 }
 
-if (!$jwt->verificar($token)) {
+if (!$token) {
     http_response_code(401);
-    echo json_encode(["mensaje" => "Token inválido o no autorizado."]);
+    echo json_encode(["mensaje" => "Token no proporcionado."]);
     exit();
 }
 
 $payload = $jwt->verificar($token);
-$id_cliente = $payload->id_cliente ?? null;
+if (!$payload) {
+    http_response_code(401);
+    echo json_encode(["mensaje" => "Token inválido o expirado."]);
+    exit();
+}
+
+// Intentar obtener id_cliente desde el payload (puede ser objeto o array)
+if (is_object($payload)) {
+    $id_cliente = $payload->id_cliente ?? null;
+} elseif (is_array($payload)) {
+    $id_cliente = $payload['id_cliente'] ?? null;
+} else {
+    $id_cliente = null;
+}
+
+// Si aún es null, intentar con 'cliente_id' o 'idCliente' (por si acaso)
+if ($id_cliente === null && is_object($payload)) {
+    $id_cliente = $payload->cliente_id ?? $payload->idCliente ?? null;
+} elseif ($id_cliente === null && is_array($payload)) {
+    $id_cliente = $payload['cliente_id'] ?? $payload['idCliente'] ?? null;
+}
 
 if (!$id_cliente) {
-    echo json_encode(["count" => 0]);
+    // No hay cliente asociado al usuario (ej. superadmin)
+    echo json_encode(["total" => 0]);
     exit();
 }
 
@@ -48,5 +68,5 @@ $stmt->execute();
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
 http_response_code(200);
-echo json_encode(["count" => (int)$row['total']]);
+echo json_encode(["total" => (int)$row['total']]);
 ?>

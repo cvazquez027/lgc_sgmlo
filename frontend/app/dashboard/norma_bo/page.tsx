@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
+import { useToast } from "../../providers/ToastProvider";
+import { useConfirm } from "../../providers/ConfirmProvider";
 
 interface Jurisdiccion {
   id_jurisdiccion: number;
@@ -27,6 +29,8 @@ interface NormaScraping {
 
 export default function BoletinOficialPage() {
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
   // Datos
@@ -67,10 +71,11 @@ export default function BoletinOficialPage() {
       setJurisdicciones(data.registros || []);
     } catch (err) {
       console.error("Error cargando jurisdicciones", err);
+      toast.showToast("Error", "No se pudieron cargar las jurisdicciones.", "error");
     } finally {
       setLoadingConfig(false);
     }
-  }, []);
+  }, [toast]);
 
   // 2. Traer los datos del scraping (Grilla completa)
   const fetchScrapingData = useCallback(async () => {
@@ -85,10 +90,11 @@ export default function BoletinOficialPage() {
       setSelectedIds([]);
     } catch (error) {
       console.error("Error trayendo scraping", error);
+      toast.showToast("Error", "No se pudieron cargar los datos del scraping.", "error");
     } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (!isCheckingPerms && canRead("boletin")) {
@@ -145,31 +151,25 @@ export default function BoletinOficialPage() {
         headers: { "Authorization": `Bearer ${token}` }
       });
       
-      // 1. En lugar de .json(), pedimos el texto crudo
       const rawText = await res.text();
-      
-      // 2. Lo imprimimos en la consola para ver qué dice REALMENTE PHP
       console.log("Respuesta cruda de PHP:", rawText);
       
-      // 3. Ahora sí intentamos convertirlo a JSON
       try {
           const data = JSON.parse(rawText);
-          
           if (data.status === 'success') {
-            alert('¡Boletín actualizado con éxito!');
+            toast.showToast("Éxito", "¡Boletín actualizado con éxito!", "success");
             fetchScrapingData();
           } else {
-            alert('Error al raspar: ' + data.message);
+            toast.showToast("Error", `Error al raspar: ${data.message}`, "error");
             console.error("Log de Python:", data.log);
           }
       } catch (parseError) {
           console.error("No se pudo leer el JSON. El servidor devolvió esto:", rawText);
-          alert('Error del servidor: PHP no devolvió un JSON válido. Revisá la consola (F12).');
+          toast.showToast("Error", "El servidor no devolvió una respuesta válida. Revise la consola.", "error");
       }
-
     } catch (error) {
       console.error("Error conectando con el backend:", error);
-      alert('Ocurrió un error al intentar actualizar.');
+      toast.showToast("Error", "Ocurrió un error al intentar actualizar.", "error");
     } finally {
       setIsScraping(false);
     }
@@ -182,7 +182,13 @@ export default function BoletinOficialPage() {
       ? `¿Estás seguro de DESCARTAR las ${selectedIds.length} normas seleccionadas?`
       : `¿Promover ${selectedIds.length} normas al repositorio oficial?`;
     
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm({
+      title: accion === 'descartar' ? "Descartar normas" : "Promover normas",
+      message: confirmMsg,
+      confirmText: accion === 'descartar' ? "Descartar" : "Promover",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
 
     setProcesando(true);
     const token = localStorage.getItem("sgml_token");
@@ -196,12 +202,14 @@ export default function BoletinOficialPage() {
       if (res.ok) {
         setNormasScraping(prev => prev.filter(n => !selectedIds.includes(n.id_norma_bo)));
         setSelectedIds([]);
+        toast.showToast("Éxito", `Normas ${accion === 'descartar' ? 'descartadas' : 'promovidas'} correctamente.`, "success");
       } else {
         const data = await res.json();
-        alert("Error: " + data.mensaje);
+        toast.showToast("Error", data.mensaje || "Error al procesar la acción.", "error");
       }
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "Error de conexión al procesar.", "error");
     } finally {
       setProcesando(false);
     }
@@ -213,72 +221,71 @@ export default function BoletinOficialPage() {
   return (
     <div className="space-y-2 font-sans animate-fade-in flex flex-col h-[calc(100vh-80px)] overflow-hidden">
       
-      {/* HEADER COMPACTO */}
-      <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 flex flex-row justify-between items-center shrink-0">
-        <div className="flex items-center gap-3">
+      {/* HEADER ESTILO MATRICES - AZUL CORPORATIVO */}
+      <div className="bg-[#005F78] text-white px-5 py-3 rounded-xl shadow-md flex flex-row justify-between items-center shrink-0 border border-[#004D62]">
+        <div className="flex items-center gap-4">
           <Link 
             href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
             title="Volver al inicio"
           >
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
-          <h1 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">BOLETINES OFICIALES</h1>
+          <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+          <h1 className="text-xl font-heading font-bold uppercase tracking-tight leading-none">
+            Boletín Oficial
+          </h1>
         </div>
-        <div className="flex items-center gap-4">
-          
-          {/* NUEVO BOTÓN: Solo se muestra si la jurisdicción seleccionada tiene el flag "tiene_scraper" en 1 */}
+
+        <div className="flex items-center gap-3">
+          {/* Botón Actualizar (estilo similar al botón de crear matriz) */}
           {selectedJur && selectedJur.tiene_scraper === 1 && (
             <button 
               onClick={ejecutarScraper} 
               disabled={isScraping}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors shadow-sm border ${
-                isScraping 
-                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
-                  : 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
-              }`}
+              className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50"
             >
               {isScraping ? (
                 <>
-                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  <svg className="animate-spin h-3.5 w-3.5 text-lgc-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                   Actualizando...
                 </>
               ) : (
                 <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                   Actualizar
                 </>
               )}
             </button>
           )}
 
-          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-200 hover:bg-orange-100 transition-colors">
+          <label className="flex items-center gap-2 cursor-pointer text-[10px] font-bold uppercase text-white bg-white/20 px-3 py-1.5 rounded-lg border border-white/30 hover:bg-white/30 transition-colors shadow-sm">
             <input 
               type="checkbox" 
               checked={soloCategorizadas} 
               onChange={(e) => setSoloCategorizadas(e.target.checked)}
-              className="rounded text-orange-500 focus:ring-orange-500 w-3.5 h-3.5"
+              className="rounded text-lgc-primary focus:ring-lgc-primary w-3.5 h-3.5"
             />
             <span>SOLO RELEVANTES</span>
           </label>
 
           <select 
-            className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg outline-none text-xs font-bold text-slate-700 cursor-pointer shadow-sm min-w-50"
+            className="p-2 bg-white/10 border border-white/20 rounded-lg outline-none text-xs font-bold text-white cursor-pointer shadow-sm min-w-40 hover:bg-white/20 transition-colors"
             value={selectedJurId}
             onChange={(e) => setSelectedJurId(e.target.value)}
             disabled={loadingConfig}
           >
-            <option value="">TODAS LAS JURISDICCIONES</option>
+            <option value="" className="text-slate-800">TODAS LAS JURISDICCIONES</option>
             {jurisdicciones.map(j => (
-              <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>{j.descripcion}</option>
+              <option key={j.id_jurisdiccion} value={j.id_jurisdiccion} className="text-slate-800">{j.descripcion}</option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* TOOLBAR */}
+      {/* TOOLBAR (sin cambios, solo estilo de fondo ajustado) */}
       <div className="bg-slate-100 p-2 rounded-xl flex justify-between items-center shrink-0 border border-slate-200">
         <div className="flex items-center gap-4 px-2 text-[11px]">
           <span className="font-bold text-slate-600">{normasFiltradas.length} REGISTROS</span>
@@ -299,14 +306,14 @@ export default function BoletinOficialPage() {
           <button 
             onClick={() => handleBulkAction('promover')}
             disabled={procesando || selectedIds.length === 0}
-            className="bg-lgc-primary hover:bg-lgc-hover text-white py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50"
+            className="bg-lgc-primary hover:bg-[#006A8A] text-white py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50"
           >
             {procesando ? 'Procesando...' : 'Confirmar y Promover'}
           </button>
         </div>
       </div>
 
-      {/* DATAGRID */}
+      {/* DATAGRID (sin cambios) */}
       <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto relative">
         {loadingData ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
@@ -315,7 +322,6 @@ export default function BoletinOficialPage() {
         ) : paginatedNormas.length === 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-4">
             <span className="text-xs font-bold uppercase">No hay normativas pendientes</span>
-            {/* BOTÓN PARA JURISDICCIONES SIN SCRAPER */}
             {selectedJur && selectedJur.tiene_scraper === 0 && selectedJur.url_boletin && (
               <a 
                 href={selectedJur.url_boletin} 
@@ -354,14 +360,10 @@ export default function BoletinOficialPage() {
               {paginatedNormas.map(norma => {
                 const isSelected = selectedIds.includes(norma.id_norma_bo);
                 const hasMatch = norma.categorias_detectadas && norma.categorias_detectadas.trim() !== "";
-                
                 return (
                   <tr 
                     key={norma.id_norma_bo} 
-                    className={`
-                      transition-colors 
-                      ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}
-                    `}
+                    className={`transition-colors ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}`}
                   >
                     <td className="py-1.5 px-3 text-center">
                       <input 
@@ -376,38 +378,12 @@ export default function BoletinOficialPage() {
                       <span className="text-slate-900">{norma.tipo_norma_desc}</span><br/>
                       <span className="text-slate-400">N° {norma.numero}/{norma.anio}</span>
                     </td>
-                    <td className="py-1.5 px-2 text-slate-500 italic truncate max-w-30" title={norma.emisor_desc}>
-                      {norma.emisor_desc}
-                    </td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-slate-500">
-                      {norma.fecha_publicacion ? norma.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}
-                    </td>
-                    <td className="py-1.5 px-2 text-slate-600 leading-tight">
-                      <div className="line-clamp-2 hover:line-clamp-none transition-all cursor-default">
-                        {norma.sintesis}
-                      </div>
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <div className="flex flex-wrap gap-1">
-                        {norma.categorias_detectadas?.split(',').map((cat, idx) => (
-                          <span key={idx} className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase">
-                            {cat.trim()}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-1.5 px-2 text-center">
-                      {norma.url_norma && (
-                        <a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="text-lgc-primary hover:text-lgc-hover inline-block">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                        </a>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2 text-center">
-                      <span className={`font-bold px-2 py-0.5 rounded text-[9px] ${norma.id_estado_norma === 1 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {norma.id_estado_norma === 1 ? 'VIGENTE' : 'OTRO'}
-                      </span>
-                    </td>
+                    <td className="py-1.5 px-2 text-slate-500 italic truncate max-w-30" title={norma.emisor_desc}>{norma.emisor_desc}</td>
+                    <td className="py-1.5 px-2 whitespace-nowrap text-slate-500">{norma.fecha_publicacion ? norma.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}</td>
+                    <td className="py-1.5 px-2 text-slate-600 leading-tight"><div className="line-clamp-2 hover:line-clamp-none transition-all cursor-default">{norma.sintesis}</div></td>
+                    <td className="py-1.5 px-2"><div className="flex flex-wrap gap-1">{norma.categorias_detectadas?.split(',').map((cat, idx) => (<span key={idx} className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase">{cat.trim()}</span>))}</div></td>
+                    <td className="py-1.5 px-2 text-center">{norma.url_norma && (<a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="text-lgc-primary hover:text-lgc-hover inline-block"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg></a>)}</td>
+                    <td className="py-1.5 px-2 text-center"><span className={`font-bold px-2 py-0.5 rounded text-[9px] ${norma.id_estado_norma === 1 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{norma.id_estado_norma === 1 ? 'VIGENTE' : 'OTRO'}</span></td>
                   </tr>
                 );
               })}
@@ -416,45 +392,22 @@ export default function BoletinOficialPage() {
         )}
       </div>
 
-      {/* PAGINADOR */}
+      {/* PAGINADOR (sin cambios) */}
       <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center shrink-0 text-[11px]">
         <div className="flex items-center gap-2">
           <span className="text-slate-400 font-bold uppercase">Mostrar</span>
-          <select 
-            className="border border-slate-300 rounded p-0.5 text-slate-700 outline-none focus:border-lgc-primary font-bold"
-            value={itemsPerPage}
-            onChange={(e) => setItemsPerPage(Number(e.target.value))}
-          >
-            <option value={10}>10</option>
-            <option value={30}>30</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+          <select className="border border-slate-300 rounded p-0.5 text-slate-700 outline-none focus:border-lgc-primary font-bold" value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}>
+            <option value={10}>10</option><option value={30}>30</option><option value={50}>50</option><option value={100}>100</option>
           </select>
         </div>
-
         <div className="flex items-center gap-6">
-          <span className="text-slate-500 font-bold uppercase">
-            PÁGINA {currentPage} DE {totalPages || 1}
-          </span>
+          <span className="text-slate-500 font-bold uppercase">PÁGINA {currentPage} DE {totalPages || 1}</span>
           <div className="flex gap-1">
-            <button 
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-30 transition-colors font-bold uppercase"
-            >
-              Ant
-            </button>
-            <button 
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || totalPages === 0}
-              className="px-4 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-30 transition-colors font-bold uppercase"
-            >
-              Sig
-            </button>
+            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-30 transition-colors font-bold uppercase">Ant</button>
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="px-4 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-30 transition-colors font-bold uppercase">Sig</button>
           </div>
         </div>
       </div>
-
     </div>
   );
 }

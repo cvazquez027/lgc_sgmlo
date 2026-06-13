@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useToast } from "../../providers/ToastProvider";
+import { useConfirm } from "../../providers/ConfirmProvider";
 
 interface DatoContacto {
   id_tipo_contacto: string;
@@ -29,6 +31,8 @@ export default function ClientesPage() {
   const router = useRouter();
   
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
   useEffect(() => {
@@ -70,8 +74,9 @@ export default function ClientesPage() {
       setTiposContacto(data.registros || []);
     } catch (error) {
       console.error("Error cargando tipos de contacto:", error);
+      toast.showToast("Error", "No se pudieron cargar los tipos de contacto.", "error");
     }
-  }, []);
+  }, [toast]);
 
   const fetchClientes = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
@@ -88,10 +93,11 @@ export default function ClientesPage() {
       setClientes(data.registros || []);
     } catch (error) {
       console.error(error);
+      toast.showToast("Error", "No se pudieron cargar los clientes.", "error");
     } finally {
       setLoading(false);
     }
-  }, [router, fetchTiposContacto]);
+  }, [router, fetchTiposContacto, toast]);
 
   useEffect(() => { 
     if (!isCheckingPerms && canRead("clientes")) fetchClientes(); 
@@ -99,41 +105,33 @@ export default function ClientesPage() {
 
   // LÓGICA DE FILTRADO
   const clientesFiltrados = clientes.filter(cliente => {
-    // Filtro por estado
     if (filtroEstado !== "todos" && cliente.vigente !== filtroEstado) return false;
-    
-    // Filtro por nombre
     if (filtroNombre.trim() !== "") {
       const busqueda = filtroNombre.toLowerCase();
       const matchRazon = cliente.razon_social?.toLowerCase().includes(busqueda);
       const matchFantasia = cliente.nombre_fantasia?.toLowerCase().includes(busqueda);
       if (!matchRazon && !matchFantasia) return false;
     }
-    
-    // Filtro por CUIT
     if (filtroCuit.trim() !== "" && !cliente.cuit?.includes(filtroCuit.trim())) return false;
-    
     return true;
   });
 
-  // LÓGICA DE PAGINACIÓN
   const totalPaginas = Math.ceil(clientesFiltrados.length / itemsPorPagina);
   const indiceInicio = (paginaActual - 1) * itemsPorPagina;
   const indiceFin = indiceInicio + itemsPorPagina;
   const clientesPaginados = clientesFiltrados.slice(indiceInicio, indiceFin);
 
-  // Resetear a página 1 cuando cambian los filtros
   useEffect(() => {
     setPaginaActual(1);
   }, [filtroEstado, filtroNombre, filtroCuit, itemsPorPagina]);
 
-  // --- LÓGICA DE SUBIDA DE LOGO (Seguridad UX) ---
+  // --- LÓGICA DE SUBIDA DE LOGO ---
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("El logo no puede superar los 2MB por políticas de optimización.");
+      toast.showToast("Error", "El logo no puede superar los 2MB por políticas de optimización.", "error");
       return;
     }
 
@@ -152,8 +150,9 @@ export default function ClientesPage() {
       if (!res.ok) throw new Error(data.mensaje || "Error al subir logo");
 
       setFormData(prev => ({ ...prev, logo_path: data.logo_path }));
+      toast.showToast("Éxito", "Logo subido correctamente.", "success");
     } catch (error: any) {
-      alert("Error: " + error.message);
+      toast.showToast("Error", error.message, "error");
     } finally {
       setIsUploadingLogo(false);
     }
@@ -181,7 +180,7 @@ export default function ClientesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit("clientes")) return; 
+    if (!canEdit("clientes")) return;
 
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
@@ -194,11 +193,14 @@ export default function ClientesPage() {
       if (res.ok) {
         setIsModalOpen(false);
         fetchClientes();
+        toast.showToast("Éxito", "Cliente guardado correctamente.", "success");
       } else {
-        alert("Error al guardar el cliente.");
+        const data = await res.json();
+        toast.showToast("Error", data.mensaje || "Error al guardar el cliente.", "error");
       }
     } catch (err) {
       console.error(err);
+      toast.showToast("Error", "Error de conexión al guardar.", "error");
     } finally {
       setFormLoading(false);
     }
@@ -209,20 +211,20 @@ export default function ClientesPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* HEADER CON FONDO PRIMARY - RECUADRO SEPARADO */}
-      <div className="flex justify-between items-center bg-lgc-primary p-6 rounded-xl shadow-lg border border-lgc-primary/20">
-        
+      {/* HEADER ESTILO MATRICES */}
+      <div className="bg-[#005F78] text-white p-6 rounded-2xl shadow-lg border border-[#004D62] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-3">
           <Link 
             href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-all group"
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all group"
             title="Volver al inicio"
           >
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
-          <h1 className="text-xl font-bold text-white uppercase tracking-wide m-0 leading-none">
+          <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+          <h1 className="text-xl font-heading font-bold uppercase tracking-tight leading-none">
             Gestión de Clientes
           </h1>
         </div>
@@ -233,19 +235,18 @@ export default function ClientesPage() {
               setFormData({id_cliente: "", cuit: "", razon_social: "", nombre_fantasia: "", logo_path: "", vigente: 1, contactos: []}); 
               setIsModalOpen(true); 
             }}
-            className="bg-white hover:bg-white/70 text-blue-950 font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest border border-white/20 shadow-sm"
-          >+ Nuevo Cliente
+            className="bg-white text-lgc-primary hover:bg-slate-100 font-bold py-2.5 px-5 rounded-lg transition-all text-xs uppercase tracking-widest shadow-md"
+          >
+            + Nuevo Cliente
           </button>
         )}
       </div>
 
-      {/* FILA DE FILTROS CON FONDO TOSTADO - RECUADRO SEPARADO */}
-      <div className="bg-blue-50 p-5 rounded-xl shadow-lg border border-lgc-tostado/30">
+      {/* FILTROS */}
+      <div className="bg-slate-50 p-5 rounded-xl shadow-sm border border-slate-200">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Filtro por Estado */}
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Estado</label>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5">Estado</label>
             <select 
               className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 font-medium shadow-sm"
               value={filtroEstado}
@@ -257,9 +258,8 @@ export default function ClientesPage() {
             </select>
           </div>
 
-          {/* Filtro por Nombre */}
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Buscar por Nombre</label>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5">Buscar por Nombre</label>
             <input 
               type="text"
               placeholder="Razón social o fantasía..."
@@ -269,9 +269,8 @@ export default function ClientesPage() {
             />
           </div>
 
-          {/* Filtro por CUIT */}
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Buscar por CUIT</label>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5">Buscar por CUIT</label>
             <input 
               type="text"
               placeholder="Ingrese CUIT..."
@@ -281,9 +280,8 @@ export default function ClientesPage() {
             />
           </div>
 
-          {/* Items por página */}
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-slate-700 font-bold mb-1.5">Items por página</label>
+            <label className="block text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1.5">Items por página</label>
             <select 
               className="w-full p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm text-slate-700 font-medium shadow-sm"
               value={itemsPorPagina}
@@ -302,7 +300,6 @@ export default function ClientesPage() {
         <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Sincronizando base de datos...</div>
       ) : (
         <>
-          {/* LISTA DE CLIENTES COMO FILAS HORIZONTALES */}
           <div className="space-y-2 pt-6">
             {clientesPaginados.length === 0 ? (
               <div className="p-16 flex flex-col items-center justify-center text-slate-400 bg-white rounded-xl border border-slate-200 shadow-sm border-dashed">
@@ -314,14 +311,13 @@ export default function ClientesPage() {
             ) : (
               clientesPaginados.map((cliente, index) => {
                 const esVerde = index % 2 === 0;
-                const bgColor = esVerde ? "bg-slate-900" : "bg-slate-700";
+                const bgColor = esVerde ? "bg-slate-800" : "bg-slate-700";
                 
                 return (
                   <div 
                     key={cliente.id_cliente} 
                     className={`${bgColor} p-4 rounded-xl shadow-sm border border-white/10 hover:shadow-md transition-all group flex items-center gap-4`}
                   >
-                    {/* Logo */}
                     <div className="w-14 h-14 rounded-lg border-2 border-white/30 bg-white/95 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                       {cliente.logo_path ? (
                         <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${cliente.logo_path}`} alt={`Logo ${cliente.razon_social}`} className="w-full h-full object-contain p-1" />
@@ -330,32 +326,27 @@ export default function ClientesPage() {
                       )}
                     </div>
 
-                    {/* CUIT */}
                     <div className="w-32 shrink-0">
                       <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">CUIT</span>
                       <span className="text-sm font-bold text-white">{cliente.cuit}</span>
                     </div>
 
-                    {/* Razón Social */}
                     <div className="flex-1 min-w-0">
                       <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">Razón Social</span>
                       <span className="text-sm font-bold text-white truncate block">{cliente.razon_social}</span>
                     </div>
 
-                    {/* Nombre Fantasía */}
                     <div className="flex-1 min-w-0">
                       <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest block mb-0.5">Nombre Fantasía</span>
                       <span className="text-sm font-medium text-white/90 truncate block">{cliente.nombre_fantasia || "Sin nombre fantasía"}</span>
                     </div>
 
-                    {/* Estado */}
                     <div className="w-20 shrink-0 flex items-center justify-center">
                       <span className={`text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full ${cliente.vigente ? 'bg-green-500/20 text-green-100 border border-green-400/30' : 'bg-red-500/20 text-red-100 border border-red-400/30'}`}>
                         {cliente.vigente ? 'Activo' : 'Baja'}
                       </span>
                     </div>
 
-                    {/* Botones */}
                     <div className="flex gap-2 shrink-0">
                       {canEdit("clientes") && (
                         <button 
@@ -386,7 +377,6 @@ export default function ClientesPage() {
             )}
           </div>
 
-          {/* CONTROLES DE PAGINACIÓN */}
           {totalPaginas > 1 && (
             <div className="flex items-center justify-between pt-6 pb-2">
               <div className="text-sm text-slate-600">
@@ -404,7 +394,6 @@ export default function ClientesPage() {
                 
                 <div className="flex items-center gap-1">
                   {Array.from({ length: totalPaginas }, (_, i) => i + 1).map(numPagina => {
-                    // Mostrar solo algunas páginas alrededor de la actual
                     if (
                       numPagina === 1 || 
                       numPagina === totalPaginas || 
@@ -446,7 +435,7 @@ export default function ClientesPage() {
         </>
       )}
 
-      {/* MODAL DE EDICIÓN/CREACIÓN (SIN CAMBIOS) */}
+      {/* MODAL DE EDICIÓN/CREACIÓN (con toasts ya incorporados) */}
       {isModalOpen && canEdit("clientes") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">

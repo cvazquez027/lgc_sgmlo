@@ -85,7 +85,8 @@ if (!empty($data->email) && !empty($data->password)) {
             $token = $jwtHandler->generarToken([
                 "id_usuario" => $row['id_usuario'],
                 "email" => $usuario->email,
-                "id_rol" => $id_rol
+                "id_rol" => $id_rol,
+                "id_cliente" => $row['id_cliente'] ?? null
             ]);
             
             http_response_code(200);

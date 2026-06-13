@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { usePermissions } from "../../hooks/usePermissions";
 import Link from "next/link";
+import { useToast } from "../../providers/ToastProvider";
+import { useConfirm } from "../../providers/ConfirmProvider";
 
-// Definimos la estructura de nuestro menú de Maestras
 const MENU_MAESTRAS = [
   { id: 'rol', titulo: 'Roles de Sistema', icono: '🛡️' },
   { id: 'permiso', titulo: 'Permisos', icono: '🔑' },
@@ -17,78 +18,57 @@ const MENU_MAESTRAS = [
   { id: 'tipo_modalidad', titulo: 'Tipos de Modalidad', icono: '🏢' },
 ];
 
-// Interfaz genérica para cualquier registro maestro
 interface RegistroMaestro {
-  [key: string]: string | number; // Permite cualquier clave (id_rol, id_tipo_norma, etc.)
+  [key: string]: string | number;
 }
 
 export default function SeguridadPage() {
   const router = useRouter();
-  
-  // --- SEGURIDAD ---
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm(); // aunque no se usa en esta pantalla, se deja por si se agrega eliminación después
+  
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
+  const [tablaActiva, setTablaActiva] = useState<string>(MENU_MAESTRAS[0].id);
+  const [registros, setRegistros] = useState<RegistroMaestro[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
+  const [formLoading, setFormLoading] = useState(false);
+  const [formData, setFormData] = useState({ id: "", descripcion: "", vigente: 1 });
 
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
     return () => clearTimeout(timer);
   }, []);
-  // -----------------
 
-  const [tablaActiva, setTablaActiva] = useState<string>(MENU_MAESTRAS[0].id);
-  const [registros, setRegistros] = useState<RegistroMaestro[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  // Estados del Modal Dinámico
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"crear" | "editar">("crear");
-  const [formLoading, setFormLoading] = useState(false);
-  
-  // Guardamos un objeto genérico para el formulario
-  const [formData, setFormData] = useState<{ id: string | number, descripcion: string, vigente: number }>({ 
-    id: "", 
-    descripcion: "", 
-    vigente: 1 
-  });
+  const getPrimaryKeyName = () => `id_${tablaActiva}`;
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) { router.push("/"); return; }
-
     try {
       setLoading(true);
       setError("");
-      // Le pegamos a nuestro endpoint seguro con Lista Blanca
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=${tablaActiva}`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
-      
       const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.mensaje || "Acceso denegado o error de lectura.");
-      }
-      
+      if (!res.ok) throw new Error(data.mensaje || "Acceso denegado o error de lectura.");
       setRegistros(data.registros || []);
     } catch (err: any) {
-      setError(err.message);
-      setRegistros([]); // Limpiamos por seguridad
+      const msg = err.message;
+      setError(msg);
+      toast.showToast("Error", msg, "error");
     } finally {
       setLoading(false);
     }
-  }, [router, tablaActiva]);
+  }, [router, tablaActiva, toast]);
 
   useEffect(() => {
-    // Si cambia la tabla activa en el menú, volvemos a buscar datos
-    if (!isCheckingPerms && canRead("maestras")) {
-      fetchData();
-    }
+    if (!isCheckingPerms && canRead("maestras")) fetchData();
   }, [fetchData, isCheckingPerms, canRead, tablaActiva]);
-
-  // Funciones Dinámicas para el Modal
-  // Como la columna ID cambia (id_rol, id_tipo_norma), necesitamos inferirla
-  const getPrimaryKeyName = () => `id_${tablaActiva}`;
 
   const openCrearModal = () => {
     if (!canEdit("maestras")) return;
@@ -100,67 +80,50 @@ export default function SeguridadPage() {
   const openEditarModal = (registro: RegistroMaestro) => {
     if (!canEdit("maestras")) return;
     setModalMode("editar");
-    
-    // Extraemos el valor del ID dinámicamente usando el nombre de la clave primaria
     const pkName = getPrimaryKeyName();
-    const idValue = registro[pkName] as string | number;
-    
-    // Ahora todas las tablas usan la columna "descripcion" de forma unificada
-    const descripcionStr = registro['descripcion'];
-
+    const idValue = registro[pkName];
     setFormData({ 
-      id: idValue, 
-      descripcion: String(descripcionStr || ""), 
+      id: String(idValue ?? ''), 
+      descripcion: String(registro['descripcion'] || ""), 
       vigente: Number(registro.vigente ?? 1) 
     });
-    
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit("maestras")) return;
-
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
-
-    // Preparamos el payload limpio y unificado
     const pkName = getPrimaryKeyName();
-    
     const payload = {
       tabla: tablaActiva,
       [pkName]: formData.id,
       descripcion: formData.descripcion,
       vigente: formData.vigente
     };
-
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/guardar.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error al procesar la solicitud.");
-
       setIsModalOpen(false);
-      fetchData(); 
+      toast.showToast("Éxito", "Registro guardado correctamente.", "success");
+      fetchData();
     } catch (err: any) {
-      alert("Error: " + err.message);
+      toast.showToast("Error", err.message, "error");
     } finally {
       setFormLoading(false);
     }
   };
 
-  // --- RENDERIZADOS CONDICIONALES DE SEGURIDAD ---
+  // Render condicional de seguridad
   if (isCheckingPerms) {
     return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando seguridad...</div>;
   }
-
   if (!canRead("maestras")) {
     return (
       <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100">
@@ -170,32 +133,31 @@ export default function SeguridadPage() {
       </div>
     );
   }
-  // -----------------------------------------------
 
   return (
-    <div className="space-y-6">
-      
-      {/* BLOQUE NUEVO: Botón de Volver + Título Centrados */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        <div className="flex items-center gap-3">
+    <div className="space-y-4 animate-fade-in">
+      {/* HEADER UNIFICADO (estilo Matrices) */}
+      <div className="bg-[#005F78] text-white flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4 border-b border-[#004D62] rounded-t-xl">
+        <div className="flex items-center gap-4">
           <Link 
             href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 hover:text-lgc-primary transition-all group"
+            className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
             title="Volver al inicio"
           >
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
-          <h1 className="text-xl font-bold text-lgc-primary uppercase tracking-wide m-0 leading-none">
-            Panel de Configuración Base
+          <div className="h-8 w-px bg-white/30 hidden md:block"></div>
+          <h1 className="text-xl font-heading font-bold uppercase tracking-tight m-0 leading-none">
+            Configuración Base
           </h1>
         </div>
+        {/* El botón "Nuevo Registro" se mantiene dentro del toolbar de la tabla, no aquí */}
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
-        
-        {/* MENÚ LATERAL (Sidebar) */}
+        {/* MENÚ LATERAL (sin cambios) */}
         <div className="w-full md:w-64 shrink-0 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-4 bg-slate-50 border-b border-slate-100">
             <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400">Tablas Maestras</h3>
@@ -218,15 +180,12 @@ export default function SeguridadPage() {
           </div>
         </div>
 
-        {/* ÁREA DE TRABAJO (Tabla de la derecha) */}
+        {/* ÁREA DE TRABAJO */}
         <div className="grow w-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full min-h-125">
-          
-          {/* Toolbar de la tabla */}
           <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
             <h2 className="text-lg font-heading text-slate-700">
               {MENU_MAESTRAS.find(m => m.id === tablaActiva)?.titulo}
             </h2>
-            
             {canEdit("maestras") && (
               <button 
                 onClick={openCrearModal}
@@ -262,16 +221,11 @@ export default function SeguridadPage() {
                   ) : (
                     registros.map((reg, index) => {
                       const pk = getPrimaryKeyName();
-                      const desc = reg['descripcion']; // Unificado y directo
-                      
+                      const desc = reg['descripcion'];
                       return (
                         <tr key={`${pk}-${index}`} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-5 text-xs text-slate-400 font-medium">
-                            #{String(reg[pk])}
-                          </td>
-                          <td className="p-5 font-bold text-slate-700">
-                            {String(desc)}
-                          </td>
+                          <td className="p-5 text-xs text-slate-400 font-medium">#{String(reg[pk])}</td>
+                          <td className="p-5 font-bold text-slate-700">{String(desc)}</td>
                           <td className="p-5">
                             <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${reg.vigente == 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                               {reg.vigente == 1 ? 'Vigente' : 'Baja'}
@@ -295,7 +249,7 @@ export default function SeguridadPage() {
         </div>
       </div>
 
-      {/* MODAL GENÉRICO DE ABM */}
+      {/* MODAL (sin cambios funcionales, solo se mantiene) */}
       {isModalOpen && canEdit("maestras") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
@@ -305,15 +259,11 @@ export default function SeguridadPage() {
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
             </div>
-            
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              
-              {/* Info de debug visual para el usuario */}
               <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Tabla Afectada</span>
                 <code className="text-xs text-lgc-primary font-bold">{tablaActiva}</code>
               </div>
-
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">
                   {tablaActiva === 'permiso' ? 'Descripción (ej: leer_clientes)' : 'Descripción / Nombre'} *
@@ -327,7 +277,6 @@ export default function SeguridadPage() {
                   placeholder="Escriba aquí..."
                 />
               </div>
-
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Vigencia *</label>
                 <select 
@@ -339,20 +288,11 @@ export default function SeguridadPage() {
                   <option value={0}>INACTIVO / DADO DE BAJA</option>
                 </select>
               </div>
-
               <div className="pt-4 flex gap-4 border-t border-slate-100 mt-6">
-                <button 
-                  type="button" 
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 transition-colors"
-                >
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 transition-colors">
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
-                  disabled={formLoading}
-                  className="flex-1 bg-lgc-primary hover:bg-lgc-accent text-white py-3 rounded-lg text-xs uppercase tracking-widest font-bold shadow-lg transition-all disabled:opacity-70"
-                >
+                <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary hover:bg-lgc-accent text-white py-3 rounded-lg text-xs uppercase tracking-widest font-bold shadow-lg transition-all disabled:opacity-70">
                   {formLoading ? "Procesando..." : "Guardar Registro"}
                 </button>
               </div>

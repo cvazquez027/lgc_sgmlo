@@ -4,8 +4,10 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../../../hooks/usePermissions";
+import { useToast } from "../../../../providers/ToastProvider";
+import { useConfirm } from "../../../../providers/ConfirmProvider";
 
-// Diccionario de etiquetas (se mejoraron las leyendas)
+// Diccionario de etiquetas
 const COLUMN_LABELS: Record<string, string> = {
   'resumen_legal': 'Obligación / Resumen Legal',
   'normas': 'Normativas',
@@ -34,6 +36,8 @@ export default function PreviewMatrizPage() {
   const params = useParams();
   const idMatriz = params.id as string;
   const { canRead, canEdit } = usePermissions();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const [items, setItems] = useState<any[]>([]);
   const [config, setConfig] = useState<any[]>([]);
@@ -106,10 +110,11 @@ export default function PreviewMatrizPage() {
       
     } catch (err) {
       console.error(err);
+      toast.showToast("Error", "Error al cargar los datos de la matriz.", "error");
     } finally {
       setLoading(false);
     }
-  }, [idMatriz, router]);
+  }, [idMatriz, router, toast]);
 
   useEffect(() => {
     if (canRead("matriz")) fetchData();
@@ -134,7 +139,13 @@ export default function PreviewMatrizPage() {
   }, []);
 
   const handlePublicar = async () => {
-    if (!confirm("¿Confirma que desea PUBLICAR esta matriz? Quedará como versión definitiva vigente y la anterior publicada pasará a archivada.")) return;
+    const ok = await confirm({
+      title: "Publicar matriz",
+      message: "¿Confirma que desea PUBLICAR esta matriz? Quedará como versión definitiva vigente y la anterior publicada pasará a archivada.",
+      confirmText: "Publicar",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
     
     try {
         setIsPublishing(true);
@@ -149,22 +160,28 @@ export default function PreviewMatrizPage() {
             body: JSON.stringify(payload)
         });
         if (res.ok) {
+            toast.showToast("Éxito", "Matriz publicada correctamente.", "success");
             fetchData();
         } else {
             const data = await res.json();
-            alert("Error al publicar: " + data.mensaje);
+            toast.showToast("Error", data.mensaje || "Error al publicar la matriz.", "error");
         }
     } catch (error) {
         console.error(error);
-        alert("Error de conexión al publicar.");
+        toast.showToast("Error", "Error de conexión al publicar.", "error");
     } finally {
         setIsPublishing(false);
     }
   };
 
-  // FUNCIÓN HANDLECOPIAR MODIFICADA PARA MOSTRAR ERROR DEL BACKEND
   const handleCopiar = async () => {
-    if (!confirm(`¿Crear una nueva versión en BORRADOR copiando esta matriz? Se clonarán todos los ítems y normativas. La versión actual (${headerInfo?.version}.0) seguirá publicada hasta que la nueva versión sea publicada.`)) return;
+    const ok = await confirm({
+      title: "Copiar matriz",
+      message: `¿Crear una nueva versión en BORRADOR copiando esta matriz? Se clonarán todos los ítems y normativas. La versión actual (${headerInfo?.version}.0) seguirá publicada hasta que la nueva versión sea publicada.`,
+      confirmText: "Copiar",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
 
     try {
         setIsCopying(true);
@@ -176,15 +193,14 @@ export default function PreviewMatrizPage() {
         });
         const data = await res.json();
         if (res.ok && data.id_matriz) {
-            alert(`Nueva versión ${data.version}.0 creada en borrador (#${data.id_matriz}). Serás redirigido al nuevo workspace.`);
+            toast.showToast("Éxito", `Nueva versión ${data.version}.0 creada en borrador (#${data.id_matriz}).`, "success");
             router.push(`/dashboard/matrices/${data.id_matriz}`);
         } else {
-            // He mejorado el mensaje de error: se muestra el mensaje devuelto por el backend
-            alert("Error al copiar: " + (data.mensaje || "Error desconocido"));
+            toast.showToast("Error", data.mensaje || "Error desconocido al copiar la matriz.", "error");
         }
     } catch (error) {
         console.error(error);
-        alert("Error de conexión al copiar.");
+        toast.showToast("Error", "Error de conexión al copiar.", "error");
     } finally {
         setIsCopying(false);
     }
@@ -235,15 +251,12 @@ export default function PreviewMatrizPage() {
   const getPlainTextContent = (item: any, colId: string): string => {
     const content = renderContent(item, colId);
     if (typeof content === 'string') return content;
-    // Si es un elemento React, extraemos texto
     if (React.isValidElement(content)) {
-      // Caso especial para 'normas', 'estado', etc.
       if (colId === 'normas') {
         const normas = item.normas_vinculadas || [];
         return normas.map((n: any) => `${n.tipo_norma_desc || n.tipo_norma} ${n.numero}/${n.anio}`).join('; ');
       }
       if (colId === 'estado') return item.estado_cumplimiento_desc || '-';
-      // Para otros, intentamos obtener el texto plano
       return item[colId] || '-';
     }
     return content || '-';
@@ -251,30 +264,20 @@ export default function PreviewMatrizPage() {
 
   // Exportar a CSV (Excel)
   const exportToExcel = () => {
-    // Obtener encabezados
     const headers = config.map(col => col.label || COLUMN_LABELS[col.id] || col.id);
-    
-    // Obtener filas
     const rows = items.map(item => {
       return config.map(col => {
         let rawValue = getPlainTextContent(item, col.id);
-        // Limpiar saltos de línea y comillas para CSV
         if (typeof rawValue === 'string') {
           rawValue = rawValue.replace(/[\n\r]+/g, ' ').replace(/"/g, '""');
         }
         return rawValue;
       });
     });
-    
-    // Combinar encabezados y filas
     const csvData = [headers, ...rows];
-    
-    // Convertir a texto CSV con separador punto y coma
     const csvContent = csvData.map(row => 
       row.map(cell => `"${cell}"`).join(';')
     ).join('\n');
-    
-    // Añadir BOM para UTF-8 (para que Excel reconozca tildes)
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -288,7 +291,6 @@ export default function PreviewMatrizPage() {
 
   if (loading) return <div className="py-20 text-center animate-pulse text-lgc-primary font-bold tracking-widest uppercase">Cargando Documento...</div>;
 
-  // Orientación del PDF: si hay más de 6 columnas, usamos horizontal
   const isLandscape = config.length > 6;
 
   return (
@@ -308,7 +310,6 @@ export default function PreviewMatrizPage() {
           aside, header { display: none !important; }
           main { padding: 0 !important; margin: 0 !important; overflow: visible !important; height: auto !important; }
         }
-        /* Estilo para scroll horizontal suave */
         .scrollbar-thin::-webkit-scrollbar {
           height: 8px;
         }
@@ -333,13 +334,13 @@ export default function PreviewMatrizPage() {
             </Link>
             <h1 className="text-xl font-heading text-slate-800 uppercase tracking-tight flex items-center gap-3">
                PREVISUALIZACIÓN DE LA MATRIZ
-               <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase shadow-sm border ${(
+               <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase shadow-sm border ${
                  headerInfo?.id_estado_matriz === 2
                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                    : headerInfo?.id_estado_matriz === 3
                    ? 'bg-slate-100 text-slate-500 border-slate-300'
                    : 'bg-orange-100 text-orange-700 border-orange-200'
-               )}`}>
+               }`}>
                  {headerInfo?.estado_matriz_desc || 'Borrador'}
                </span>
             </h1>
@@ -352,18 +353,8 @@ export default function PreviewMatrizPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={toggleFullscreen} className="bg-white hover:bg-slate-50 text-slate-600 font-bold py-2 px-4 rounded-lg transition-all text-[10px] uppercase tracking-widest border border-slate-300 flex items-center gap-2">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
               </svg>
               Pantalla Completa
             </button>
@@ -382,13 +373,11 @@ export default function PreviewMatrizPage() {
               </button>
             )}
 
-            {/* Botón Exportar a PDF */}
             <button onClick={() => window.print()} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               Exportar a PDF
             </button>
             
-            {/* Botón Exportar a Excel */}
             <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               Exportar a Excel
@@ -451,7 +440,7 @@ export default function PreviewMatrizPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 print:divide-slate-300 text-[11px] print:text-[8px]">
               {items.length === 0 ? (
-                 <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
+                <tr><td colSpan={config.length + 1} className="p-20 text-center text-slate-400 italic">No hay ítems registrados en esta matriz.</td></tr>
               ) : (
                 items.map((item, idx) => (
                   <tr key={item.id_item_matriz} className="hover:bg-slate-50/50 transition-colors print:break-inside-avoid">

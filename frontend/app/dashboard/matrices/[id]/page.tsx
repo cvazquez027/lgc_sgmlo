@@ -8,6 +8,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMatrizFilters } from "../layout";
+import { useToast } from "../../../providers/ToastProvider";
+import { useConfirm } from "../../../providers/ConfirmProvider";
 
 // DICCIONARIOS DE COLUMNAS POR TIPO
 const COLUMNAS_REGULATORIAS = [
@@ -314,7 +316,7 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
             {col.label} {col.custom && <span className="bg-orange-100 text-orange-600 text-[8px] px-1.5 py-0.5 rounded">CUSTOM</span>}
          </span>
        </div>
-       <button onClick={() => onRemove(col.id)} className="text-slate-700 hover:text-red-500" title="Quitar columna"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+       <button onClick={() => onRemove(col.id)} className="text-slate-300 hover:text-red-500" title="Quitar columna"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
     </div>
   );
 };
@@ -445,7 +447,6 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
           </span>
           <div className="flex flex-col flex-1 min-w-0">
             {campoEncabezado === 'normas' ? (
-              // Mostrar normas como antes
               item.normas_vinculadas?.map((n:any, idx:number) => (
                 <div key={idx} className="flex flex-col gap-0.5">
                   <span className="bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm inline-block w-fit">
@@ -457,7 +458,6 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
                 </div>
               ))
             ) : (
-              // Mostrar el campo elegido (texto plano)
               <div className="text-xs font-bold text-slate-700">
                 {item[campoEncabezado] || '—'}
               </div>
@@ -477,7 +477,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
           )}
           {canEdit && (
             <div className="flex gap-1">
-              <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (confirm("¿Eliminar este ítem? Esta acción no se puede deshacer.")) onDelete(item.id_item_matriz); }} className="text-slate-400 hover:text-red-500 p-1" title="Eliminar ítem">
+              <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id_item_matriz); }} className="text-slate-400 hover:text-red-500 p-1" title="Eliminar ítem">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
               </button>
               <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onCopy(item); }} className="text-slate-400 hover:text-lgc-primary p-1" title="Copiar ítem">
@@ -522,6 +522,8 @@ export default function WorkspaceMatrizPage() {
   const { canRead, canEdit } = usePermissions();
   const { workspace, setWorkspace } = useMatrizFilters();
   const { isFilterOpen, filtros } = workspace;
+  const toast = useToast();
+  const confirm = useConfirm();
   
   const [items, setItems] = useState<any[]>([]);
   const [headerInfo, setHeaderInfo] = useState<any>(null); 
@@ -530,9 +532,6 @@ export default function WorkspaceMatrizPage() {
   const [configColumnas, setConfigColumnas] = useState<any[]>([]);
   const [tempConfig, setTempConfig] = useState<any[]>([]);
   const [nuevaColumna, setNuevaColumna] = useState("");
-  const [mostrarCumplimiento, setMostrarCumplimiento] = useState<boolean>(true);
-  const [campoEncabezadoItem, setCampoEncabezadoItem] = useState<string>('normas');
-  const [opcionesEncabezado, setOpcionesEncabezado] = useState<{ id: string; label: string }[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
@@ -574,8 +573,6 @@ export default function WorkspaceMatrizPage() {
     url_norma: ''
   });
 
-  // FILTROS AVANZADOS (YA NO SE DECLARAN LOCALMENTE, SE USAN DEL CONTEXTO)
-
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
   // Botones flotantes de scroll
@@ -584,7 +581,10 @@ export default function WorkspaceMatrizPage() {
 
   const itemEnEdicionRef = useRef<any>(null);
   const [itemEnEdicion, setItemEnEdicion] = useState<any>(null);
-  const [quickAddKey, setQuickAddKey] = useState(0); // 🔑 Para forzar recreación del formulario de nueva fila
+  const [quickAddKey, setQuickAddKey] = useState(0);
+  const [mostrarCumplimiento, setMostrarCumplimiento] = useState<boolean>(true);
+  const [campoEncabezadoItem, setCampoEncabezadoItem] = useState<string>('normas');
+  const [opcionesEncabezado, setOpcionesEncabezado] = useState<{ id: string; label: string }[]>([]);
 
   // NUEVO: Modal de nueva normativa
   const [showNuevaNormaModal, setShowNuevaNormaModal] = useState(false);
@@ -624,15 +624,8 @@ export default function WorkspaceMatrizPage() {
     };
   }, [items, loading]);
 
-  const scrollToTop = () => {
-    mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-  const scrollToBottom = () => {
-    const container = mainContainerRef.current;
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    }
-  };
+  const scrollToTop = () => { mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const scrollToBottom = () => { const container = mainContainerRef.current; if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); };
 
   useEffect(() => {
     const shouldOpenConfig = searchParams.get('config') === 'true';
@@ -651,9 +644,9 @@ export default function WorkspaceMatrizPage() {
       setTipoMatriz(info.id_tipo_matriz);
       setEstadoMatriz(info.id_estado_matriz || 1);
       setHeaderInfo(info);
+      setIdEstablecimiento(info.id_cliente_establecimiento);
       setMostrarCumplimiento(info.mostrar_cumplimiento == 1);
       setCampoEncabezadoItem(info.campo_encabezado_item || 'normas');
-      setIdEstablecimiento(info.id_cliente_establecimiento);
 
       const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${info.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataR = await resR.json();
@@ -685,11 +678,9 @@ export default function WorkspaceMatrizPage() {
       
       const configFinal = configParsed.length > 0 ? configParsed : ALL_COLS;
       setConfigColumnas(configFinal);
-      setTempConfig(configFinal); 
+      setTempConfig(configFinal);
+      setOpcionesEncabezado(configFinal.map((col:any) => ({ id: col.id, label: col.label })));
       setItems(data.registros || []);
-      
-      const opciones = configFinal.map((col:any) => ({ id: col.id, label: col.label }));
-      setOpcionesEncabezado(opciones);
       
       if (configFinal.length === 0) setShowConfig(true); 
     } catch (err) {} finally { setLoading(false); }
@@ -699,27 +690,21 @@ export default function WorkspaceMatrizPage() {
     const fetchDiccionarios = async () => {
         const token = localStorage.getItem("sgml_token");
         const headers = { "Authorization": `Bearer ${token}` };
-
         const resE = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_cumplimiento`, { headers });
         const dataE = await resE.json();
         setEstadosCumplimiento(dataE.registros?.map((e:any) => ({ id: e.id_estado_cumplimiento || e.id, descripcion: e.descripcion })) || []);
-
         const resM = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_modalidad`, { headers });
         const dataM = await resM.json();
         setTiposModalidad(dataM.registros?.map((e:any) => ({ id: e.id_tipo_modalidad || e.id, descripcion: e.descripcion })) || []);
-
         const resTN = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=tipo_norma`, { headers });
         const dataTN = await resTN.json();
         setTiposNorma(dataTN.registros?.map((e:any) => ({ id: e.id_tipo_norma || e.id, descripcion: e.descripcion })) || []);
-
         const resEN = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=emisor_norma`, { headers });
         const dataEN = await resEN.json();
         setEmisoresNorma(dataEN.registros?.map((e:any) => ({ id: e.id_emisor_norma || e.id, descripcion: e.descripcion })) || []);
-
         const resEstadoNorma = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=estado_norma`, { headers });
         const dataEstadoNorma = await resEstadoNorma.json();
         setEstadosNorma(dataEstadoNorma.registros?.map((e:any) => ({ id: e.id_estado_norma || e.id, descripcion: e.descripcion })) || []);
-
         const resCat = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=categoria`, { headers });
         const dataCat = await resCat.json();
         setCategoriasGlobales(dataCat.registros?.map((e:any) => ({ id: e.id_categoria || e.id, descripcion: e.descripcion })) || []);
@@ -849,16 +834,13 @@ export default function WorkspaceMatrizPage() {
 
   const guardarConfiguracion = async () => {
     const token = localStorage.getItem("sgml_token");
-    // 1. Guardar columnas
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ id_matriz: idMatriz, columnas: tempConfig })
     });
-    // 2. Guardar configuración de visualización
+    // Guardar configuración de visualización
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config_visualizacion.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({
         id_matriz: idMatriz,
         mostrar_cumplimiento: mostrarCumplimiento ? 1 : 0,
@@ -867,7 +849,8 @@ export default function WorkspaceMatrizPage() {
     });
     setConfigColumnas(tempConfig);
     setShowConfig(false);
-    fetchItems(); // recargar para actualizar headerInfo con los nuevos valores
+    fetchItems();
+    toast.showToast("Éxito", "Configuración guardada correctamente.", "success");
   };
 
   const handleUpdateExistingRow = async (itemId: number, field: string, value: any) => {
@@ -882,7 +865,13 @@ export default function WorkspaceMatrizPage() {
   };
 
   const handleDeleteItem = async (itemId: number) => {
-    if (!confirm("¿Eliminar este ítem? Esta acción no se puede deshacer.")) return;
+    const ok = await confirm({
+      title: "Eliminar ítem",
+      message: "¿Está seguro que desea eliminar este ítem? Esta acción no se puede deshacer.",
+      confirmText: "Eliminar",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
     const token = localStorage.getItem("sgml_token");
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/eliminar_item.php`, {
       method: "POST",
@@ -891,8 +880,9 @@ export default function WorkspaceMatrizPage() {
     });
     if (res.ok) {
       fetchItems();
+      toast.showToast("Éxito", "Ítem eliminado correctamente.", "success");
     } else {
-      alert("Error al eliminar el ítem.");
+      toast.showToast("Error", "Error al eliminar el ítem.", "error");
     }
   };
 
@@ -951,12 +941,14 @@ export default function WorkspaceMatrizPage() {
         url_norma: ''
       });
       fetchItems();
+      toast.showToast("Éxito", "Ítem creado correctamente.", "success");
     } else {
-      alert("Error al guardar el ítem.");
+      toast.showToast("Error", "Error al guardar el ítem.", "error");
     }
     setIsSavingRow(false);
   };
-    const handleUploadEvidencia = async () => {
+
+  const handleUploadEvidencia = async () => {
     if (!evidenciaFile || !itemEvidencia) return;
     setIsUploading(true);
     const token = localStorage.getItem("sgml_token");
@@ -964,18 +956,20 @@ export default function WorkspaceMatrizPage() {
     formData.append("archivo", evidenciaFile);
     formData.append("id_item_matriz", itemEvidencia.id_item_matriz);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/upload_evidencia.php`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/upload_evidencia.php`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${token}` },
         body: formData
       });
+      if (!res.ok) throw new Error("Error al subir archivo");
       await recargarItemEvidencia();
       await fetchItems();
       setEvidenciaFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      toast.showToast("Éxito", "Evidencia subida correctamente.", "success");
     } catch (err) {
       console.error(err);
-      alert("Error al subir el archivo.");
+      toast.showToast("Error", "Error al subir el archivo.", "error");
     } finally {
       setIsUploading(false);
     }
@@ -984,16 +978,18 @@ export default function WorkspaceMatrizPage() {
   const handleBorrarEvidencia = async (id_doc: number) => {
     const token = localStorage.getItem("sgml_token");
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/delete_evidencia.php`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/delete_evidencia.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ id_documentacion: id_doc })
       });
+      if (!res.ok) throw new Error("Error al eliminar");
       await recargarItemEvidencia();
       await fetchItems();
+      toast.showToast("Éxito", "Archivo eliminado correctamente.", "success");
     } catch (err) {
       console.error(err);
-      alert("Error al eliminar el archivo.");
+      toast.showToast("Error", "Error al eliminar el archivo.", "error");
     }
   };
 
@@ -1027,15 +1023,23 @@ export default function WorkspaceMatrizPage() {
         });
         if (!res.ok) throw new Error("Error al reordenar en el servidor");
         await fetchItems();
+        toast.showToast("Éxito", "Orden guardado correctamente.", "success");
       } catch (err) {
         console.error("Error al reordenar:", err);
         setItems(items);
+        toast.showToast("Error", "Error al reordenar los ítems.", "error");
       }
     }
   };
 
-  const handleSortByJurisdiccion = () => {
-    if (!confirm("¿Desea reordenar todos los ítems por Nivel Jurisdiccional (Nacional > Provincial > Municipal)? Esto modificará el orden actual de manera permanente.")) return;
+  const handleSortByJurisdiccion = async () => {
+    const ok = await confirm({
+      title: "Reordenar por jurisdicción",
+      message: "¿Desea reordenar todos los ítems por Nivel Jurisdiccional (Nacional > Provincial > Municipal)? Esto modificará el orden actual de manera permanente.",
+      confirmText: "Reordenar",
+      cancelText: "Cancelar"
+    });
+    if (!ok) return;
     
     const getJurStr = (item: any) => {
        if (item.normas_vinculadas && item.normas_vinculadas.length > 0) {
@@ -1059,6 +1063,7 @@ export default function WorkspaceMatrizPage() {
        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
        body: JSON.stringify(itemsConOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }))) 
     }).catch(err => console.error("Error al ordenar por jurisdicción:", err));
+    toast.showToast("Éxito", "Ordenamiento por jurisdicción aplicado.", "success");
   };
 
   const autocompletarCampos = (norma: any) => {
@@ -1101,18 +1106,16 @@ export default function WorkspaceMatrizPage() {
     setShowNuevaNormaModal(true);
   };
 
-  // Función para guardar la nueva norma (con quickAddKey)
+  // Función para guardar la nueva norma
   const handleGuardarNuevaNorma = async () => {
     console.log("🔴 handleGuardarNuevaNorma ejecutado");
-    console.log("🔴 itemEnEdicionRef.current:", itemEnEdicionRef.current);
-    console.log("🔴 itemEnEdicion estado:", itemEnEdicion);
     if (!nuevaNormaForm.id_tipo_norma || !nuevaNormaForm.numero || !nuevaNormaForm.anio || !nuevaNormaForm.id_emisor_norma) {
-      alert("Complete los campos obligatorios: Tipo, Número, Año y Emisor.");
+      toast.showToast("Atención", "Complete los campos obligatorios: Tipo, Número, Año y Emisor.", "warning");
       return;
     }
     const anioNumero = parseInt(nuevaNormaForm.anio, 10);
     if (isNaN(anioNumero) || anioNumero <= 0) {
-      alert("El año debe ser un número válido.");
+      toast.showToast("Error", "El año debe ser un número válido.", "error");
       return;
     }
 
@@ -1147,8 +1150,6 @@ export default function WorkspaceMatrizPage() {
         url_norma: nuevaNormaForm.url_norma || ''
       };
 
-      console.log("🟡 nuevaNormaParaItem:", nuevaNormaParaItem);
-      console.log("🟡 Entrando al if, ref vale:", itemEnEdicionRef.current);
       if (itemEnEdicionRef.current) {
         // === MODO EDICIÓN DE ÍTEM ===
         const nuevosItems = items.map(i =>
@@ -1185,29 +1186,25 @@ export default function WorkspaceMatrizPage() {
         }
         itemEnEdicionRef.current = null;
         setItemEnEdicion(null);
-        } else {
-          console.log("🟢 ENTRANDO AL ELSE - modo nueva fila");
-          console.log("🟢 newRowData actual:", newRowData);
-          console.log("🟢 nuevaNormaParaItem:", nuevaNormaParaItem);
-          const normasActuales = newRowData.normas_vinculadas || [];
-          const nuevasNormas = [...normasActuales, nuevaNormaParaItem];
-          console.log("🟢 nuevasNormas a guardar:", nuevasNormas);
-          setNewRowData((prev: any) => ({
-            ...prev,
-            normas_vinculadas: nuevasNormas,
-            norma_emisor: nuevaNormaParaItem.emisor_desc || '',
-            norma_nivel_jur: nuevaNormaParaItem.nivel_jurisdiccion_desc || '',
-            sintesis_categorias: nuevaNormaParaItem.sintesis || '',
-            url_norma: nuevaNormaParaItem.url_norma || '',
-          }));
-          setQuickAddKey(prev => prev + 1);
-          console.log("🟢 setNewRowData ejecutado");
-        }
+        toast.showToast("Éxito", "Norma agregada al ítem existente.", "success");
+      } else {
+        // === MODO NUEVA FILA ===
+        setNewRowData((prev: any) => ({
+          ...prev,
+          normas_vinculadas: [...(prev.normas_vinculadas || []), nuevaNormaParaItem],
+          norma_emisor: nuevaNormaParaItem.emisor_desc || '',
+          norma_nivel_jur: nuevaNormaParaItem.nivel_jurisdiccion_desc || '',
+          sintesis_categorias: nuevaNormaParaItem.sintesis || '',
+          url_norma: nuevaNormaParaItem.url_norma || '',
+        }));
+        setQuickAddKey(prev => prev + 1);
+        toast.showToast("Éxito", "Norma agregada al nuevo ítem.", "success");
+      }
 
       setShowNuevaNormaModal(false);
     } catch (error: any) {
       console.error(error);
-      alert("Error: " + error.message);
+      toast.showToast("Error", error.message, "error");
     } finally {
       setCargandoNuevaNorma(false);
     }
@@ -1273,45 +1270,26 @@ export default function WorkspaceMatrizPage() {
   if (showConfig) {
     const COLUMNAS_BASE = tipoMatriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
     const columnasDisponibles = COLUMNAS_BASE.filter(c => !tempConfig.find(tc => tc.id === c.id));
-    
-    // Generar opciones de encabezado desde tempConfig
     const opcionesHeader = tempConfig.map(col => ({ id: col.id, label: col.label }));
-    
     return (
       <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 max-w-5xl mx-auto mt-3 animate-fade-in">
-        {/* Encabezado azul */}
         <div className="bg-[#005F78] -m-6 mb-6 p-4 rounded-t-2xl flex justify-between items-center">
           <div>
             <h2 className="text-xl font-heading text-white uppercase tracking-tight">Estructura Visual de la Matriz</h2>
             <p className="text-white/70 text-xs mt-1">Personalizá qué campos se muestran y cómo se ven los ítems.</p>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => { setTempConfig(configColumnas || []); setShowConfig(false); }}
-              className="px-5 py-2 text-xs font-bold uppercase text-white bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={guardarConfiguracion}
-              className="px-6 py-2 bg-lgc-accent hover:bg-[#D97920] text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors"
-            >
-              Guardar Estructura
-            </button>
+            <button onClick={() => { setTempConfig(configColumnas || []); setShowConfig(false); }} className="px-5 py-2 text-xs font-bold uppercase text-white bg-white/20 hover:bg-white/30 rounded-lg transition-colors">Cancelar</button>
+            <button onClick={guardarConfiguracion} className="px-6 py-2 bg-lgc-accent hover:bg-[#D97920] text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors">Guardar Estructura</button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-          {/* Panel izquierdo: columnas disponibles (sin cambios) */}
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
             <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-4">Campos Disponibles</h3>
             <div className="flex flex-col gap-2 max-h-100 overflow-y-auto custom-scrollbar pr-2">
               {columnasDisponibles.map((col: any) => (
-                <button
-                  key={col.id}
-                  onClick={() => setTempConfig([...tempConfig, col])}
-                  className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between group"
-                >
+                <button key={col.id} onClick={() => setTempConfig([...tempConfig, col])} className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between group">
                   {col.label}
                   <span className="text-slate-300 group-hover:text-lgc-primary transition-colors text-base font-bold">+</span>
                 </button>
@@ -1320,32 +1298,19 @@ export default function WorkspaceMatrizPage() {
             <div className="mt-6 border-t border-slate-200 pt-5">
               <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-3">Crear Columna Libre (Personalizada)</h4>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary"
-                  placeholder="Nombre de la columna..."
-                  value={nuevaColumna}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)}
-                />
-                <button onClick={agregarColumnaCustom} className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-xs font-bold shadow-md transition-colors">
-                  Crear
-                </button>
+                <input type="text" className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary" placeholder="Nombre de la columna..." value={nuevaColumna} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)} />
+                <button onClick={agregarColumnaCustom} className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-xs font-bold shadow-md transition-colors">Crear</button>
               </div>
             </div>
           </div>
 
-          {/* Panel derecho: columnas visibles (drag & drop) - sin cambios visuales grandes */}
           <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100">
             <h3 className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mb-4">Columnas Visibles (Arrastrar para ordenar)</h3>
             <div className="flex flex-col max-h-125 overflow-y-auto custom-scrollbar pr-2">
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: any) => { const { active, over } = e; if (over && active.id !== over.id) { const oldI = tempConfig.findIndex((c: any) => c.id === active.id); const newI = tempConfig.findIndex((c: any) => c.id === over.id); setTempConfig(arrayMove(tempConfig, oldI, newI)); } }}>
                 <SortableContext items={tempConfig.map((c: any) => c.id)} strategy={verticalListSortingStrategy}>
                   {tempConfig.map((col: any) => (
-                    <SortableConfigItem
-                      key={col.id}
-                      col={col}
-                      onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))}
-                    />
+                    <SortableConfigItem key={col.id} col={col} onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))} />
                   ))}
                 </SortableContext>
               </DndContext>
@@ -1353,47 +1318,27 @@ export default function WorkspaceMatrizPage() {
           </div>
         </div>
 
-        {/* Sección de configuración de visualización */}
+        {/* Configuración adicional */}
         <div className="border-t border-slate-200 pt-6 mt-4">
           <h3 className="text-sm font-bold text-slate-700 mb-4">Configuración adicional de la matriz</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Checkbox: Mostrar cumplimiento */}
             <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="mostrarCumplimiento"
-                checked={mostrarCumplimiento}
-                onChange={(e) => setMostrarCumplimiento(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 text-lgc-primary focus:ring-lgc-primary"
-              />
-              <label htmlFor="mostrarCumplimiento" className="text-xs font-bold uppercase text-slate-600 tracking-widest">
-                Mostrar indicadores de cumplimiento (gráfico circular y porcentaje)
-              </label>
+              <input type="checkbox" id="mostrarCumplimiento" checked={mostrarCumplimiento} onChange={(e) => setMostrarCumplimiento(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-lgc-primary focus:ring-lgc-primary" />
+              <label htmlFor="mostrarCumplimiento" className="text-xs font-bold uppercase text-slate-600 tracking-widest">Mostrar indicadores de cumplimiento (gráfico circular y porcentaje)</label>
             </div>
-
-            {/* Select: Campo para encabezado del ítem */}
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
-                Campo que se muestra como encabezado del ítem
-              </label>
-              <select
-                value={campoEncabezadoItem}
-                onChange={(e) => setCampoEncabezadoItem(e.target.value)}
-                className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-lgc-primary outline-none"
-              >
-                {opcionesEncabezado.map(opt => (
-                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                ))}
+              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">Campo que se muestra como encabezado del ítem</label>
+              <select value={campoEncabezadoItem} onChange={(e) => setCampoEncabezadoItem(e.target.value)} className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-lgc-primary outline-none">
+                {opcionesEncabezado.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
               </select>
-              <p className="text-[9px] text-slate-400 mt-1">
-                Determina qué dato se muestra en la línea superior de cada ítem (cuando está colapsado).
-              </p>
+              <p className="text-[9px] text-slate-400 mt-1">Determina qué dato se muestra en la línea superior de cada ítem (cuando está colapsado).</p>
             </div>
           </div>
         </div>
       </div>
     );
   }
+
   const colsRegulatorias = configColumnas.filter(c => !c.custom && ['resumen_legal', 'articulos_aplicables', 'interpretacion_aplicacion', 'id_tipo_modalidad', 'obs_modalidad'].includes(c.id));
   const colsCumplimiento = configColumnas.filter(c => !c.custom && ['evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'].includes(c.id));
   const colsCustom = configColumnas.filter(c => c.custom);
@@ -1407,26 +1352,16 @@ export default function WorkspaceMatrizPage() {
           <Link href="/dashboard/matrices" className="text-white/80 hover:text-white transition-colors bg-white/10 hover:bg-white/20 p-2.5 rounded-xl border border-white/20 shadow-inner">
              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
           </Link>
-          
           {headerInfo?.logo_path ? (
-            <div className="bg-white p-1.5 rounded-lg shadow-sm">
-              <img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${headerInfo.logo_path}`} alt="Cliente Logo" className="h-10 w-auto object-contain" />
-            </div>
+            <div className="bg-white p-1.5 rounded-lg shadow-sm"><img src={`${process.env.NEXT_PUBLIC_IMG_URL}/${headerInfo.logo_path}`} alt="Cliente Logo" className="h-10 w-auto object-contain" /></div>
           ) : (
-            <div className="h-12 w-12 bg-white/20 rounded-lg flex items-center justify-center text-white font-bold text-xl uppercase border border-white/30 shrink-0 shadow-sm">
-              {headerInfo?.nombre_fantasia?.substring(0, 2) || 'M'}
-            </div>
+            <div className="h-12 w-12 bg-white/20 rounded-lg flex items-center justify-center text-white font-bold text-xl uppercase border border-white/30 shrink-0 shadow-sm">{headerInfo?.nombre_fantasia?.substring(0, 2) || 'M'}</div>
           )}
-          
           <div className="flex flex-col">
             <h1 className="text-xl font-heading text-white uppercase tracking-tight flex items-center gap-3">
               {headerInfo?.nombre_fantasia || 'WORKSPACE MATRIZ'}
               <span className="bg-white/20 text-white px-3 py-1 rounded-md text-[11px] tracking-widest font-bold shadow-inner border border-white/30"># {idMatriz}</span>
-              <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase shadow-inner border flex items-center gap-1.5 ${
-                estadoMatriz === 2 ? 'bg-emerald-900/60 text-emerald-200 border-emerald-700' :
-                estadoMatriz === 3 ? 'bg-slate-700/60 text-slate-300 border-slate-600' :
-                'bg-amber-500/30 text-amber-200 border-amber-500/50'
-              }`}>
+              <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase shadow-inner border flex items-center gap-1.5 ${estadoMatriz === 2 ? 'bg-emerald-900/60 text-emerald-200 border-emerald-700' : estadoMatriz === 3 ? 'bg-slate-700/60 text-slate-300 border-slate-600' : 'bg-amber-500/30 text-amber-200 border-amber-500/50'}`}>
                 {estadoMatriz === 3 && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
                 {estadoMatriz === 1 ? 'Borrador' : estadoMatriz === 2 ? 'Publicada' : 'Archivada'}
               </span>
@@ -1459,10 +1394,7 @@ export default function WorkspaceMatrizPage() {
 
       <div ref={mainContainerRef} className="flex-1 overflow-auto custom-scrollbar pb-10 px-1 relative">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-4 transition-all overflow-hidden relative z-20">
-          <button
-            onClick={() => setIsDashboardOpen(!isDashboardOpen)}
-            className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent"
-          >
+          <button onClick={() => setIsDashboardOpen(!isDashboardOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
             <div className="flex items-center gap-3">
               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               <span className="font-bold uppercase text-xs tracking-widest text-slate-600">Resumen y Métricas de la Matriz</span>
@@ -1490,20 +1422,15 @@ export default function WorkspaceMatrizPage() {
                         const pct = total > 0 ? Math.round((jur.cantidad / total) * 100) : 0;
                         return (
                           <div key={jur.nombre} className="flex flex-col gap-1">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] font-bold text-slate-600 truncate max-w-[60%]" title={jur.nombre}>{jur.nombre}</span>
-                              <span className="text-[10px] font-bold text-slate-500">{jur.cantidad} <span className="text-slate-300 font-normal">({pct}%)</span></span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                              <div className="bg-lgc-primary h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }}></div>
-                            </div>
+                            <div className="flex justify-between items-center"><span className="text-[10px] font-bold text-slate-600 truncate max-w-[60%]" title={jur.nombre}>{jur.nombre}</span><span className="text-[10px] font-bold text-slate-500">{jur.cantidad} <span className="text-slate-300 font-normal">({pct}%)</span></span></div>
+                            <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden"><div className="bg-lgc-primary h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }}></div></div>
                           </div>
                         );
                       })}
                     </div>
                   )}
                 </div>
-                {mostrarCumplimiento && tipoMatriz === 2 && (
+                {tipoMatriz === 2 && mostrarCumplimiento && (
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
                     <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Estado de Cumplimiento</span>
                     {dashboardMetrics.porCumplimiento.length === 0 ? (
@@ -1529,16 +1456,7 @@ export default function WorkspaceMatrizPage() {
                                     const offset = circ - cumOffset;
                                     cumOffset += dash;
                                     return (
-                                      <circle
-                                        key={i}
-                                        r={r} cx={cx} cy={cy}
-                                        fill="none"
-                                        stroke={seg.color}
-                                        strokeWidth="14"
-                                        strokeDasharray={`${dash} ${gap}`}
-                                        strokeDashoffset={offset}
-                                        style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}
-                                      />
+                                      <circle key={i} r={r} cx={cx} cy={cy} fill="none" stroke={seg.color} strokeWidth="14" strokeDasharray={`${dash} ${gap}`} strokeDashoffset={offset} style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }} />
                                     );
                                   })}
                                   <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="bold" fill="#334155">{total}</text>
@@ -1549,9 +1467,7 @@ export default function WorkspaceMatrizPage() {
                           </div>
                           <div className="flex flex-col gap-1.5 flex-1 min-w-0">
                             {dashboardMetrics.porCumplimiento.map((seg: any) => {
-                              const pct = dashboardMetrics.totalCumplimiento > 0
-                                ? Math.round((seg.cantidad / dashboardMetrics.totalCumplimiento) * 100)
-                                : 0;
+                              const pct = dashboardMetrics.totalCumplimiento > 0 ? Math.round((seg.cantidad / dashboardMetrics.totalCumplimiento) * 100) : 0;
                               return (
                                 <div key={seg.label} className="flex items-center gap-2">
                                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }}></div>
@@ -1563,13 +1479,9 @@ export default function WorkspaceMatrizPage() {
                           </div>
                         </div>
                         {(() => {
-                          const cumple = dashboardMetrics.porCumplimiento.find((s: any) =>
-                            s.label.toLowerCase().includes('cumple') && !s.label.toLowerCase().includes('no') && !s.label.toLowerCase().includes('parcial')
-                          );
+                          const cumple = dashboardMetrics.porCumplimiento.find((s: any) => s.label.toLowerCase().includes('cumple') && !s.label.toLowerCase().includes('no') && !s.label.toLowerCase().includes('parcial'));
                           if (!cumple) return null;
-                          const pct = dashboardMetrics.totalCumplimiento > 0
-                            ? Math.round((cumple.cantidad / dashboardMetrics.totalCumplimiento) * 100)
-                            : 0;
+                          const pct = dashboardMetrics.totalCumplimiento > 0 ? Math.round((cumple.cantidad / dashboardMetrics.totalCumplimiento) * 100) : 0;
                           const colorClass = pct >= 80 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : pct >= 50 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-red-600 bg-red-50 border-red-200';
                           return (
                             <div className={`mt-1 rounded-lg border px-3 py-2 flex items-center gap-2 ${colorClass}`}>
@@ -1583,7 +1495,6 @@ export default function WorkspaceMatrizPage() {
                   </div>
                 )}
               </div>
-
               {dashboardMetrics.rankingCategorias.length > 0 && (
                 <div>
                   <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-3 border-b border-slate-100 pb-1.5">Ranking de Categorías incluidas en las Normas</h3>
@@ -1595,13 +1506,8 @@ export default function WorkspaceMatrizPage() {
                         <div key={cat.nombre} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
                           <span className="text-[10px] font-bold text-slate-400 w-4 shrink-0 text-right">{idx + 1}</span>
                           <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-[11px] font-bold text-slate-700 truncate" title={cat.nombre}>{cat.nombre}</span>
-                              <span className="text-[10px] font-bold text-lgc-primary shrink-0 ml-2">{cat.cantidad}</span>
-                            </div>
-                            <div className="w-full bg-slate-200 rounded-full h-1">
-                              <div className="bg-lgc-primary/60 h-1 rounded-full" style={{ width: `${pct}%` }}></div>
-                            </div>
+                            <div className="flex justify-between items-center mb-1"><span className="text-[11px] font-bold text-slate-700 truncate" title={cat.nombre}>{cat.nombre}</span><span className="text-[10px] font-bold text-lgc-primary shrink-0 ml-2">{cat.cantidad}</span></div>
+                            <div className="w-full bg-slate-200 rounded-full h-1"><div className="bg-lgc-primary/60 h-1 rounded-full" style={{ width: `${pct}%` }}></div></div>
                           </div>
                         </div>
                       );
@@ -1622,256 +1528,96 @@ export default function WorkspaceMatrizPage() {
               </div>
               <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
            </button>
-           
            {isFilterOpen && (
               <div className="p-5 border-t border-slate-200 bg-white space-y-6">
                   <div>
                     <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest mb-3 border-b border-blue-100 pb-1">Sección Normativa</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.tipo} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, tipo: e.target.value } } })}>
-                         <option value="">Tipo (Todos)</option>
-                         {tiposNorma.map((t: any) => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
-                      </select>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.tipo} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, tipo: e.target.value } } })}><option value="">Tipo (Todos)</option>{tiposNorma.map((t: any) => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}</select>
                       <input type="text" placeholder="Año (4 dígitos)" maxLength={4} onInput={(e: React.FormEvent<HTMLInputElement>) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.anio} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, anio: e.target.value } } })} />
                       <input type="text" placeholder="Nro" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.nro} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, nro: e.target.value } } })} />
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.emisor} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, emisor: e.target.value } } })}>
-                         <option value="">Emisor (Todos)</option>
-                         {emisoresNorma.map((e: any) => <option key={e.id} value={e.descripcion}>{e.descripcion}</option>)}
-                      </select>
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.nivel} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, nivel: e.target.value } } })}>
-                         <option value="">Nivel Jurisd. (Todos)</option>
-                         {nivelesDisponibles.map((n: any) => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
-                      </select>
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.jurisdiccion} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, jurisdiccion: e.target.value } } })}>
-                         <option value="">Jurisdicción (Todas)</option>
-                         {jurisdiccionesDisponibles.map((j: any) => <option key={j.id} value={j.descripcion}>{j.descripcion}</option>)}
-                      </select>
-                      <div className="col-span-2">
-                        <input type="text" placeholder="Buscar por síntesis..." className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, sintesis: e.target.value } } })} />
-                      </div>
-                      <div className="col-span-2 md:col-span-4">
-                         <MultiSelectTags options={categoriasGlobales} selected={filtros.norma.categorias} onChange={(arr: any) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, categorias: arr } } })} placeholder="Filtrar por categorías (agrega varias)..." />
-                      </div>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.emisor} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, emisor: e.target.value } } })}><option value="">Emisor (Todos)</option>{emisoresNorma.map((e: any) => <option key={e.id} value={e.descripcion}>{e.descripcion}</option>)}</select>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.nivel} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, nivel: e.target.value } } })}><option value="">Nivel Jurisd. (Todos)</option>{nivelesDisponibles.map((n: any) => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}</select>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.jurisdiccion} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, jurisdiccion: e.target.value } } })}><option value="">Jurisdicción (Todas)</option>{jurisdiccionesDisponibles.map((j: any) => <option key={j.id} value={j.descripcion}>{j.descripcion}</option>)}</select>
+                      <div className="col-span-2"><input type="text" placeholder="Buscar por síntesis..." className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, sintesis: e.target.value } } })} /></div>
+                      <div className="col-span-2 md:col-span-4"><MultiSelectTags options={categoriasGlobales} selected={filtros.norma.categorias} onChange={(arr: any) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, categorias: arr } } })} placeholder="Filtrar por categorías (agrega varias)..." /></div>
                     </div>
                   </div>
-
                   {colsRegulatorias.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mb-3 border-b border-orange-100 pb-1">Sección Regulatoria</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {colsRegulatorias.map((c: any) => {
-                           if (c.id === 'id_tipo_modalidad') {
-                              return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
-                                   <option value="">Modalidad (Todas)</option>
-                                   {tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
-                                </select>
-                              );
-                           }
+                           if (c.id === 'id_tipo_modalidad') return <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}><option value="">Modalidad (Todas)</option>{tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select>;
                            return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
                         })}
                       </div>
                     </div>
                   )}
-
                   {colsCumplimiento.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-emerald-600 tracking-widest mb-3 border-b border-emerald-100 pb-1">Sección De Cumplimiento</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600 cursor-pointer bg-white" value={filtros.evidencia} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, evidencia: e.target.value } })}>
-                           <option value="">Evidencia (Todas)</option>
-                           <option value="con">Con Evidencia Cargada</option>
-                           <option value="sin">Sin Evidencia</option>
-                        </select>
+                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600 cursor-pointer bg-white" value={filtros.evidencia} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, evidencia: e.target.value } })}><option value="">Evidencia (Todas)</option><option value="con">Con Evidencia Cargada</option><option value="sin">Sin Evidencia</option></select>
                         {colsCumplimiento.map((c: any) => {
-                           if (c.id === 'estado') {
-                              return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
-                                   <option value="">Estado (Todos)</option>
-                                   {estadosCumplimiento.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
-                                </select>
-                              );
-                           }
-                           if (c.id === 'id_responsable_establecimiento') {
-                              return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
-                                   <option value="">Responsable (Todos)</option>
-                                   {responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
-                                </select>
-                              );
-                           }
-                           if (c.id === 'vencimiento_plazo' || c.id === 'fecha_cumplimiento') {
-                              return <input key={c.id} type="date" title={c.label} className="text-[11px] p-2 border border-slate-200 rounded outline-none text-slate-500 font-bold uppercase cursor-pointer" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
-                           }
-                           if (c.id === 'adjuntos') return null; 
+                           if (c.id === 'estado') return <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}><option value="">Estado (Todos)</option>{estadosCumplimiento.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select>;
+                           if (c.id === 'id_responsable_establecimiento') return <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}><option value="">Responsable (Todos)</option>{responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}</select>;
+                           if (c.id === 'vencimiento_plazo' || c.id === 'fecha_cumplimiento') return <input key={c.id} type="date" title={c.label} className="text-[11px] p-2 border border-slate-200 rounded outline-none text-slate-500 font-bold uppercase cursor-pointer" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
+                           if (c.id === 'adjuntos') return null;
                            return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
                         })}
                       </div>
                     </div>
                   )}
-
                   {colsCustom.length > 0 && (
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-purple-600 tracking-widest mb-3 border-b border-purple-100 pb-1">Columnas Personalizadas</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {colsCustom.map((c: any) => (
-                           <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-purple-200 bg-purple-50/30 rounded outline-none focus:border-purple-400" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />
-                        ))}
+                        {colsCustom.map((c: any) => <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-purple-200 bg-purple-50/30 rounded outline-none focus:border-purple-400" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />)}
                       </div>
                     </div>
                   )}
-
-                  <div className="flex justify-end pt-2">
-                     <button onClick={() => setWorkspace({ filtros: { norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] }, evidencia: '', dinamicos: {} } })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">
-                        Limpiar Filtros
-                     </button>
-                  </div>
+                  <div className="flex justify-end pt-2"><button onClick={() => setWorkspace({ filtros: { norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] }, evidencia: '', dinamicos: {} } })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">Limpiar Filtros</button></div>
               </div>
            )}
         </div>
 
         <div className="bg-[#005F78] px-5 py-3 rounded-xl shadow-sm mb-4 flex justify-between items-center sticky top-0 z-30">
-           <div className="flex items-center gap-3">
-              <svg className="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-              <span className="text-xs font-bold text-white uppercase tracking-widest">
-                 Ítems Registrados ({itemsFiltrados.length})
-              </span>
-           </div>
-           
+           <div className="flex items-center gap-3"><svg className="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg><span className="text-xs font-bold text-white uppercase tracking-widest">Ítems Registrados ({itemsFiltrados.length})</span></div>
            <div className="flex gap-4 items-center">
-              {hasActiveFilters && (
-                <span className="text-[9px] text-orange-200 font-bold uppercase tracking-widest border border-orange-200/30 px-2 py-1 rounded bg-orange-900/20">
-                  Ordenamiento Bloqueado (Filtro Activo)
-                </span>
-              )}
-              
-              {!hasActiveFilters && canEdit("matriz") && (
-                <button 
-                  onClick={handleSortByJurisdiccion} 
-                  title="Ordenar filas por Nivel Jurisdiccional (Nacional > Provincial > Municipal)"
-                  className="text-[10px] text-white bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/20 transition-all font-bold uppercase tracking-widest flex items-center gap-2 shadow-inner"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9M3 12h5m0 0l-5-5m5 5v12" /></svg>
-                  Ordenar Jur.
-                </button>
-              )}
-
-              <button 
-                onClick={() => setExpandAll(!expandAll)} 
-                className="text-[10px] text-white bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/20 transition-all font-bold uppercase tracking-widest flex items-center gap-2 shadow-inner"
-              >
-                <svg 
-                  className="w-4 h-4" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  {expandAll ? (
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M9 9L3.75 3.75M9 9v-4.5M9 9H4.5M15 15l5.25 5.25M15 15v4.5M15 15h4.5M9 15l-5.25 5.25M9 15v4.5M9 15H4.5M15 9l5.25-5.25M15 9v-4.5M15 9h4.5" 
-                    />
-                  ) : (
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25v-4.5m0 4.5h-4.5m4.5 0L15 15" 
-                    />
-                  )}
-                </svg>
-                {expandAll ? 'Contraer Todas' : 'Expandir Todas'}
-              </button>
+              {hasActiveFilters && (<span className="text-[9px] text-orange-200 font-bold uppercase tracking-widest border border-orange-200/30 px-2 py-1 rounded bg-orange-900/20">Ordenamiento Bloqueado (Filtro Activo)</span>)}
+              {!hasActiveFilters && canEdit("matriz") && (<button onClick={handleSortByJurisdiccion} title="Ordenar filas por Nivel Jurisdiccional (Nacional > Provincial > Municipal)" className="text-[10px] text-white bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/20 transition-all font-bold uppercase tracking-widest flex items-center gap-2 shadow-inner"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9M3 12h5m0 0l-5-5m5 5v12" /></svg>Ordenar Jur.</button>)}
+              <button onClick={() => setExpandAll(!expandAll)} className="text-[10px] text-white bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-lg border border-white/20 transition-all font-bold uppercase tracking-widest flex items-center gap-2 shadow-inner"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">{expandAll ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L3.75 3.75M9 9v-4.5M9 9H4.5M15 15l5.25 5.25M15 15v4.5M15 15h4.5M9 15l-5.25 5.25M9 15v4.5M9 15H4.5M15 9l5.25-5.25M15 9v-4.5M15 9h4.5" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />}</svg>{expandAll ? 'Contraer Todas' : 'Expandir Todas'}</button>
            </div>
         </div>
 
-        {/* Botón "Nueva Fila" */}
         {canEdit("matriz") && puedeAgregarFilas && (
-          <div className="sticky top-14 z-40 mb-4">
-            <button
-              onClick={() => {
-                setShowQuickAdd(true);
-                setTimeout(() => {
-                  if (quickAddFormRef.current && mainContainerRef.current) {
-                    const container = mainContainerRef.current;
-                    const element = quickAddFormRef.current;
-                    const elementRect = element.getBoundingClientRect();
-                    const containerRect = container.getBoundingClientRect();
-                    container.scrollTop += elementRect.top - containerRect.top - 120;
-                  }
-                }, 100);
-              }}
-              className="w-full bg-[#e6f7f5] hover:bg-[#ccefec] text-[#005F78] font-bold py-3 rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[#005F78]/20 shadow-sm"
-            >
-              + Nueva Fila
-            </button>
-          </div>
+          <div className="sticky top-14 z-40 mb-4"><button onClick={() => { setShowQuickAdd(true); setTimeout(() => { if (quickAddFormRef.current && mainContainerRef.current) { const container = mainContainerRef.current; const element = quickAddFormRef.current; const elementRect = element.getBoundingClientRect(); const containerRect = container.getBoundingClientRect(); container.scrollTop += elementRect.top - containerRect.top - 120; } }, 100); }} className="w-full bg-[#e6f7f5] hover:bg-[#ccefec] text-[#005F78] font-bold py-3 rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[#005F78]/20 shadow-sm">+ Nueva Fila</button></div>
         )}
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndItems}>
           <div className="flex flex-col max-w-7xl mx-auto relative z-10">
             <div className="relative">
               {showQuickAdd && (
-                <div
-                  key={`quick-add-form-${quickAddKey}`}
-                  ref={quickAddFormRef}
-                  className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-visible"
-                >
+                <div key={`quick-add-form-${quickAddKey}`} ref={quickAddFormRef} className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-visible">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-[#005F78]/10 rounded-full blur-3xl"></div>
                   <div className="flex items-center justify-between mb-6 border-b border-[#005F78]/20 pb-3 relative z-10">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-[#005F78] text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
-                      </span>
-                      <span className="text-sm font-bold text-[#005F78] uppercase tracking-widest">Crear Nueva Fila</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => setShowQuickAdd(false)} className="bg-white text-slate-500 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase shadow-sm hover:bg-slate-50 transition-colors">Cancelar</button>
-                      <button onClick={handleSaveNewRow} disabled={isSavingRow} className="bg-[#005F78] hover:bg-[#004A5E] text-white px-6 py-2 rounded-lg shadow-md text-xs font-bold uppercase flex items-center gap-2 transition-colors disabled:opacity-50">
-                        {isSavingRow ? 'Guardando...' : 'Guardar Ítem'}
-                      </button>
-                    </div>
+                    <div className="flex items-center gap-3"><span className="bg-[#005F78] text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg></span><span className="text-sm font-bold text-[#005F78] uppercase tracking-widest">Crear Nueva Fila</span></div>
+                    <div className="flex gap-2"><button onClick={() => setShowQuickAdd(false)} className="bg-white text-slate-500 px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold uppercase shadow-sm hover:bg-slate-50 transition-colors">Cancelar</button><button onClick={handleSaveNewRow} disabled={isSavingRow} className="bg-[#005F78] hover:bg-[#004A5E] text-white px-6 py-2 rounded-lg shadow-md text-xs font-bold uppercase flex items-center gap-2 transition-colors disabled:opacity-50">{isSavingRow ? 'Guardando...' : 'Guardar Ítem'}</button></div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 relative z-10">
                     {configColumnas.map((col: any) => (
-                      <div key={col.id} className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase text-[#005F78] tracking-widest ml-1">{col.label}</label>
-                        {renderQuickAddCell(col.id)}
-                      </div>
+                      <div key={col.id} className="flex flex-col gap-1.5"><label className="text-[10px] font-bold uppercase text-[#005F78] tracking-widest ml-1">{col.label}</label>{renderQuickAddCell(col.id)}</div>
                     ))}
                   </div>
                 </div>
               )}
-
               <SortableContext items={itemsFiltrados.map(i => i.id_item_matriz)} strategy={verticalListSortingStrategy}>
                 {itemsFiltrados.length === 0 && !showQuickAdd ? (
-                  <div className="p-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed">
-                    <svg className="w-12 h-12 mb-3 text-slate-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    <span className="font-bold uppercase tracking-widest text-[11px]">{hasActiveFilters ? 'No hay resultados para estos filtros.' : 'No hay filas en la matriz.'}</span>
-                  </div>
+                  <div className="p-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed"><svg className="w-12 h-12 mb-3 text-slate-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="font-bold uppercase tracking-widest text-[11px]">{hasActiveFilters ? 'No hay resultados para estos filtros.' : 'No hay filas en la matriz.'}</span></div>
                 ) : (
                   itemsFiltrados.map(item => (
-                    <SortableRow 
-                      key={item.id_item_matriz} 
-                      item={item} 
-                      columnasVisibles={configColumnas} 
-                      canEdit={canEdit("matriz") && estadoMatriz !== 3} 
-                      canEditField={puedeEditarCampo}
-                      onUpdate={handleUpdateExistingRow}
-                      onDelete={handleDeleteItem}
-                      onCopy={handleCopyItem}
-                      estadosCumplimiento={estadosCumplimiento} 
-                      responsables={responsables} 
-                      tiposModalidad={tiposModalidad} 
-                      onOpenEvidencia={setItemEvidencia} 
-                      forceExpand={expandAll}
-                      isDragDisabled={hasActiveFilters || !puedeReordenar}
-                      onSolicitarNuevaNorma={abrirNuevaNormaModal}
-                      idEstablecimiento={idEstablecimiento}
-                      campoEncabezado={campoEncabezadoItem}
-                    />
+                    <SortableRow key={item.id_item_matriz} item={item} columnasVisibles={configColumnas} canEdit={canEdit("matriz") && estadoMatriz !== 3} canEditField={puedeEditarCampo} onUpdate={handleUpdateExistingRow} onDelete={handleDeleteItem} onCopy={handleCopyItem} estadosCumplimiento={estadosCumplimiento} responsables={responsables} tiposModalidad={tiposModalidad} onOpenEvidencia={setItemEvidencia} forceExpand={expandAll} isDragDisabled={hasActiveFilters || !puedeReordenar} onSolicitarNuevaNorma={abrirNuevaNormaModal} idEstablecimiento={idEstablecimiento} campoEncabezado={campoEncabezadoItem} />
                   ))
                 )}
               </SortableContext>
@@ -1879,153 +1625,38 @@ export default function WorkspaceMatrizPage() {
           </div>
         </DndContext>
 
-        {showScrollTop && (
-          <button
-            onClick={scrollToTop}
-            className="fixed bottom-20 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
-            title="Ir arriba"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-          </button>
-        )}
-        {showScrollBottom && (
-          <button
-            onClick={scrollToBottom}
-            className="fixed bottom-6 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50"
-            title="Ir abajo"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
-          </button>
-        )}
+        {showScrollTop && (<button onClick={scrollToTop} className="fixed bottom-20 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50" title="Ir arriba"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg></button>)}
+        {showScrollBottom && (<button onClick={scrollToBottom} className="fixed bottom-6 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50" title="Ir abajo"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg></button>)}
       </div>
 
       {itemEvidencia && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-slate-200">
-            <h3 className="text-lg font-bold text-lgc-primary uppercase mb-4 border-b border-slate-100 pb-3 flex items-center gap-3">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-               Repositorio de Evidencias <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-xs ml-2">Ítem #{itemEvidencia.id_item_matriz}</span>
-            </h3>
-            
-            <div className="mb-6 bg-slate-50 p-5 rounded-xl border border-slate-200 border-dashed">
-               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Subir nuevo documento probatorio</label>
-               <div className="flex gap-3 items-center">
-                  <input ref={fileInputRef} type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEvidenciaFile(e.target.files?.[0] || null)} />
-                  <button onClick={handleUploadEvidencia} disabled={!evidenciaFile || isUploading} className="bg-lgc-accent hover:bg-[#D97920] text-white px-6 py-2.5 text-xs font-bold rounded-lg shadow-md disabled:opacity-50 transition-colors uppercase tracking-widest flex items-center gap-2">
-                     {isUploading ? <><svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Subiendo</> : 'Adjuntar'}
-                  </button>
-               </div>
-            </div>
-
-            <div className="space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar pr-2">
-               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Archivos Vinculados</label>
-               {itemEvidencia.documentos_vinculados?.length === 0 ? (
-                 <div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs text-slate-400 italic">No hay evidencias cargadas para este ítem.</p>
-                 </div>
-               ) : itemEvidencia.documentos_vinculados?.map((doc: any) => (
-                 <div key={doc.id_documentacion} className="flex justify-between items-center p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-lgc-primary transition-colors group">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                       <div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                       </div>
-                       <a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" className="text-xs text-slate-700 font-bold hover:text-lgc-primary truncate transition-colors" title={doc.nombre_original}>{doc.nombre_original}</a>
-                    </div>
-                    <button onClick={() => handleBorrarEvidencia(doc.id_documentacion)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar archivo">
-                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                 </div>
-               ))}
-            </div>
-            
-            <div className="mt-8 flex justify-end">
-               <button onClick={() => setItemEvidencia(null)} className="bg-slate-100 hover:bg-slate-200 px-8 py-3 rounded-xl text-xs font-bold uppercase text-slate-600 tracking-widest transition-colors shadow-sm">Terminar y Cerrar</button>
-            </div>
+            <h3 className="text-lg font-bold text-lgc-primary uppercase mb-4 border-b border-slate-100 pb-3 flex items-center gap-3"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg> Repositorio de Evidencias <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-xs ml-2">Ítem #{itemEvidencia.id_item_matriz}</span></h3>
+            <div className="mb-6 bg-slate-50 p-5 rounded-xl border border-slate-200 border-dashed"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Subir nuevo documento probatorio</label><div className="flex gap-3 items-center"><input ref={fileInputRef} type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEvidenciaFile(e.target.files?.[0] || null)} /><button onClick={handleUploadEvidencia} disabled={!evidenciaFile || isUploading} className="bg-lgc-accent hover:bg-[#D97920] text-white px-6 py-2.5 text-xs font-bold rounded-lg shadow-md disabled:opacity-50 transition-colors uppercase tracking-widest flex items-center gap-2">{isUploading ? <><svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Subiendo</> : 'Adjuntar'}</button></div></div>
+            <div className="space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar pr-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Archivos Vinculados</label>{itemEvidencia.documentos_vinculados?.length === 0 ? (<div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-100"><p className="text-xs text-slate-400 italic">No hay evidencias cargadas para este ítem.</p></div>) : itemEvidencia.documentos_vinculados?.map((doc: any) => (<div key={doc.id_documentacion} className="flex justify-between items-center p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-lgc-primary transition-colors group"><div className="flex items-center gap-3 overflow-hidden"><div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></div><a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" className="text-xs text-slate-700 font-bold hover:text-lgc-primary truncate transition-colors" title={doc.nombre_original}>{doc.nombre_original}</a></div><button onClick={() => handleBorrarEvidencia(doc.id_documentacion)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar archivo"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>))}</div>
+            <div className="mt-8 flex justify-end"><button onClick={() => setItemEvidencia(null)} className="bg-slate-100 hover:bg-slate-200 px-8 py-3 rounded-xl text-xs font-bold uppercase text-slate-600 tracking-widest transition-colors shadow-sm">Terminar y Cerrar</button></div>
           </div>
         </div>
       )}
 
-      {/* Modal de nueva normativa (corregido) */}
       {showNuevaNormaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">Cargar nueva normativa</h2>
-              <button onClick={() => setShowNuevaNormaModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
-            </div>
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0"><h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">Cargar nueva normativa</h2><button onClick={() => setShowNuevaNormaModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button></div>
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Tipo de Norma *</label>
-                  <select
-                    className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
-                    value={nuevaNormaForm.id_tipo_norma}
-                    onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_tipo_norma: e.target.value})}
-                  >
-                    <option value="">Seleccione...</option>
-                    {tiposNorma.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Número *</label>
-                  <input type="text" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.numero} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, numero: e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Año *</label>
-                  <input
-                    type="number"
-                    className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
-                    value={nuevaNormaForm.anio}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setNuevaNormaForm({
-                        ...nuevaNormaForm,
-                        anio: val
-                      });
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor *</label>
-                  <select
-                    className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
-                    value={nuevaNormaForm.id_emisor_norma}
-                    onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_emisor_norma: e.target.value})}
-                  >
-                    <option value="">Seleccione...</option>
-                    {emisoresNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Síntesis</label>
-                  <textarea rows={3} className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm resize-none" value={nuevaNormaForm.sintesis} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, sintesis: e.target.value})} />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">URL</label>
-                  <input type="url" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.url_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, url_norma: e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado Normativo *</label>
-                  <select
-                    className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
-                    value={nuevaNormaForm.id_estado_norma}
-                    onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_estado_norma: e.target.value})}
-                  >
-                    {estadosNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Fecha Publicación (opcional)</label>
-                  <input type="date" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.fecha_publicacion || ''} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, fecha_publicacion: e.target.value})} />
-                </div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Tipo de Norma *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_tipo_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_tipo_norma: e.target.value})}><option value="">Seleccione...</option>{tiposNorma.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select></div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Número *</label><input type="text" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.numero} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, numero: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Año *</label><input type="number" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.anio} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, anio: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_emisor_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_emisor_norma: e.target.value})}><option value="">Seleccione...</option>{emisoresNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select></div>
+                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Síntesis</label><textarea rows={3} className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm resize-none" value={nuevaNormaForm.sintesis} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, sintesis: e.target.value})} /></div>
+                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">URL</label><input type="url" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.url_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, url_norma: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado Normativo *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_estado_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_estado_norma: e.target.value})}>{estadosNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select></div>
+                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Fecha Publicación (opcional)</label><input type="date" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.fecha_publicacion || ''} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, fecha_publicacion: e.target.value})} /></div>
               </div>
             </div>
-            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0">
-              <button onClick={() => setShowNuevaNormaModal(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Cancelar</button>
-              <button onClick={handleGuardarNuevaNorma} disabled={cargandoNuevaNorma} className="px-8 py-2.5 bg-lgc-primary text-white font-bold rounded-lg uppercase text-xs shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">
-                {cargandoNuevaNorma ? "Guardando..." : "Guardar Norma"}
-              </button>
-            </div>
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0"><button onClick={() => setShowNuevaNormaModal(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Cancelar</button><button onClick={handleGuardarNuevaNorma} disabled={cargandoNuevaNorma} className="px-8 py-2.5 bg-lgc-primary text-white font-bold rounded-lg uppercase text-xs shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">{cargandoNuevaNorma ? "Guardando..." : "Guardar Norma"}</button></div>
           </div>
         </div>
       )}
