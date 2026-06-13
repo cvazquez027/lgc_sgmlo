@@ -234,7 +234,7 @@ const InlineNormSelectorConAutocompletado = ({ selectedNormas, onChange, onAutoc
               <p className="text-xs text-slate-500 mb-2">No se encontraron normas con esos filtros.</p>
               <button
                 type="button"
-                onClick={onSolicitarNuevaNorma}
+                onMouseDown={(e) => { e.preventDefault(); onSolicitarNuevaNorma(); }}
                 className="text-xs text-lgc-primary font-bold hover:underline"
               >
                 + Cargar nueva normativa manualmente
@@ -355,9 +355,10 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
         return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 flex flex-col gap-1">{item.normas_vinculadas?.length > 0 ? item.normas_vinculadas.map((n:any, i:number) => <span key={i} className="font-bold">{n.tipo_norma_desc || n.tipo_norma} {n.numero}/{n.anio}</span>) : <span className="italic text-slate-300">—</span>}</div>
           : <InlineNormSelectorConAutocompletado
+              key={`normas-${item.id_item_matriz}-${item.normas_vinculadas?.length ?? 0}`}
               selectedNormas={item.normas_vinculadas || []}
               onChange={(normas: any) => onUpdate(item.id_item_matriz, 'normas_vinculadas', normas)}
-              onAutocompletar={() => {}} // No es necesario en edición, pero se puede dejar vacío
+              onAutocompletar={() => {}}
               idEstablecimiento={idEstablecimiento}
               onSolicitarNuevaNorma={() => onSolicitarNuevaNorma(item)}
             />;
@@ -404,11 +405,11 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
       
       case 'norma_emisor':
         const emisores_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.emisor_desc).filter(Boolean)));
-        return <div className="flex flex-col gap-1 w-full p-1.5">{emisores_unicos.length > 0 ? emisores_unicos.map((emi: any, i: number) => <span key={i} className="text-slate-600 text-[11px] font-bold uppercase truncate" title={emi as string}>• {emi}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+        return <div className="flex flex-col gap-1 w-full p-1.5">{emisores_unicos.length > 0 ? emisores_unicos.map((emi: any, i: number) => <span key={i} className="text-slate-600 text-[11px] font-bold uppercase truncate" title={emi as string}>• {emi}</span>) : <span className="text-slate-400 text-[10px] italic">No hay normas vinculadas</span>}</div>;
       
       case 'norma_nivel_jur':
         const niveles_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.nivel_jurisdiccion_desc || n.jurisdiccion_desc).filter(Boolean)));
-        return <div className="flex flex-wrap gap-1.5 w-full p-1.5">{niveles_unicos.length > 0 ? niveles_unicos.map((niv: any, i: number) => <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold uppercase px-2 py-1 rounded-md shadow-sm">{niv}</span>) : <span className="text-slate-400 text-[10px] italic">Auto</span>}</div>;
+        return <div className="flex flex-wrap gap-1.5 w-full p-1.5">{niveles_unicos.length > 0 ? niveles_unicos.map((niv: any, i: number) => <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold uppercase px-2 py-1 rounded-md shadow-sm">{niv}</span>) : <span className="text-slate-400 text-[10px] italic">No hay normas vinculadas</span>}</div>;
       
       case 'estado':
         const color = item.color_hex ? `#${item.color_hex}` : '#cbd5e1';
@@ -571,7 +572,9 @@ export default function WorkspaceMatrizPage() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
+  const itemEnEdicionRef = useRef<any>(null);
   const [itemEnEdicion, setItemEnEdicion] = useState<any>(null);
+  const [quickAddKey, setQuickAddKey] = useState(0); // 🔑 Para forzar recreación del formulario de nueva fila
 
   // NUEVO: Modal de nueva normativa
   const [showNuevaNormaModal, setShowNuevaNormaModal] = useState(false);
@@ -579,7 +582,7 @@ export default function WorkspaceMatrizPage() {
   const [nuevaNormaForm, setNuevaNormaForm] = useState({
     id_tipo_norma: "",
     numero: "",
-    anio: new Date().getFullYear(),
+    anio: "",
     id_emisor_norma: "",
     sintesis: "",
     url_norma: "",
@@ -604,15 +607,12 @@ export default function WorkspaceMatrizPage() {
     };
 
     container.addEventListener('scroll', handleScroll);
-
-    // Pequeño delay para que el DOM tenga las alturas reales calculadas
     const timer = setTimeout(handleScroll, 100);
-
     return () => {
       container.removeEventListener('scroll', handleScroll);
       clearTimeout(timer);
     };
-  }, [items, loading]); // ← re-ejecutar cuando cambia el contenido
+  }, [items, loading]);
 
   const scrollToTop = () => {
     mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -767,7 +767,7 @@ export default function WorkspaceMatrizPage() {
     });
   }, [items, filtros]);
 
-  // Forzar recálculo de botones flotantes cuando cambia el contenido (items, filtros, expansión)
+  // Forzar recálculo de botones flotantes cuando cambia el contenido
   useEffect(() => {
     const container = mainContainerRef.current;
     if (!container) return;
@@ -1056,11 +1056,13 @@ export default function WorkspaceMatrizPage() {
 
   // Función para abrir el modal de nueva norma
   const abrirNuevaNormaModal = (itemParaEditar: any = null) => {
+    console.log("🔵 abrirNuevaNormaModal llamado con:", itemParaEditar);
+    itemEnEdicionRef.current = itemParaEditar;
     setItemEnEdicion(itemParaEditar);
     setNuevaNormaForm({
       id_tipo_norma: "",
       numero: "",
-      anio: new Date().getFullYear(),
+      anio: "",
       id_emisor_norma: "",
       sintesis: "",
       url_norma: "",
@@ -1073,70 +1075,109 @@ export default function WorkspaceMatrizPage() {
 
   // Función para guardar la nueva norma
   const handleGuardarNuevaNorma = async () => {
+    console.log("🔴 handleGuardarNuevaNorma ejecutado");
+    console.log("🔴 itemEnEdicionRef.current:", itemEnEdicionRef.current);
+    console.log("🔴 itemEnEdicion estado:", itemEnEdicion);
     if (!nuevaNormaForm.id_tipo_norma || !nuevaNormaForm.numero || !nuevaNormaForm.anio || !nuevaNormaForm.id_emisor_norma) {
       alert("Complete los campos obligatorios: Tipo, Número, Año y Emisor.");
       return;
     }
+    const anioNumero = parseInt(nuevaNormaForm.anio, 10);
+    if (isNaN(anioNumero) || anioNumero <= 0) {
+      alert("El año debe ser un número válido.");
+      return;
+    }
+
     setCargandoNuevaNorma(true);
     const token = localStorage.getItem("sgml_token");
     try {
-      // 1. Guardar la norma
+      const payloadNorma = {
+        ...nuevaNormaForm,
+        anio: anioNumero
+      };
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/guardar.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(nuevaNormaForm)
+        body: JSON.stringify(payloadNorma)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.mensaje || "Error al guardar la norma.");
 
-      // 2. Obtener la norma recién creada (con todos sus datos)
-      const resGet = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/normativa/leer.php?id_norma=${data.id_norma}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const dataGet = await resGet.json();
-      const normaCreada = dataGet.registros?.[0];
-      if (!normaCreada) throw new Error("No se pudo recuperar la norma creada.");
-
-      // 3. Construir el objeto de norma para el item
+      const tipoNorma = tiposNorma.find(t => t.id == nuevaNormaForm.id_tipo_norma);
+      const emisor = emisoresNorma.find(e => e.id == nuevaNormaForm.id_emisor_norma);
       const nuevaNormaParaItem = {
-        id_norma: normaCreada.id_norma,
-        tipo_norma: normaCreada.tipo_norma_desc,
-        numero: normaCreada.numero,
-        anio: normaCreada.anio,
-        emisor_desc: normaCreada.emisor_desc,
-        nivel_jurisdiccion_desc: normaCreada.nivel_jurisdiccion_desc,
-        jurisdiccion_desc: normaCreada.jurisdiccion_desc,
-        sintesis: normaCreada.sintesis,
-        categorias: normaCreada.categorias,
-        url_norma: normaCreada.url_norma
+        id_norma: data.id_norma,
+        tipo_norma: tipoNorma?.descripcion || '',
+        tipo_norma_desc: tipoNorma?.descripcion || '',
+        numero: nuevaNormaForm.numero,
+        anio: anioNumero,
+        emisor_desc: emisor?.descripcion || '',
+        nivel_jurisdiccion_desc: '',
+        jurisdiccion_desc: '',
+        sintesis: nuevaNormaForm.sintesis || '',
+        categorias: [],
+        url_norma: nuevaNormaForm.url_norma || ''
       };
 
-      if (itemEnEdicion) {
+      console.log("🟡 nuevaNormaParaItem:", nuevaNormaParaItem);
+      console.log("🟡 Entrando al if, ref vale:", itemEnEdicionRef.current);
+      if (itemEnEdicionRef.current) {
         // === MODO EDICIÓN DE ÍTEM ===
-        const normasActualizadas = [...(itemEnEdicion.normas_vinculadas || []), nuevaNormaParaItem];
-        // Actualizar estado local
-        const nuevosItems = items.map(i => 
-          i.id_item_matriz === itemEnEdicion.id_item_matriz 
-            ? { ...i, normas_vinculadas: normasActualizadas }
+        const nuevosItems = items.map(i =>
+          i.id_item_matriz === itemEnEdicionRef.current.id_item_matriz
+            ? { ...i, normas_vinculadas: [...(i.normas_vinculadas || []), nuevaNormaParaItem] }
             : i
         );
         setItems(nuevosItems);
-        // Actualizar backend
-        await handleUpdateExistingRow(itemEnEdicion.id_item_matriz, 'normas_vinculadas', normasActualizadas);
+        const itemActualizado = nuevosItems.find(i => i.id_item_matriz === itemEnEdicionRef.current.id_item_matriz);
+        if (itemActualizado) {
+          const payload = {
+            id_item_matriz: itemActualizado.id_item_matriz,
+            id_matriz: idMatriz,
+            resumen_legal: itemActualizado.resumen_legal || '',
+            articulos_aplicables: itemActualizado.articulos_aplicables || '',
+            interpretacion_aplicacion: itemActualizado.interpretacion_aplicacion || '',
+            id_tipo_modalidad: itemActualizado.id_tipo_modalidad || null,
+            obs_modalidad: itemActualizado.obs_modalidad || '',
+            vencimiento_plazo: itemActualizado.vencimiento_plazo || null,
+            fecha_cumplimiento: itemActualizado.fecha_cumplimiento || null,
+            evidencia_cumplimiento: itemActualizado.evidencia_cumplimiento || '',
+            verificacion_cumplimiento: itemActualizado.verificacion_cumplimiento || '',
+            id_estado_cumplimiento: itemActualizado.id_estado_cumplimiento || null,
+            obs_estado_cumplimiento: itemActualizado.obs_estado_cumplimiento || '',
+            id_responsable_establecimiento: itemActualizado.id_responsable_establecimiento || null,
+            datos_dinamicos: itemActualizado.datos_dinamicos || null,
+            normas_vinculadas: itemActualizado.normas_vinculadas?.map((n: any) => n.id_norma) || []
+          };
+          await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_item.php`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload)
+          });
+        }
+        itemEnEdicionRef.current = null;
         setItemEnEdicion(null);
-      } else {
-        // === MODO NUEVA FILA ===
-        setNewRowData((prev: any) => ({
-          ...prev,
-          normas_vinculadas: [...prev.normas_vinculadas, nuevaNormaParaItem]
-        }));
-        autocompletarCampos(nuevaNormaParaItem);
-      }
+        } else {
+          console.log("🟢 ENTRANDO AL ELSE - modo nueva fila");
+          console.log("🟢 newRowData actual:", newRowData);
+          console.log("🟢 nuevaNormaParaItem:", nuevaNormaParaItem);
+          const normasActuales = newRowData.normas_vinculadas || [];
+          const nuevasNormas = [...normasActuales, nuevaNormaParaItem];
+          console.log("🟢 nuevasNormas a guardar:", nuevasNormas);
+          setNewRowData((prev: any) => ({
+            ...prev,
+            normas_vinculadas: nuevasNormas,
+            norma_emisor: nuevaNormaParaItem.emisor_desc || '',
+            norma_nivel_jur: nuevaNormaParaItem.nivel_jurisdiccion_desc || '',
+            sintesis_categorias: nuevaNormaParaItem.sintesis || '',
+            url_norma: nuevaNormaParaItem.url_norma || '',
+          }));
+          console.log("🟢 setNewRowData ejecutado");
+        }
 
       setShowNuevaNormaModal(false);
-      alert("Norma creada y agregada correctamente.");
-
     } catch (error: any) {
+      console.error(error);
       alert("Error: " + error.message);
     } finally {
       setCargandoNuevaNorma(false);
@@ -1150,13 +1191,16 @@ export default function WorkspaceMatrizPage() {
       case 'id_tipo_modalidad':
         return <select className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData.id_tipo_modalidad || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewRowData({...newRowData, id_tipo_modalidad: e.target.value})}><option value="">Sin Asignar</option>{tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select>;
       case 'normas':
-        return <InlineNormSelectorConAutocompletado
-          selectedNormas={newRowData.normas_vinculadas}
-          onChange={(normas: any) => setNewRowData({...newRowData, normas_vinculadas: normas})}
-          onAutocompletar={autocompletarCampos}
-          idEstablecimiento={idEstablecimiento}
-          onSolicitarNuevaNorma={abrirNuevaNormaModal}
-        />;
+        return (
+          <InlineNormSelectorConAutocompletado
+            key={`normas-selector-${(newRowData.normas_vinculadas || []).length}`}
+            selectedNormas={newRowData.normas_vinculadas}
+            onChange={(normas: any) => setNewRowData((prev: any) => ({ ...prev, normas_vinculadas: normas }))}
+            onAutocompletar={autocompletarCampos}
+            idEstablecimiento={idEstablecimiento}
+            onSolicitarNuevaNorma={abrirNuevaNormaModal}
+          />
+        );
       case 'id_responsable_establecimiento':
         return <select className="w-full text-[11px] p-2.5 border border-lgc-primary rounded-lg outline-none bg-white focus:ring-2 focus:ring-lgc-primary" value={newRowData.id_responsable_establecimiento || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewRowData({...newRowData, id_responsable_establecimiento: e.target.value})}><option value="">Sin Asignar</option>{responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}</select>;
       case 'adjuntos':
@@ -1609,7 +1653,6 @@ export default function WorkspaceMatrizPage() {
                   viewBox="0 0 24 24"
                 >
                   {expandAll ? (
-                    // Icono "Contraer" (flechas hacia adentro)
                     <path 
                       strokeLinecap="round" 
                       strokeLinejoin="round" 
@@ -1617,7 +1660,6 @@ export default function WorkspaceMatrizPage() {
                       d="M9 9L3.75 3.75M9 9v-4.5M9 9H4.5M15 15l5.25 5.25M15 15v4.5M15 15h4.5M9 15l-5.25 5.25M9 15v4.5M9 15H4.5M15 9l5.25-5.25M15 9v-4.5M15 9h4.5" 
                     />
                   ) : (
-                    // Icono "Expandir" (flechas hacia afuera)
                     <path 
                       strokeLinecap="round" 
                       strokeLinejoin="round" 
@@ -1631,7 +1673,7 @@ export default function WorkspaceMatrizPage() {
            </div>
         </div>
 
-        {/* Botón "Nueva Fila" movido fuera del DndContext y dentro del flujo sticky */}
+        {/* Botón "Nueva Fila" */}
         {canEdit("matriz") && puedeAgregarFilas && (
           <div className="sticky top-14 z-40 mb-4">
             <button
@@ -1658,7 +1700,10 @@ export default function WorkspaceMatrizPage() {
           <div className="flex flex-col max-w-7xl mx-auto relative z-10">
             <div className="relative">
               {showQuickAdd && (
-                <div ref={quickAddFormRef} className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-visible">
+                <div
+                  ref={quickAddFormRef}
+                  className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-visible"
+                >
                   <div className="absolute top-0 right-0 w-32 h-32 bg-[#005F78]/10 rounded-full blur-3xl"></div>
                   <div className="flex items-center justify-between mb-6 border-b border-[#005F78]/20 pb-3 relative z-10">
                     <div className="flex items-center gap-3">
@@ -1784,7 +1829,7 @@ export default function WorkspaceMatrizPage() {
         </div>
       )}
 
-      {/* Modal de nueva normativa (estilo mejorado, sin scroll externo) */}
+      {/* Modal de nueva normativa (corregido) */}
       {showNuevaNormaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -1811,7 +1856,18 @@ export default function WorkspaceMatrizPage() {
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Año *</label>
-                  <input type="number" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.anio} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, anio: parseInt(e.target.value)})} />
+                  <input
+                    type="number"
+                    className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
+                    value={nuevaNormaForm.anio}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNuevaNormaForm({
+                        ...nuevaNormaForm,
+                        anio: val
+                      });
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor *</label>

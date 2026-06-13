@@ -12,21 +12,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 include_once '../../config/Database.php';
 include_once '../../config/JwtHandler.php';
 
-// Validar token JWT
+// ---------------------------------------------------------
+// EXTRACCIÓN ROBUSTA DEL TOKEN (Igual que en copiar_matriz.php)
+// ---------------------------------------------------------
 $token = '';
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
+} elseif (function_exists('apache_request_headers')) {
+    $requestHeaders = apache_request_headers();
+    $requestHeaders = array_combine(array_map('ucwords', array_keys($requestHeaders)), array_values($requestHeaders));
+    if (isset($requestHeaders['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $requestHeaders['Authorization']));
+    }
+} else {
+    $headers = getallheaders();
+    if (isset($headers['Authorization'])) {
+        $token = trim(str_ireplace('Bearer', '', $headers['Authorization']));
+    }
 }
+
 $jwt = new JwtHandler();
 $payload = $jwt->verificar($token);
 if (!$payload) {
     http_response_code(401);
-    echo json_encode(["mensaje" => "No autorizado."]);
+    echo json_encode(["mensaje" => "No autorizado. Token inválido, expirado o ausente."]);
     exit();
 }
-
-// Verificar permiso de edición (opcional, pero se recomienda)
-// Por simplicidad, asumimos que el frontend ya controla con canEdit.
 
 $data = json_decode(file_get_contents("php://input"));
 $id_norma = isset($data->id_norma) ? (int)$data->id_norma : 0;
@@ -51,12 +62,12 @@ try {
 
     if ($asociada > 0) {
         $db->rollBack();
-        http_response_code(409); // Conflict
+        http_response_code(409);
         echo json_encode(["mensaje" => "No se puede eliminar la norma porque está vinculada a una o más matrices. Elimine los ítems que la referencian antes de intentar borrarla."]);
         exit();
     }
 
-    // 2. Eliminar las categorías asociadas (por si no hay cascada automática)
+    // 2. Eliminar las categorías asociadas
     $queryDelCat = "DELETE FROM categoria_norma WHERE id_norma = :id_norma";
     $stmtDelCat = $db->prepare($queryDelCat);
     $stmtDelCat->bindParam(':id_norma', $id_norma, PDO::PARAM_INT);

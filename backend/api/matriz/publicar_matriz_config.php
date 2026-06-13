@@ -47,6 +47,20 @@ try {
         throw new Exception("La matriz solicitada no existe.");
     }
 
+    // *** VALIDACIÓN: La matriz debe tener al menos un ítem para poder publicarse ***
+    $query_items_count = "SELECT COUNT(*) FROM item_matriz WHERE id_matriz = :id_matriz";
+    $stmt_count = $db->prepare($query_items_count);
+    $stmt_count->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
+    $stmt_count->execute();
+    $total_items = (int)$stmt_count->fetchColumn();
+
+    if ($total_items === 0) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(["mensaje" => "No se puede publicar la matriz porque no tiene ningún ítem asociado. Agregue al menos un ítem antes de publicar."]);
+        exit();
+    }
+
     // 2. Archivar versión anterior publicada
     $query_archivar = "UPDATE matriz 
                        SET id_estado_matriz = 3, vigente = 0 
@@ -72,7 +86,6 @@ try {
     $stmt_publicar->execute();
 
     // 4. --- DISPARADOR DE ALERTA: nueva versión publicada ---
-    // He validado que la matriz tiene cliente asociado
     $query_cliente = "SELECT ce.id_cliente 
                       FROM matriz m
                       JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
@@ -82,7 +95,6 @@ try {
     $id_cliente = $stmt_cliente->fetchColumn();
     
     if ($id_cliente) {
-        // Obtener nombre de la matriz para el mensaje
         $query_nombre = "SELECT CONCAT(tm.descripcion, ' - ', em.descripcion, ' - ', ce.descripcion) as nombre_matriz
                          FROM matriz m
                          JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
@@ -110,8 +122,7 @@ try {
         ]);
     }
     
-    // 5. --- OPCIONAL: verificar vencimientos próximos inmediatamente ---
-    // He implementado la creación de alertas de vencimiento próximo (≤30 días) si no existe una similar en los últimos 7 días
+    // 5. Verificar vencimientos próximos inmediatamente
     $query_vencimientos = "SELECT im.id_item_matriz, im.vencimiento_plazo, im.resumen_legal
                            FROM item_matriz im
                            WHERE im.id_matriz = :id_matriz
@@ -122,7 +133,6 @@ try {
     $items_venc = $stmt_venc->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($items_venc as $item) {
-        // Evitar duplicados: alerta del mismo tipo, mismo ítem, creada en los últimos 7 días
         $check_duplicate = "SELECT COUNT(*) FROM alerta 
                             WHERE id_item_matriz = :id_item 
                               AND tipo = 'vencimiento_proximo' 
@@ -149,14 +159,13 @@ try {
             ]);
         }
     }
-    // --- Fin verificación vencimientos ---
 
     $db->commit();
     http_response_code(200);
     echo json_encode(["mensaje" => "Matriz publicada exitosamente. La versión anterior ha sido archivada."]);
 
 } catch (Exception $e) {
-    $db->rollBack();
+    if ($db->inTransaction()) $db->rollBack();
     http_response_code(500);
     echo json_encode(["mensaje" => "Error interno al publicar.", "error" => $e->getMessage()]);
 }
