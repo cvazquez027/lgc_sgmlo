@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePermissions } from "../../hooks/usePermissions"; 
+import { useMatrizFilters } from "./layout";
 
 interface Matriz {
   id_matriz: number;
@@ -50,6 +51,16 @@ interface GrupoCliente {
 export default function MatricesPage() {
   const router = useRouter();
   const { canRead, canEdit } = usePermissions();
+  const { listado, setListado } = useMatrizFilters();
+  const {
+    filtroCliente,
+    filtroEstablecimiento,
+    filtroEspecialidad,
+    filtroTipo,
+    filtroVigente,
+    clientesExpandidos
+  } = listado;
+
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
   const [userClienteId, setUserClienteId] = useState<string | null>(null);
@@ -65,11 +76,6 @@ export default function MatricesPage() {
   const [especialidadesMatriz, setEspecialidadesMatriz] = useState<Maestra[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   
-  const [filtroCliente, setFiltroCliente] = useState<string>("");
-  const [filtroEstablecimiento, setFiltroEstablecimiento] = useState<string>("");
-  const [filtroEspecialidad, setFiltroEspecialidad] = useState<string>("");
-  const [filtroTipo, setFiltroTipo] = useState<string>("");
-  const [filtroVigente, setFiltroVigente] = useState<boolean>(true);
   const [establecimientosFiltro, setEstablecimientosFiltro] = useState<Establecimiento[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -92,8 +98,6 @@ export default function MatricesPage() {
     id_estado_matriz: "1", 
     vigente: 1
   });
-
-  const [clientesExpandidos, setClientesExpandidos] = useState<Set<number>>(new Set());
 
   // Estado para el modal de eliminación
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -161,7 +165,7 @@ export default function MatricesPage() {
   useEffect(() => {
     if (!filtroCliente) {
       setEstablecimientosFiltro([]);
-      setFiltroEstablecimiento("");
+      setListado({ filtroEstablecimiento: "" });
       return;
     }
     const token = localStorage.getItem("sgml_token");
@@ -169,7 +173,7 @@ export default function MatricesPage() {
       .then(res => res.json())
       .then(data => setEstablecimientosFiltro(data.registros || []))
       .catch(err => console.error(err));
-  }, [filtroCliente]);
+  }, [filtroCliente, setListado]);
 
   const loadEstablecimientosForForm = async (idCliente: string) => {
     if (!idCliente) { setEstablecimientosForm([]); return; }
@@ -304,15 +308,13 @@ export default function MatricesPage() {
   }, [matricesFiltradas]);
 
   const toggleGrupo = (idCliente: number) => {
-    setClientesExpandidos((prev: Set<number>) => {
-      const newSet = new Set(prev);
-      if (newSet.has(idCliente)) {
-        newSet.delete(idCliente);
-      } else {
-        newSet.add(idCliente);
-      }
-      return newSet;
-    });
+    const newSet = new Set(clientesExpandidos);
+    if (newSet.has(idCliente)) {
+      newSet.delete(idCliente);
+    } else {
+      newSet.add(idCliente);
+    }
+    setListado({ clientesExpandidos: newSet });
   };
 
   // Abrir modal de confirmación de eliminación
@@ -380,28 +382,28 @@ export default function MatricesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 bg-slate-50">
-          <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm">
+          <select value={filtroCliente} onChange={e => setListado({ filtroCliente: e.target.value })} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm">
             <option value="">Todos los Clientes</option>
             {clientes.map(c => <option key={c.id_cliente} value={c.id_cliente}>{c.nombre_fantasia || c.razon_social}</option>)}
           </select>
           
-          <select value={filtroEstablecimiento} onChange={e => setFiltroEstablecimiento(e.target.value)} disabled={!filtroCliente} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50 shadow-sm">
+          <select value={filtroEstablecimiento} onChange={e => setListado({ filtroEstablecimiento: e.target.value })} disabled={!filtroCliente} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50 shadow-sm">
             <option value="">Todos los Establecimientos</option>
             {establecimientosFiltro.map(e => <option key={e.id_cliente_establecimiento} value={e.id_cliente_establecimiento}>{e.descripcion}</option>)}
           </select>
 
-          <select value={filtroEspecialidad} onChange={e => setFiltroEspecialidad(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
+          <select value={filtroEspecialidad} onChange={e => setListado({ filtroEspecialidad: e.target.value })} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
             <option value="">Todas las Especialidades</option>
             {especialidadesMatriz.map(e => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
           </select>
 
-          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
+          <select value={filtroTipo} onChange={e => setListado({ filtroTipo: e.target.value })} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-37.5 shadow-sm">
             <option value="">Todos los Tipos</option>
             {tiposMatriz.map(t => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
           </select>
 
           <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600 bg-white px-3 py-2 rounded border border-slate-200 hover:bg-slate-50 shadow-sm">
-            <input type="checkbox" checked={filtroVigente} onChange={(e) => setFiltroVigente(e.target.checked)} className="rounded text-lgc-primary focus:ring-lgc-primary" />
+            <input type="checkbox" checked={filtroVigente} onChange={(e) => setListado({ filtroVigente: e.target.checked })} className="rounded text-lgc-primary focus:ring-lgc-primary" />
             <span>SOLO VIGENTES</span>
           </label>
         </div>
@@ -418,7 +420,6 @@ export default function MatricesPage() {
           <div className="overflow-x-auto">
             {grupos.map((grupo, idx) => {
               const expandido = clientesExpandidos.has(grupo.id_cliente);
-              // Alternar fondo de grupo: par -> bg-slate-50/80, impar -> bg-blue-50/40 (azul muy sutil)
               const grupoBg = idx % 2 === 0 ? 'bg-slate-50/80' : 'bg-blue-50/40';
               return (
                 <div key={grupo.id_cliente} className="border-b border-slate-100 last:border-b-0">

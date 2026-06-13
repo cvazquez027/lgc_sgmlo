@@ -7,6 +7,7 @@ import { usePermissions } from "../../../hooks/usePermissions";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useMatrizFilters } from "../layout";
 
 // DICCIONARIOS DE COLUMNAS POR TIPO
 const COLUMNAS_REGULATORIAS = [
@@ -313,7 +314,7 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
             {col.label} {col.custom && <span className="bg-orange-100 text-orange-600 text-[8px] px-1.5 py-0.5 rounded">CUSTOM</span>}
          </span>
        </div>
-       <button onClick={() => onRemove(col.id)} className="text-slate-300 hover:text-red-500" title="Quitar columna"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+       <button onClick={() => onRemove(col.id)} className="text-slate-700 hover:text-red-500" title="Quitar columna"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
     </div>
   );
 };
@@ -509,6 +510,8 @@ export default function WorkspaceMatrizPage() {
   const searchParams = useSearchParams();
   const idMatriz = params.id as string; 
   const { canRead, canEdit } = usePermissions();
+  const { workspace, setWorkspace } = useMatrizFilters();
+  const { isFilterOpen, filtros } = workspace;
   
   const [items, setItems] = useState<any[]>([]);
   const [headerInfo, setHeaderInfo] = useState<any>(null); 
@@ -558,13 +561,7 @@ export default function WorkspaceMatrizPage() {
     url_norma: ''
   });
 
-  // FILTROS AVANZADOS
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filtros, setFiltros] = useState<any>({
-    norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] as string[] },
-    evidencia: '', 
-    dinamicos: {} 
-  });
+  // FILTROS AVANZADOS (YA NO SE DECLARAN LOCALMENTE, SE USAN DEL CONTEXTO)
 
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
@@ -927,8 +924,7 @@ export default function WorkspaceMatrizPage() {
     }
     setIsSavingRow(false);
   };
-
-  const handleUploadEvidencia = async () => {
+    const handleUploadEvidencia = async () => {
     if (!evidenciaFile || !itemEvidencia) return;
     setIsUploading(true);
     const token = localStorage.getItem("sgml_token");
@@ -1073,7 +1069,7 @@ export default function WorkspaceMatrizPage() {
     setShowNuevaNormaModal(true);
   };
 
-  // Función para guardar la nueva norma
+  // Función para guardar la nueva norma (con quickAddKey)
   const handleGuardarNuevaNorma = async () => {
     console.log("🔴 handleGuardarNuevaNorma ejecutado");
     console.log("🔴 itemEnEdicionRef.current:", itemEnEdicionRef.current);
@@ -1172,6 +1168,7 @@ export default function WorkspaceMatrizPage() {
             sintesis_categorias: nuevaNormaParaItem.sintesis || '',
             url_norma: nuevaNormaParaItem.url_norma || '',
           }));
+          setQuickAddKey(prev => prev + 1);
           console.log("🟢 setNewRowData ejecutado");
         }
 
@@ -1193,7 +1190,7 @@ export default function WorkspaceMatrizPage() {
       case 'normas':
         return (
           <InlineNormSelectorConAutocompletado
-            key={`normas-selector-${(newRowData.normas_vinculadas || []).length}`}
+            key={`normas-selector-${(newRowData.normas_vinculadas || []).length}-${quickAddKey}`}
             selectedNormas={newRowData.normas_vinculadas}
             onChange={(normas: any) => setNewRowData((prev: any) => ({ ...prev, normas_vinculadas: normas }))}
             onAutocompletar={autocompletarCampos}
@@ -1245,38 +1242,90 @@ export default function WorkspaceMatrizPage() {
     const COLUMNAS_BASE = tipoMatriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
     const columnasDisponibles = COLUMNAS_BASE.filter(c => !tempConfig.find(tc => tc.id === c.id));
     return (
-      <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-200 max-w-5xl mx-auto mt-6 animate-fade-in">
-        <h2 className="text-2xl font-heading text-lgc-primary uppercase tracking-tight mb-2">Estructura Visual de la Matriz</h2>
-        <p className="text-sm text-slate-500 mb-8">Administrá qué campos conforman las tarjetas de cada ítem.</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-            <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-4">Campos Disponibles</h3>
-            <div className="flex flex-col gap-2 max-h-100 overflow-y-auto custom-scrollbar pr-2">
-              {columnasDisponibles.map((col: any) => (
-                <button key={col.id} onClick={() => setTempConfig([...tempConfig, col])} className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between group">{col.label} <span className="text-slate-300 group-hover:text-lgc-primary transition-colors">+</span></button>
-              ))}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4 animate-fade-in max-w-6xl mx-auto">
+        {/* Encabezado azul corporativo (similar a otras pantallas) */}
+        <div className="bg-[#005F78] px-6 py-4 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-heading text-white uppercase tracking-tight">Estructura Visual de la Matriz</h2>
+            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest mt-1">Administrá qué campos conforman las tarjetas de cada ítem</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setTempConfig(configColumnas || []);
+                setShowConfig(false);
+              }}
+              className="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest border border-white/20 shadow-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={guardarConfiguracion}
+              className="bg-white text-lgc-primary hover:bg-slate-100 font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest shadow-md"
+            >
+              Guardar Estructura
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Columna izquierda: Campos disponibles */}
+            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+              <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-widest mb-4">Campos Disponibles</h3>
+              <div className="flex flex-col gap-2 max-h-100 overflow-y-auto custom-scrollbar pr-2">
+                {columnasDisponibles.map((col: any) => (
+                  <button
+                    key={col.id}
+                    onClick={() => setTempConfig([...tempConfig, col])}
+                    className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between items-center group"
+                  >
+                    {col.label}
+                    <span className="text-slate-400 group-hover:text-lgc-primary text-base font-bold ml-2">+</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-3">Crear Columna Libre (Personalizada)</h4>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary"
+                    placeholder="Nombre de la columna..."
+                    value={nuevaColumna}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)}
+                  />
+                  <button
+                    onClick={agregarColumnaCustom}
+                    className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-[11px] font-bold shadow-md transition-colors"
+                  >
+                    Crear
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="mt-6 border-t border-slate-200 pt-5">
-              <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-3">Crear Columna Libre (Personalizada)</h4>
-              <div className="flex gap-2">
-                 <input type="text" className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary" placeholder="Nombre de la columna..." value={nuevaColumna} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)} />
-                 <button onClick={agregarColumnaCustom} className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-xs font-bold shadow-md transition-colors">Crear</button>
+            {/* Columna derecha: Columnas visibles */}
+            <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100">
+              <h3 className="text-[11px] font-bold uppercase text-orange-600 tracking-widest mb-4">Columnas Visibles (Arrastrar para ordenar)</h3>
+              <div className="flex flex-col max-h-125 overflow-y-auto custom-scrollbar pr-2">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: any) => {
+                  const { active, over } = e;
+                  if (over && active.id !== over.id) {
+                    const oldI = tempConfig.findIndex((c: any) => c.id === active.id);
+                    const newI = tempConfig.findIndex((c: any) => c.id === over.id);
+                    setTempConfig(arrayMove(tempConfig, oldI, newI));
+                  }
+                }}>
+                  <SortableContext items={tempConfig.map((c: any) => c.id)} strategy={verticalListSortingStrategy}>
+                    {tempConfig.map((col: any) => (
+                      <SortableConfigItem key={col.id} col={col} onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))} />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               </div>
             </div>
           </div>
-
-          <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100">
-            <h3 className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mb-4">Columnas Visibles (Arrastrar para ordenar)</h3>
-            <div className="flex flex-col max-h-125 overflow-y-auto custom-scrollbar pr-2">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: any) => { const { active, over } = e; if (over && active.id !== over.id) { const oldI = tempConfig.findIndex((c: any) => c.id === active.id); const newI = tempConfig.findIndex((c: any) => c.id === over.id); setTempConfig(arrayMove(tempConfig, oldI, newI)); } }}>
-                <SortableContext items={tempConfig.map((c: any) => c.id)} strategy={verticalListSortingStrategy}>
-                  {tempConfig.map((col: any) => <SortableConfigItem key={col.id} col={col} onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))} />)}
-                </SortableContext>
-              </DndContext>
-            </div>
-          </div>
         </div>
-        <div className="flex justify-end gap-4"><button onClick={() => { setTempConfig(configColumnas || []); setShowConfig(false); }} className="px-6 py-3 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">Cancelar</button><button onClick={guardarConfiguracion} className="px-8 py-3 bg-lgc-primary text-white font-bold rounded-xl uppercase text-xs shadow-lg hover:bg-[#006A8A] transition-colors">Guardar Estructura</button></div>
       </div>
     );
   }
@@ -1500,7 +1549,7 @@ export default function WorkspaceMatrizPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 mb-4 transition-all overflow-hidden relative z-20">
-           <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
+           <button onClick={() => setWorkspace({ isFilterOpen: !isFilterOpen })} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
               <div className="flex items-center gap-3">
                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                  <span className="font-bold uppercase text-xs tracking-widest text-slate-600">Búsqueda y Filtros Avanzados</span>
@@ -1514,29 +1563,29 @@ export default function WorkspaceMatrizPage() {
                   <div>
                     <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest mb-3 border-b border-blue-100 pb-1">Sección Normativa</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.tipo} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, norma: {...filtros.norma, tipo: e.target.value}})}>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.tipo} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, tipo: e.target.value } } })}>
                          <option value="">Tipo (Todos)</option>
                          {tiposNorma.map((t: any) => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
                       </select>
-                      <input type="text" placeholder="Año (4 dígitos)" maxLength={4} onInput={(e: React.FormEvent<HTMLInputElement>) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.anio} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, norma: {...filtros.norma, anio: e.target.value}})} />
-                      <input type="text" placeholder="Nro" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.nro} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, norma: {...filtros.norma, nro: e.target.value}})} />
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.emisor} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, norma: {...filtros.norma, emisor: e.target.value}})}>
+                      <input type="text" placeholder="Año (4 dígitos)" maxLength={4} onInput={(e: React.FormEvent<HTMLInputElement>) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.anio} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, anio: e.target.value } } })} />
+                      <input type="text" placeholder="Nro" className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.nro} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, nro: e.target.value } } })} />
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.emisor} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, emisor: e.target.value } } })}>
                          <option value="">Emisor (Todos)</option>
                          {emisoresNorma.map((e: any) => <option key={e.id} value={e.descripcion}>{e.descripcion}</option>)}
                       </select>
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.nivel} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, norma: {...filtros.norma, nivel: e.target.value}})}>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.nivel} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, nivel: e.target.value } } })}>
                          <option value="">Nivel Jurisd. (Todos)</option>
                          {nivelesDisponibles.map((n: any) => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
                       </select>
-                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.jurisdiccion} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, norma: {...filtros.norma, jurisdiccion: e.target.value}})}>
+                      <select className="text-[11px] p-2 border border-slate-200 rounded outline-none bg-white cursor-pointer" value={filtros.norma.jurisdiccion} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, jurisdiccion: e.target.value } } })}>
                          <option value="">Jurisdicción (Todas)</option>
                          {jurisdiccionesDisponibles.map((j: any) => <option key={j.id} value={j.descripcion}>{j.descripcion}</option>)}
                       </select>
                       <div className="col-span-2">
-                        <input type="text" placeholder="Buscar por síntesis..." className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, norma: {...filtros.norma, sintesis: e.target.value}})} />
+                        <input type="text" placeholder="Buscar por síntesis..." className="w-full text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.norma.sintesis} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, sintesis: e.target.value } } })} />
                       </div>
                       <div className="col-span-2 md:col-span-4">
-                         <MultiSelectTags options={categoriasGlobales} selected={filtros.norma.categorias} onChange={(arr: any) => setFiltros({...filtros, norma: {...filtros.norma, categorias: arr}})} placeholder="Filtrar por categorías (agrega varias)..." />
+                         <MultiSelectTags options={categoriasGlobales} selected={filtros.norma.categorias} onChange={(arr: any) => setWorkspace({ filtros: { ...filtros, norma: { ...filtros.norma, categorias: arr } } })} placeholder="Filtrar por categorías (agrega varias)..." />
                       </div>
                     </div>
                   </div>
@@ -1548,13 +1597,13 @@ export default function WorkspaceMatrizPage() {
                         {colsRegulatorias.map((c: any) => {
                            if (c.id === 'id_tipo_modalidad') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
                                    <option value="">Modalidad (Todas)</option>
                                    {tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
                                 </select>
                               );
                            }
-                           return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />;
+                           return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
                         })}
                       </div>
                     </div>
@@ -1564,7 +1613,7 @@ export default function WorkspaceMatrizPage() {
                     <div>
                       <h3 className="text-[10px] font-bold uppercase text-emerald-600 tracking-widest mb-3 border-b border-emerald-100 pb-1">Sección De Cumplimiento</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600 cursor-pointer bg-white" value={filtros.evidencia} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, evidencia: e.target.value})}>
+                        <select className="text-[11px] p-2 border border-slate-200 rounded outline-none font-bold text-slate-600 cursor-pointer bg-white" value={filtros.evidencia} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, evidencia: e.target.value } })}>
                            <option value="">Evidencia (Todas)</option>
                            <option value="con">Con Evidencia Cargada</option>
                            <option value="sin">Sin Evidencia</option>
@@ -1572,7 +1621,7 @@ export default function WorkspaceMatrizPage() {
                         {colsCumplimiento.map((c: any) => {
                            if (c.id === 'estado') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
                                    <option value="">Estado (Todos)</option>
                                    {estadosCumplimiento.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}
                                 </select>
@@ -1580,17 +1629,17 @@ export default function WorkspaceMatrizPage() {
                            }
                            if (c.id === 'id_responsable_establecimiento') {
                               return (
-                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})}>
+                                <select key={c.id} className="text-[11px] p-2 border border-slate-200 rounded outline-none cursor-pointer bg-white" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })}>
                                    <option value="">Responsable (Todos)</option>
                                    {responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
                                 </select>
                               );
                            }
                            if (c.id === 'vencimiento_plazo' || c.id === 'fecha_cumplimiento') {
-                              return <input key={c.id} type="date" title={c.label} className="text-[11px] p-2 border border-slate-200 rounded outline-none text-slate-500 font-bold uppercase cursor-pointer" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />;
+                              return <input key={c.id} type="date" title={c.label} className="text-[11px] p-2 border border-slate-200 rounded outline-none text-slate-500 font-bold uppercase cursor-pointer" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
                            }
                            if (c.id === 'adjuntos') return null; 
-                           return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />;
+                           return <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-slate-200 rounded outline-none" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />;
                         })}
                       </div>
                     </div>
@@ -1601,14 +1650,14 @@ export default function WorkspaceMatrizPage() {
                       <h3 className="text-[10px] font-bold uppercase text-purple-600 tracking-widest mb-3 border-b border-purple-100 pb-1">Columnas Personalizadas</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {colsCustom.map((c: any) => (
-                           <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-purple-200 bg-purple-50/30 rounded outline-none focus:border-purple-400" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiltros({...filtros, dinamicos: {...filtros.dinamicos, [c.id]: e.target.value}})} />
+                           <input key={c.id} type="text" placeholder={`${c.label}...`} className="text-[11px] p-2 border border-purple-200 bg-purple-50/30 rounded outline-none focus:border-purple-400" value={filtros.dinamicos[c.id] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWorkspace({ filtros: { ...filtros, dinamicos: { ...filtros.dinamicos, [c.id]: e.target.value } } })} />
                         ))}
                       </div>
                     </div>
                   )}
 
                   <div className="flex justify-end pt-2">
-                     <button onClick={() => setFiltros({ norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] }, evidencia: '', dinamicos: {} })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">
+                     <button onClick={() => setWorkspace({ filtros: { norma: { tipo: '', nro: '', anio: '', sintesis: '', emisor: '', nivel: '', jurisdiccion: '', categorias: [] }, evidencia: '', dinamicos: {} } })} className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 px-4 py-2 bg-slate-100 rounded border border-slate-200 transition-colors">
                         Limpiar Filtros
                      </button>
                   </div>
@@ -1701,6 +1750,7 @@ export default function WorkspaceMatrizPage() {
             <div className="relative">
               {showQuickAdd && (
                 <div
+                  key={`quick-add-form-${quickAddKey}`}
                   ref={quickAddFormRef}
                   className="bg-[#e6f7f5] rounded-2xl shadow-lg border border-[#005F78]/30 p-6 mb-6 animate-fade-in relative overflow-visible"
                 >
