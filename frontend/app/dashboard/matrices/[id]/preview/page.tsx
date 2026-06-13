@@ -422,7 +422,7 @@ export default function PreviewMatrizPage() {
           </div>
           
           <div className="text-right flex flex-col items-end gap-2">
-             {headerInfo?.id_tipo_matriz === 2 && (
+             {headerInfo?.mostrar_cumplimiento && headerInfo?.id_tipo_matriz === 2 && (
                 <div className="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
                   <span className="text-[10px] font-bold uppercase text-slate-600">Cumplimiento:</span>
                   <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">

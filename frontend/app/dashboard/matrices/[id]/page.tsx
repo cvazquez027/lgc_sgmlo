@@ -320,7 +320,7 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
 };
 
 // COMPONENTE SORTABLE ROW
-const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEdit, canEditField, estadosCumplimiento, responsables, tiposModalidad, onOpenEvidencia, forceExpand, isDragDisabled, onSolicitarNuevaNorma, idEstablecimiento }: any) => {
+const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEdit, canEditField, estadosCumplimiento, responsables, tiposModalidad, onOpenEvidencia, forceExpand, isDragDisabled, onSolicitarNuevaNorma, idEstablecimiento, campoEncabezado }: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
   useEffect(() => { setIsExpanded(forceExpand); }, [forceExpand]);
 
@@ -444,14 +444,24 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
             #{(item.orden !== undefined && item.orden !== null) ? item.orden + 1 : item.id_item_matriz}
           </span>
           <div className="flex flex-col flex-1 min-w-0">
-            {item.normas_vinculadas?.map((n:any, idx:number) => (
-              <div key={idx} className="flex flex-col gap-0.5">
-                <span className="bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm inline-block w-fit">
-                  {(n.tipo_norma_desc || n.tipo_norma)} {n.numero}/{n.anio} - {n.emisor_desc}
-                </span>
-                <span className="text-[9px] text-slate-400 truncate">{n.sintesis ? (n.sintesis.length > 60 ? n.sintesis.substring(0,60)+'...' : n.sintesis) : ''}</span>
+            {campoEncabezado === 'normas' ? (
+              // Mostrar normas como antes
+              item.normas_vinculadas?.map((n:any, idx:number) => (
+                <div key={idx} className="flex flex-col gap-0.5">
+                  <span className="bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm inline-block w-fit">
+                    {(n.tipo_norma_desc || n.tipo_norma)} {n.numero}/{n.anio} - {n.emisor_desc}
+                  </span>
+                  <span className="text-[9px] text-slate-400 truncate">
+                    {n.sintesis ? (n.sintesis.length > 60 ? n.sintesis.substring(0,60)+'...' : n.sintesis) : ''}
+                  </span>
+                </div>
+              ))
+            ) : (
+              // Mostrar el campo elegido (texto plano)
+              <div className="text-xs font-bold text-slate-700">
+                {item[campoEncabezado] || '—'}
               </div>
-            ))}
+            )}
           </div>
         </div>
         
@@ -520,6 +530,9 @@ export default function WorkspaceMatrizPage() {
   const [configColumnas, setConfigColumnas] = useState<any[]>([]);
   const [tempConfig, setTempConfig] = useState<any[]>([]);
   const [nuevaColumna, setNuevaColumna] = useState("");
+  const [mostrarCumplimiento, setMostrarCumplimiento] = useState<boolean>(true);
+  const [campoEncabezadoItem, setCampoEncabezadoItem] = useState<string>('normas');
+  const [opcionesEncabezado, setOpcionesEncabezado] = useState<{ id: string; label: string }[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
@@ -638,6 +651,8 @@ export default function WorkspaceMatrizPage() {
       setTipoMatriz(info.id_tipo_matriz);
       setEstadoMatriz(info.id_estado_matriz || 1);
       setHeaderInfo(info);
+      setMostrarCumplimiento(info.mostrar_cumplimiento == 1);
+      setCampoEncabezadoItem(info.campo_encabezado_item || 'normas');
       setIdEstablecimiento(info.id_cliente_establecimiento);
 
       const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${info.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
@@ -672,6 +687,9 @@ export default function WorkspaceMatrizPage() {
       setConfigColumnas(configFinal);
       setTempConfig(configFinal); 
       setItems(data.registros || []);
+      
+      const opciones = configFinal.map((col:any) => ({ id: col.id, label: col.label }));
+      setOpcionesEncabezado(opciones);
       
       if (configFinal.length === 0) setShowConfig(true); 
     } catch (err) {} finally { setLoading(false); }
@@ -831,11 +849,25 @@ export default function WorkspaceMatrizPage() {
 
   const guardarConfiguracion = async () => {
     const token = localStorage.getItem("sgml_token");
+    // 1. Guardar columnas
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config.php`, {
-      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ id_matriz: idMatriz, columnas: tempConfig })
     });
-    setConfigColumnas(tempConfig); setShowConfig(false);
+    // 2. Guardar configuración de visualización
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config_visualizacion.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({
+        id_matriz: idMatriz,
+        mostrar_cumplimiento: mostrarCumplimiento ? 1 : 0,
+        campo_encabezado_item: campoEncabezadoItem
+      })
+    });
+    setConfigColumnas(tempConfig);
+    setShowConfig(false);
+    fetchItems(); // recargar para actualizar headerInfo con los nuevos valores
   };
 
   const handleUpdateExistingRow = async (itemId: number, field: string, value: any) => {
@@ -1241,88 +1273,121 @@ export default function WorkspaceMatrizPage() {
   if (showConfig) {
     const COLUMNAS_BASE = tipoMatriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
     const columnasDisponibles = COLUMNAS_BASE.filter(c => !tempConfig.find(tc => tc.id === c.id));
+    
+    // Generar opciones de encabezado desde tempConfig
+    const opcionesHeader = tempConfig.map(col => ({ id: col.id, label: col.label }));
+    
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4 animate-fade-in max-w-6xl mx-auto">
-        {/* Encabezado azul corporativo (similar a otras pantallas) */}
-        <div className="bg-[#005F78] px-6 py-4 flex justify-between items-center">
+      <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 max-w-5xl mx-auto mt-3 animate-fade-in">
+        {/* Encabezado azul */}
+        <div className="bg-[#005F78] -m-6 mb-6 p-4 rounded-t-2xl flex justify-between items-center">
           <div>
             <h2 className="text-xl font-heading text-white uppercase tracking-tight">Estructura Visual de la Matriz</h2>
-            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest mt-1">Administrá qué campos conforman las tarjetas de cada ítem</p>
+            <p className="text-white/70 text-xs mt-1">Personalizá qué campos se muestran y cómo se ven los ítems.</p>
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => {
-                setTempConfig(configColumnas || []);
-                setShowConfig(false);
-              }}
-              className="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest border border-white/20 shadow-sm"
+              onClick={() => { setTempConfig(configColumnas || []); setShowConfig(false); }}
+              className="px-5 py-2 text-xs font-bold uppercase text-white bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={guardarConfiguracion}
-              className="bg-white text-lgc-primary hover:bg-slate-100 font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest shadow-md"
+              className="px-6 py-2 bg-lgc-accent hover:bg-[#D97920] text-white font-bold rounded-lg uppercase text-xs shadow-md transition-colors"
             >
               Guardar Estructura
             </button>
           </div>
         </div>
 
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Columna izquierda: Campos disponibles */}
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-              <h3 className="text-[11px] font-bold uppercase text-slate-500 tracking-widest mb-4">Campos Disponibles</h3>
-              <div className="flex flex-col gap-2 max-h-100 overflow-y-auto custom-scrollbar pr-2">
-                {columnasDisponibles.map((col: any) => (
-                  <button
-                    key={col.id}
-                    onClick={() => setTempConfig([...tempConfig, col])}
-                    className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between items-center group"
-                  >
-                    {col.label}
-                    <span className="text-slate-400 group-hover:text-lgc-primary text-base font-bold ml-2">+</span>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-6 border-t border-slate-200 pt-5">
-                <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-3">Crear Columna Libre (Personalizada)</h4>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary"
-                    placeholder="Nombre de la columna..."
-                    value={nuevaColumna}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)}
-                  />
-                  <button
-                    onClick={agregarColumnaCustom}
-                    className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-[11px] font-bold shadow-md transition-colors"
-                  >
-                    Crear
-                  </button>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          {/* Panel izquierdo: columnas disponibles (sin cambios) */}
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+            <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-4">Campos Disponibles</h3>
+            <div className="flex flex-col gap-2 max-h-100 overflow-y-auto custom-scrollbar pr-2">
+              {columnasDisponibles.map((col: any) => (
+                <button
+                  key={col.id}
+                  onClick={() => setTempConfig([...tempConfig, col])}
+                  className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl hover:border-lgc-primary transition-all text-[11px] font-bold uppercase text-slate-600 shadow-sm flex justify-between group"
+                >
+                  {col.label}
+                  <span className="text-slate-300 group-hover:text-lgc-primary transition-colors text-base font-bold">+</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-6 border-t border-slate-200 pt-5">
+              <h4 className="text-[9px] font-bold uppercase text-slate-400 mb-3">Crear Columna Libre (Personalizada)</h4>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 p-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:border-lgc-primary"
+                  placeholder="Nombre de la columna..."
+                  value={nuevaColumna}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNuevaColumna(e.target.value)}
+                />
+                <button onClick={agregarColumnaCustom} className="bg-lgc-accent hover:bg-[#D97920] text-white px-5 rounded-xl text-xs font-bold shadow-md transition-colors">
+                  Crear
+                </button>
               </div>
             </div>
-            {/* Columna derecha: Columnas visibles */}
-            <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100">
-              <h3 className="text-[11px] font-bold uppercase text-orange-600 tracking-widest mb-4">Columnas Visibles (Arrastrar para ordenar)</h3>
-              <div className="flex flex-col max-h-125 overflow-y-auto custom-scrollbar pr-2">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: any) => {
-                  const { active, over } = e;
-                  if (over && active.id !== over.id) {
-                    const oldI = tempConfig.findIndex((c: any) => c.id === active.id);
-                    const newI = tempConfig.findIndex((c: any) => c.id === over.id);
-                    setTempConfig(arrayMove(tempConfig, oldI, newI));
-                  }
-                }}>
-                  <SortableContext items={tempConfig.map((c: any) => c.id)} strategy={verticalListSortingStrategy}>
-                    {tempConfig.map((col: any) => (
-                      <SortableConfigItem key={col.id} col={col} onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))} />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              </div>
+          </div>
+
+          {/* Panel derecho: columnas visibles (drag & drop) - sin cambios visuales grandes */}
+          <div className="bg-orange-50/50 p-5 rounded-2xl border border-orange-100">
+            <h3 className="text-[10px] font-bold uppercase text-orange-600 tracking-widest mb-4">Columnas Visibles (Arrastrar para ordenar)</h3>
+            <div className="flex flex-col max-h-125 overflow-y-auto custom-scrollbar pr-2">
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: any) => { const { active, over } = e; if (over && active.id !== over.id) { const oldI = tempConfig.findIndex((c: any) => c.id === active.id); const newI = tempConfig.findIndex((c: any) => c.id === over.id); setTempConfig(arrayMove(tempConfig, oldI, newI)); } }}>
+                <SortableContext items={tempConfig.map((c: any) => c.id)} strategy={verticalListSortingStrategy}>
+                  {tempConfig.map((col: any) => (
+                    <SortableConfigItem
+                      key={col.id}
+                      col={col}
+                      onRemove={(id: string) => setTempConfig(tempConfig.filter((c: any) => c.id !== id))}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            </div>
+          </div>
+        </div>
+
+        {/* Sección de configuración de visualización */}
+        <div className="border-t border-slate-200 pt-6 mt-4">
+          <h3 className="text-sm font-bold text-slate-700 mb-4">Configuración adicional de la matriz</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Checkbox: Mostrar cumplimiento */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="mostrarCumplimiento"
+                checked={mostrarCumplimiento}
+                onChange={(e) => setMostrarCumplimiento(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 text-lgc-primary focus:ring-lgc-primary"
+              />
+              <label htmlFor="mostrarCumplimiento" className="text-xs font-bold uppercase text-slate-600 tracking-widest">
+                Mostrar indicadores de cumplimiento (gráfico circular y porcentaje)
+              </label>
+            </div>
+
+            {/* Select: Campo para encabezado del ítem */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
+                Campo que se muestra como encabezado del ítem
+              </label>
+              <select
+                value={campoEncabezadoItem}
+                onChange={(e) => setCampoEncabezadoItem(e.target.value)}
+                className="w-full p-2.5 text-xs border border-slate-200 rounded-lg bg-white focus:border-lgc-primary outline-none"
+              >
+                {opcionesEncabezado.map(opt => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+              <p className="text-[9px] text-slate-400 mt-1">
+                Determina qué dato se muestra en la línea superior de cada ítem (cuando está colapsado).
+              </p>
             </div>
           </div>
         </div>
@@ -1438,7 +1503,7 @@ export default function WorkspaceMatrizPage() {
                     </div>
                   )}
                 </div>
-                {tipoMatriz === 2 && (
+                {mostrarCumplimiento && tipoMatriz === 2 && (
                   <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col gap-3">
                     <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Estado de Cumplimiento</span>
                     {dashboardMetrics.porCumplimiento.length === 0 ? (
@@ -1805,6 +1870,7 @@ export default function WorkspaceMatrizPage() {
                       isDragDisabled={hasActiveFilters || !puedeReordenar}
                       onSolicitarNuevaNorma={abrirNuevaNormaModal}
                       idEstablecimiento={idEstablecimiento}
+                      campoEncabezado={campoEncabezadoItem}
                     />
                   ))
                 )}

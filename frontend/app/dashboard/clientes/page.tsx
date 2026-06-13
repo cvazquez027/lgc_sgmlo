@@ -233,15 +233,14 @@ export default function ClientesPage() {
               setFormData({id_cliente: "", cuit: "", razon_social: "", nombre_fantasia: "", logo_path: "", vigente: 1, contactos: []}); 
               setIsModalOpen(true); 
             }}
-            className="bg-lgc-accent text-slate-800 py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-tostado/70 transition-all shadow-md flex items-center gap-2"
-          >
-            <span>+</span> Nuevo Cliente
+            className="bg-white hover:bg-white/70 text-blue-950 font-bold py-2 px-5 rounded-lg transition-all text-[11px] uppercase tracking-widest border border-white/20 shadow-sm"
+          >+ Nuevo Cliente
           </button>
         )}
       </div>
 
       {/* FILA DE FILTROS CON FONDO TOSTADO - RECUADRO SEPARADO */}
-      <div className="bg-lgc-tostado p-5 rounded-xl shadow-lg border border-lgc-tostado/30">
+      <div className="bg-blue-50 p-5 rounded-xl shadow-lg border border-lgc-tostado/30">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           
           {/* Filtro por Estado */}

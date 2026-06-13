@@ -29,6 +29,10 @@ $id_tipo_matriz = (int)$data->id_tipo_matriz;
 $id_especialidad_matriz = (int)$data->id_especialidad_matriz; 
 $vigente = isset($data->vigente) ? (int)$data->vigente : 1;
 
+// Nuevos campos con valores por defecto
+$mostrar_cumplimiento = isset($data->mostrar_cumplimiento) ? (int)$data->mostrar_cumplimiento : 1;
+$campo_encabezado_item = isset($data->campo_encabezado_item) ? $data->campo_encabezado_item : 'normas';
+
 $fecha_desde = null;
 $date_obj = DateTime::createFromFormat('Y-m-d', $data->fecha_desde);
 if ($date_obj && $date_obj->format('Y-m-d') === $data->fecha_desde) {
@@ -43,13 +47,11 @@ try {
     $db->beginTransaction();
 
     // *** VALIDACIÓN DE UNICIDAD PARA BORRADORES ***
-    // He validado que no exista otra matriz en estado BORRADOR (id_estado_matriz = 1)
-    // con la misma combinación de establecimiento, especialidad y tipo.
     $queryCheck = "SELECT COUNT(*) FROM matriz 
                    WHERE id_cliente_establecimiento = :est
                      AND id_especialidad_matriz = :esp
                      AND id_tipo_matriz = :tipo
-                     AND id_estado_matriz = 1"; // Solo borradores
+                     AND id_estado_matriz = 1";
     if ($id_matriz) {
         $queryCheck .= " AND id_matriz != :id_matriz";
     }
@@ -71,19 +73,21 @@ try {
     }
 
     if ($id_matriz) {
-        // Edición: no se modifica la versión
+        // Edición: incluir los nuevos campos
         $query = "UPDATE matriz SET 
                     id_cliente_establecimiento = :id_cliente_establecimiento,
                     id_tipo_matriz = :id_tipo_matriz,
                     id_especialidad_matriz = :id_especialidad_matriz,
                     fecha_desde = :fecha_desde,
                     id_estado_matriz = :id_estado_matriz,
-                    vigente = :vigente
+                    vigente = :vigente,
+                    mostrar_cumplimiento = :mostrar_cumplimiento,
+                    campo_encabezado_item = :campo_encabezado_item
                   WHERE id_matriz = :id_matriz";
         $stmt = $db->prepare($query);
         $stmt->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     } else {
-        // Creación: calcular próxima versión para esta combinación
+        // Creación: calcular próxima versión
         $query_ver = "SELECT COALESCE(MAX(version), 0) + 1 AS siguiente
                       FROM matriz
                       WHERE id_cliente_establecimiento = :est
@@ -98,9 +102,9 @@ try {
         $version = (int)$stmt_ver->fetchColumn();
 
         $query = "INSERT INTO matriz 
-                    (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, fecha_desde, version, id_estado_matriz, vigente) 
+                    (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, fecha_desde, version, id_estado_matriz, vigente, mostrar_cumplimiento, campo_encabezado_item) 
                   VALUES 
-                    (:id_cliente_establecimiento, :id_tipo_matriz, :id_especialidad_matriz, :fecha_desde, :version, :id_estado_matriz, :vigente)";
+                    (:id_cliente_establecimiento, :id_tipo_matriz, :id_especialidad_matriz, :fecha_desde, :version, :id_estado_matriz, :vigente, :mostrar_cumplimiento, :campo_encabezado_item)";
         $stmt = $db->prepare($query);
         $stmt->bindParam(":version", $version, PDO::PARAM_INT);
     }
@@ -111,6 +115,8 @@ try {
     $stmt->bindParam(":fecha_desde", $fecha_desde, PDO::PARAM_STR);
     $stmt->bindParam(":id_estado_matriz", $id_estado_matriz, PDO::PARAM_INT);
     $stmt->bindParam(":vigente", $vigente, PDO::PARAM_INT);
+    $stmt->bindParam(":mostrar_cumplimiento", $mostrar_cumplimiento, PDO::PARAM_INT);
+    $stmt->bindParam(":campo_encabezado_item", $campo_encabezado_item, PDO::PARAM_STR);
 
     $stmt->execute();
 

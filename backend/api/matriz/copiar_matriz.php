@@ -45,10 +45,10 @@ $db = $database->getConnection();
 try {
     $db->beginTransaction();
 
-    // 1. Leer cabecera de la matriz origen
+    // 1. Leer cabecera de la matriz origen (incluyendo los nuevos campos)
     $stmt_cab = $db->prepare(
         "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz,
-                fecha_desde, config_columnas, version
+                fecha_desde, config_columnas, version, mostrar_cumplimiento, campo_encabezado_item
          FROM matriz WHERE id_matriz = :id"
     );
     $stmt_cab->execute([':id' => $id_origen]);
@@ -56,7 +56,6 @@ try {
     if (!$origen) throw new Exception("Matriz origen no encontrada.");
 
     // *** VALIDACIÓN: Ya existe un borrador con la misma combinación? ***
-    // He agregado esta validación para evitar duplicados en estado borrador.
     $query_check = "SELECT COUNT(*) FROM matriz 
                     WHERE id_cliente_establecimiento = :est
                       AND id_especialidad_matriz = :esp
@@ -79,7 +78,7 @@ try {
         exit();
     }
 
-    // 2. Calcular próxima versión para la misma combinación
+    // 2. Calcular próxima versión
     $stmt_ver = $db->prepare(
         "SELECT COALESCE(MAX(version), 0) + 1 AS siguiente
          FROM matriz
@@ -94,13 +93,15 @@ try {
     ]);
     $nueva_version = (int)$stmt_ver->fetchColumn();
 
-    // 3. Insertar nueva cabecera en estado BORRADOR (id_estado_matriz = 1, vigente = 1)
+    // 3. Insertar nueva cabecera en estado BORRADOR (incluyendo los nuevos campos)
     $stmt_nueva = $db->prepare(
         "INSERT INTO matriz
             (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz,
-             fecha_desde, version, id_estado_matriz, vigente, config_columnas)
+             fecha_desde, version, id_estado_matriz, vigente, config_columnas,
+             mostrar_cumplimiento, campo_encabezado_item)
          VALUES
-            (:est, :tipo, :esp, :fecha, :ver, 1, 1, :config)"
+            (:est, :tipo, :esp, :fecha, :ver, 1, 1, :config,
+             :mostrar_cumplimiento, :campo_encabezado_item)"
     );
     $stmt_nueva->execute([
         ':est'    => $origen['id_cliente_establecimiento'],
@@ -108,11 +109,13 @@ try {
         ':esp'    => $origen['id_especialidad_matriz'],
         ':fecha'  => date('Y-m-d'),
         ':ver'    => $nueva_version,
-        ':config' => $origen['config_columnas']
+        ':config' => $origen['config_columnas'],
+        ':mostrar_cumplimiento' => $origen['mostrar_cumplimiento'],
+        ':campo_encabezado_item' => $origen['campo_encabezado_item']
     ]);
     $id_nueva = (int)$db->lastInsertId();
 
-    // 4. Copiar todos los ítems
+    // 4. Copiar todos los ítems (sin cambios)
     $stmt_items = $db->prepare(
         "SELECT * FROM item_matriz WHERE id_matriz = :id ORDER BY orden ASC, id_item_matriz ASC"
     );

@@ -28,6 +28,8 @@ try {
                 m.version, 
                 m.id_estado_matriz, 
                 m.vigente,
+                m.mostrar_cumplimiento,
+                m.campo_encabezado_item,
                 em.descripcion as estado_matriz_desc,
                 tm.descripcion as tipo_matriz_desc,
                 esp.descripcion as especialidad_matriz_desc,

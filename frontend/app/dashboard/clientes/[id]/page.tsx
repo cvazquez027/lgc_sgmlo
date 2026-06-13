@@ -629,7 +629,7 @@ export default function EstablecimientosPage() {
                 setFormData({id_cliente_establecimiento: "", id_jurisdiccion: "", descripcion: "", vigente: 1, contactos: []}); 
                 setIsModalOpen(true); 
               }}
-              className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-lgc-accent hover:text-white transition-all shadow-md shrink-0 flex items-center gap-2"
+              className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-white/70 hover:text-lgc-primary transition-all shadow-md shrink-0 flex items-center gap-2"
           >
             <span>+</span> Agregar Establecimiento
           </button>
