@@ -46,8 +46,9 @@ if ($date_obj && $date_obj->format('Y-m-d') === $data->fecha_desde) {
 try {
     $db->beginTransaction();
 
-    // *** VALIDACIÓN DE UNICIDAD PARA BORRADORES ***
-    $queryCheck = "SELECT COUNT(*) FROM matriz 
+    // *** VALIDACIÓN DE UNICIDAD PARA BORRADORES (con limpieza automática de huérfanos) ***
+    $queryCheck = "SELECT id_matriz, version 
+                   FROM matriz 
                    WHERE id_cliente_establecimiento = :est
                      AND id_especialidad_matriz = :esp
                      AND id_tipo_matriz = :tipo
@@ -63,15 +64,32 @@ try {
         $stmtCheck->bindParam(':id_matriz', $id_matriz, PDO::PARAM_INT);
     }
     $stmtCheck->execute();
-    $existeBorrador = $stmtCheck->fetchColumn();
+    $borradorExistente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
-    if ($existeBorrador > 0) {
-        $db->rollBack();
-        http_response_code(409);
-        echo json_encode(["mensaje" => "Ya existe una matriz en estado BORRADOR para la misma combinación de establecimiento, especialidad y tipo. No se puede crear otra hasta que la actual sea publicada o eliminada."]);
-        exit();
+    if ($borradorExistente) {
+        // Verificar si el borrador tiene ítems asociados
+        $queryItems = "SELECT COUNT(*) FROM item_matriz WHERE id_matriz = :id_matriz";
+        $stmtItems = $db->prepare($queryItems);
+        $stmtItems->execute([':id_matriz' => $borradorExistente['id_matriz']]);
+        $totalItems = $stmtItems->fetchColumn();
+
+        if ($totalItems == 0) {
+            // Borrador huérfano sin ítems: eliminarlo y continuar
+            $stmtDelete = $db->prepare("DELETE FROM matriz WHERE id_matriz = :id_matriz");
+            $stmtDelete->execute([':id_matriz' => $borradorExistente['id_matriz']]);
+            error_log("Se eliminó borrador huérfano ID {$borradorExistente['id_matriz']} para permitir nueva creación.");
+        } else {
+            // Borrador con ítems: no se puede eliminar automáticamente
+            $db->rollBack();
+            http_response_code(409);
+            echo json_encode([
+                "mensaje" => "Ya existe una matriz en estado BORRADOR para la misma combinación de establecimiento, especialidad y tipo (ID: {$borradorExistente['id_matriz']}, versión {$borradorExistente['version']}). Si no la ves, contacta al administrador."
+            ]);
+            exit();
+        }
     }
 
+    // Si llegamos aquí, podemos proceder a guardar (ya sea edición o nueva creación)
     if ($id_matriz) {
         // Edición: incluir los nuevos campos
         $query = "UPDATE matriz SET 
@@ -124,7 +142,7 @@ try {
         $id_matriz = $db->lastInsertId();
     }
 
-    // Lógica de publicación y auto-archivo (si se publica)
+    // Lógica de publicación y auto-archivo (si se publica directamente)
     if ($id_estado_matriz === 2) {
         $query_archive = "UPDATE matriz 
                           SET id_estado_matriz = 3 
