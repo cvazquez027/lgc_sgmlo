@@ -51,16 +51,38 @@ try {
         if ($accion === 'promover') {
             $stmt_leer->execute([':id_bo' => $id_norma_bo]);
             $norma_bruta = $stmt_leer->fetch(PDO::FETCH_ASSOC);
-
             if ($norma_bruta) {
+                // Intentar obtener URL específica
+                $url_especifica = null;
+                if ($norma_bruta['id_tipo_norma'] && $norma_bruta['numero'] && $norma_bruta['anio']) {
+                    $query_tipo = "SELECT descripcion FROM tipo_norma WHERE id_tipo_norma = :id";
+                    $stmt_t = $db->prepare($query_tipo);
+                    $stmt_t->execute([':id' => $norma_bruta['id_tipo_norma']]);
+                    $tipo_desc = $stmt_t->fetchColumn();
+                    if ($tipo_desc) {
+                        $ch = curl_init();
+                        curl_setopt($ch, CURLOPT_URL, "http://localhost/lgc_sgmlo/backend/api/normativa/buscar_url_gba.php");
+                        curl_setopt($ch, CURLOPT_POST, 1);
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['tipo' => $tipo_desc, 'numero' => $norma_bruta['numero'], 'anio' => $norma_bruta['anio']]));
+                        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                        $resp = curl_exec($ch);
+                        $data = json_decode($resp, true);
+                        if ($data && $data['status'] == 'success') {
+                            $url_especifica = $data['url'];
+                        }
+                        curl_close($ch);
+                    }
+                }
+                $url_final = $url_especifica ?: $norma_bruta['url_norma']; // fallback al PDF
                 $stmt_insert->execute([
                     ':tipo' => $norma_bruta['id_tipo_norma'],
-                    ':emisor' => $norma_bruta['id_emisor_norma'], // Ahora no puede ser NULL
+                    ':emisor' => $norma_bruta['id_emisor_norma'],
                     ':num' => $norma_bruta['numero'],
                     ':anio' => $norma_bruta['anio'],
                     ':fecha' => $norma_bruta['fecha_publicacion'],
                     ':sintesis' => $norma_bruta['sintesis'],
-                    ':url' => $norma_bruta['url_norma']
+                    ':url' => $url_final
                 ]);
             }
         }

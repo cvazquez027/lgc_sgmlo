@@ -29,7 +29,6 @@ $id_tipo_matriz = (int)$data->id_tipo_matriz;
 $id_especialidad_matriz = (int)$data->id_especialidad_matriz; 
 $vigente = isset($data->vigente) ? (int)$data->vigente : 1;
 
-// Nuevos campos con valores por defecto
 $mostrar_cumplimiento = isset($data->mostrar_cumplimiento) ? (int)$data->mostrar_cumplimiento : 1;
 $campo_encabezado_item = isset($data->campo_encabezado_item) ? $data->campo_encabezado_item : 'normas';
 
@@ -46,7 +45,7 @@ if ($date_obj && $date_obj->format('Y-m-d') === $data->fecha_desde) {
 try {
     $db->beginTransaction();
 
-    // *** VALIDACIÓN DE UNICIDAD PARA BORRADORES (con limpieza automática de huérfanos) ***
+    // Buscar borradores conflictivos (estado=1)
     $queryCheck = "SELECT id_matriz, version 
                    FROM matriz 
                    WHERE id_cliente_establecimiento = :est
@@ -67,31 +66,32 @@ try {
     $borradorExistente = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
     if ($borradorExistente) {
-        // Verificar si el borrador tiene ítems asociados
+        // Contar ítems de ese borrador
         $queryItems = "SELECT COUNT(*) FROM item_matriz WHERE id_matriz = :id_matriz";
         $stmtItems = $db->prepare($queryItems);
         $stmtItems->execute([':id_matriz' => $borradorExistente['id_matriz']]);
         $totalItems = $stmtItems->fetchColumn();
 
         if ($totalItems == 0) {
-            // Borrador huérfano sin ítems: eliminarlo y continuar
+            // Borrador huérfano: eliminar y seguir
             $stmtDelete = $db->prepare("DELETE FROM matriz WHERE id_matriz = :id_matriz");
             $stmtDelete->execute([':id_matriz' => $borradorExistente['id_matriz']]);
-            error_log("Se eliminó borrador huérfano ID {$borradorExistente['id_matriz']} para permitir nueva creación.");
+            error_log("Matrices: Borrador huérfano ID {$borradorExistente['id_matriz']} eliminado automáticamente.");
         } else {
-            // Borrador con ítems: no se puede eliminar automáticamente
+            // Borrador con ítems: no se puede eliminar, devolver su ID
             $db->rollBack();
             http_response_code(409);
             echo json_encode([
-                "mensaje" => "Ya existe una matriz en estado BORRADOR para la misma combinación de establecimiento, especialidad y tipo (ID: {$borradorExistente['id_matriz']}, versión {$borradorExistente['version']}). Si no la ves, contacta al administrador."
+                "mensaje" => "Ya existe una matriz en estado BORRADOR para la misma combinación.",
+                "id_matriz_existente" => (int)$borradorExistente['id_matriz'],
+                "version_existente" => (int)$borradorExistente['version']
             ]);
             exit();
         }
     }
 
-    // Si llegamos aquí, podemos proceder a guardar (ya sea edición o nueva creación)
+    // --- Guardado normal (creación o edición) ---
     if ($id_matriz) {
-        // Edición: incluir los nuevos campos
         $query = "UPDATE matriz SET 
                     id_cliente_establecimiento = :id_cliente_establecimiento,
                     id_tipo_matriz = :id_tipo_matriz,
@@ -105,7 +105,7 @@ try {
         $stmt = $db->prepare($query);
         $stmt->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     } else {
-        // Creación: calcular próxima versión
+        // Calcular próxima versión
         $query_ver = "SELECT COALESCE(MAX(version), 0) + 1 AS siguiente
                       FROM matriz
                       WHERE id_cliente_establecimiento = :est
@@ -142,7 +142,7 @@ try {
         $id_matriz = $db->lastInsertId();
     }
 
-    // Lógica de publicación y auto-archivo (si se publica directamente)
+    // Si se publica directamente, archivar otras versiones publicadas anteriores
     if ($id_estado_matriz === 2) {
         $query_archive = "UPDATE matriz 
                           SET id_estado_matriz = 3 
@@ -171,7 +171,7 @@ try {
     if ($db->inTransaction()) $db->rollBack();
     if ($e->getCode() == 23000) {
         http_response_code(409);
-        echo json_encode(["mensaje" => "Error: Ya existe una Matriz para la especialidad, tipo y sede seleccionados."]);
+        echo json_encode(["mensaje" => "Error de unicidad en la base de datos. Posible duplicado."]);
     } else {
         http_response_code(500);
         echo json_encode(["mensaje" => "Error de base de datos.", "error" => $e->getMessage()]);

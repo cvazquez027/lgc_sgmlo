@@ -33,22 +33,13 @@ export default function BoletinOficialPage() {
   const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
-  // Datos
   const [jurisdicciones, setJurisdicciones] = useState<Jurisdiccion[]>([]);
   const [normasScraping, setNormasScraping] = useState<NormaScraping[]>([]);
-  
-  // Filtros
   const [selectedJurId, setSelectedJurId] = useState<string>("");
   const [soloCategorizadas, setSoloCategorizadas] = useState<boolean>(false);
-  
-  // Paginación
   const [itemsPerPage, setItemsPerPage] = useState<number>(30);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  
-  // Selección múltiple
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-
-  // Estados UI
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [procesando, setProcesando] = useState<boolean>(false);
@@ -59,7 +50,6 @@ export default function BoletinOficialPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 1. Cargar el selector de Jurisdicciones
   const fetchJurisdicciones = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
@@ -77,7 +67,6 @@ export default function BoletinOficialPage() {
     }
   }, [toast]);
 
-  // 2. Traer los datos del scraping (Grilla completa)
   const fetchScrapingData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     setLoadingData(true);
@@ -103,12 +92,10 @@ export default function BoletinOficialPage() {
     }
   }, [fetchJurisdicciones, fetchScrapingData, isCheckingPerms, canRead]);
 
-  // Identificar la jurisdicción seleccionada para lógica de UI
   const selectedJur = useMemo(() => 
     jurisdicciones.find(j => j.id_jurisdiccion.toString() === selectedJurId), 
   [jurisdicciones, selectedJurId]);
 
-  // Filtrado dinámico
   const normasFiltradas = useMemo(() => {
     return normasScraping.filter(norma => {
       const matchJur = selectedJurId === "" || norma.jurisdiccion_desc === selectedJur?.descripcion;
@@ -117,7 +104,6 @@ export default function BoletinOficialPage() {
     });
   }, [normasScraping, selectedJurId, soloCategorizadas, selectedJur]);
 
-  // Paginación
   const totalPages = Math.ceil(normasFiltradas.length / itemsPerPage);
   const paginatedNormas = normasFiltradas.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -140,48 +126,65 @@ export default function BoletinOficialPage() {
     );
   };
 
-  // 3. Ejecutar el script de Python en el Backend
-  const ejecutarScraper = async () => {
-    setIsScraping(true);
+  const ejecutarScraperPorJurisdiccion = async (idJur: number): Promise<void> => {
+    // setIsScraping se maneja en el padre o localmente? mejor usar variable global
+    // Como ya existe isScraping global, lo manejamos con set
+    // Pero cuidado: ejecutarTodosScrapers llama múltiples veces y queremos indicar que hay proceso en curso
+    // Para simplificar, no seteamos isScraping aquí porque ya se maneja en el padre cuando se llama a todos.
+    // En el botón individual sí se usa.
     const token = localStorage.getItem("sgml_token");
-    
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/boletin/ejecutar_scraper.php`, {
         method: 'POST',
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ id_jurisdiccion: idJur })
       });
-      
-      const rawText = await res.text();
-      console.log("Respuesta cruda de PHP:", rawText);
-      
-      try {
-          const data = JSON.parse(rawText);
-          if (data.status === 'success') {
-            toast.showToast("Éxito", "¡Boletín actualizado con éxito!", "success");
-            fetchScrapingData();
-          } else {
-            toast.showToast("Error", `Error al raspar: ${data.message}`, "error");
-            console.error("Log de Python:", data.log);
-          }
-      } catch (parseError) {
-          console.error("No se pudo leer el JSON. El servidor devolvió esto:", rawText);
-          toast.showToast("Error", "El servidor no devolvió una respuesta válida. Revise la consola.", "error");
+      const data = await res.json();
+      if (data.status !== 'success') {
+        throw new Error(data.message || "Error al actualizar");
       }
-    } catch (error) {
-      console.error("Error conectando con el backend:", error);
-      toast.showToast("Error", "Ocurrió un error al intentar actualizar.", "error");
-    } finally {
-      setIsScraping(false);
+      // Solo mostrar toast si es una ejecución individual? En el bucle no queremos muchos toasts.
+      // Dejamos que el llamado decida.
+      fetchScrapingData();
+    } catch (err: unknown) {
+      // Manejo seguro del error
+      const mensaje = err instanceof Error ? err.message : "Error desconocido";
+      toast.showToast("Error", `Error al actualizar: ${mensaje}`, "error");
+      throw new Error(mensaje); // Re-lanzar para que el bucle lo capture
+    }
+  };
+
+  const ejecutarTodosScrapers = async () => {
+    const jurConScraper = jurisdicciones.filter(j => j.tiene_scraper === 1);
+    if (jurConScraper.length === 0) {
+      toast.showToast("Info", "No hay jurisdicciones con scraper habilitado.", "info");
+      return;
+    }
+    setIsScraping(true);
+    let errores = 0;
+    for (const jur of jurConScraper) {
+      try {
+        await ejecutarScraperPorJurisdiccion(jur.id_jurisdiccion);
+        toast.showToast("Éxito", `Boletín de ${jur.descripcion} actualizado.`, "success");
+      } catch (err: unknown) {
+        errores++;
+        const mensaje = err instanceof Error ? err.message : "Error desconocido";
+        toast.showToast("Error", `Falló la actualización de ${jur.descripcion}: ${mensaje}`, "error");
+      }
+    }
+    setIsScraping(false);
+    if (errores === 0) {
+      toast.showToast("Éxito", "Todos los boletines fueron actualizados.", "success");
+    } else {
+      toast.showToast("Atención", `Se completó con ${errores} error(es). Revisa la consola.`, "warning");
     }
   };
 
   const handleBulkAction = async (accion: 'promover' | 'descartar') => {
     if (!canEdit("boletin") || selectedIds.length === 0) return;
-    
     const confirmMsg = accion === 'descartar' 
       ? `¿Estás seguro de DESCARTAR las ${selectedIds.length} normas seleccionadas?`
       : `¿Promover ${selectedIds.length} normas al repositorio oficial?`;
-    
     const ok = await confirm({
       title: accion === 'descartar' ? "Descartar normas" : "Promover normas",
       message: confirmMsg,
@@ -189,7 +192,6 @@ export default function BoletinOficialPage() {
       cancelText: "Cancelar"
     });
     if (!ok) return;
-
     setProcesando(true);
     const token = localStorage.getItem("sgml_token");
     try {
@@ -198,7 +200,6 @@ export default function BoletinOficialPage() {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ids_normas: selectedIds, accion })
       });
-      
       if (res.ok) {
         setNormasScraping(prev => prev.filter(n => !selectedIds.includes(n.id_norma_bo)));
         setSelectedIds([]);
@@ -220,33 +221,20 @@ export default function BoletinOficialPage() {
 
   return (
     <div className="space-y-2 font-sans animate-fade-in flex flex-col h-[calc(100vh-80px)] overflow-hidden">
-      
-      {/* HEADER ESTILO MATRICES - AZUL CORPORATIVO */}
       <div className="bg-[#005F78] text-white px-5 py-3 rounded-xl shadow-md flex flex-row justify-between items-center shrink-0 border border-[#004D62]">
         <div className="flex items-center gap-4">
-          <Link 
-            href="/dashboard" 
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
-            title="Volver al inicio"
-          >
+          <Link href="/dashboard" className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group">
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </Link>
           <div className="h-8 w-px bg-white/30 hidden md:block"></div>
-          <h1 className="text-xl font-heading font-bold uppercase tracking-tight leading-none">
-            Boletín Oficial
-          </h1>
+          <h1 className="text-xl font-heading font-bold uppercase tracking-tight leading-none">Boletín Oficial</h1>
         </div>
-
         <div className="flex items-center gap-3">
-          {/* Botón Actualizar (estilo similar al botón de crear matriz) */}
           {selectedJur && selectedJur.tiene_scraper === 1 && (
-            <button 
-              onClick={ejecutarScraper} 
-              disabled={isScraping}
-              className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50"
-            >
+            <button onClick={() => ejecutarScraperPorJurisdiccion(selectedJur.id_jurisdiccion)} disabled={isScraping}
+              className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
               {isScraping ? (
                 <>
                   <svg className="animate-spin h-3.5 w-3.5 text-lgc-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -260,23 +248,17 @@ export default function BoletinOficialPage() {
               )}
             </button>
           )}
-
+          {!selectedJur && (
+            <button onClick={ejecutarTodosScrapers} disabled={isScraping}
+              className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
+              {isScraping ? "Actualizando todos..." : "Actualizar todo"}
+            </button>
+          )}
           <label className="flex items-center gap-2 cursor-pointer text-[10px] font-bold uppercase text-white bg-white/20 px-3 py-1.5 rounded-lg border border-white/30 hover:bg-white/30 transition-colors shadow-sm">
-            <input 
-              type="checkbox" 
-              checked={soloCategorizadas} 
-              onChange={(e) => setSoloCategorizadas(e.target.checked)}
-              className="rounded text-lgc-primary focus:ring-lgc-primary w-3.5 h-3.5"
-            />
+            <input type="checkbox" checked={soloCategorizadas} onChange={(e) => setSoloCategorizadas(e.target.checked)} className="rounded text-lgc-primary focus:ring-lgc-primary w-3.5 h-3.5" />
             <span>SOLO RELEVANTES</span>
           </label>
-
-          <select 
-            className="p-2 bg-white/10 border border-white/20 rounded-lg outline-none text-xs font-bold text-white cursor-pointer shadow-sm min-w-40 hover:bg-white/20 transition-colors"
-            value={selectedJurId}
-            onChange={(e) => setSelectedJurId(e.target.value)}
-            disabled={loadingConfig}
-          >
+          <select className="p-2 bg-white/10 border border-white/20 rounded-lg outline-none text-xs font-bold text-white cursor-pointer shadow-sm min-w-40 hover:bg-white/20 transition-colors" value={selectedJurId} onChange={(e) => setSelectedJurId(e.target.value)} disabled={loadingConfig}>
             <option value="" className="text-slate-800">TODAS LAS JURISDICCIONES</option>
             {jurisdicciones.map(j => (
               <option key={j.id_jurisdiccion} value={j.id_jurisdiccion} className="text-slate-800">{j.descripcion}</option>
@@ -285,35 +267,24 @@ export default function BoletinOficialPage() {
         </div>
       </div>
 
-      {/* TOOLBAR (sin cambios, solo estilo de fondo ajustado) */}
       <div className="bg-slate-100 p-2 rounded-xl flex justify-between items-center shrink-0 border border-slate-200">
         <div className="flex items-center gap-4 px-2 text-[11px]">
           <span className="font-bold text-slate-600">{normasFiltradas.length} REGISTROS</span>
           <span className="text-slate-400">|</span>
-          <span className={selectedIds.length > 0 ? "text-lgc-primary font-bold" : "text-slate-500"}>
-            {selectedIds.length} SELECCIONADOS
-          </span>
+          <span className={selectedIds.length > 0 ? "text-lgc-primary font-bold" : "text-slate-500"}>{selectedIds.length} SELECCIONADOS</span>
         </div>
-
         <div className="flex gap-2">
-          <button 
-            onClick={() => handleBulkAction('descartar')}
-            disabled={procesando || selectedIds.length === 0}
-            className="bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-300 py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50"
-          >
+          <button onClick={() => handleBulkAction('descartar')} disabled={procesando || selectedIds.length === 0}
+            className="bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-300 py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50">
             Descartar
           </button>
-          <button 
-            onClick={() => handleBulkAction('promover')}
-            disabled={procesando || selectedIds.length === 0}
-            className="bg-lgc-primary hover:bg-[#006A8A] text-white py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50"
-          >
+          <button onClick={() => handleBulkAction('promover')} disabled={procesando || selectedIds.length === 0}
+            className="bg-lgc-primary hover:bg-[#006A8A] text-white py-1 px-3 rounded shadow-sm text-[10px] font-bold uppercase transition-all disabled:opacity-50">
             {procesando ? 'Procesando...' : 'Confirmar y Promover'}
           </button>
         </div>
       </div>
 
-      {/* DATAGRID (sin cambios) */}
       <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto relative">
         {loadingData ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
@@ -323,12 +294,8 @@ export default function BoletinOficialPage() {
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-4">
             <span className="text-xs font-bold uppercase">No hay normativas pendientes</span>
             {selectedJur && selectedJur.tiene_scraper === 0 && selectedJur.url_boletin && (
-              <a 
-                href={selectedJur.url_boletin} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="bg-lgc-primary hover:bg-lgc-hover text-white py-2 px-4 rounded-lg shadow-sm text-[10px] font-bold uppercase transition-all flex items-center gap-2"
-              >
+              <a href={selectedJur.url_boletin} target="_blank" rel="noopener noreferrer"
+                className="bg-lgc-primary hover:bg-lgc-hover text-white py-2 px-4 rounded-lg shadow-sm text-[10px] font-bold uppercase transition-all flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                 Ver el Boletín Oficial
               </a>
@@ -339,12 +306,7 @@ export default function BoletinOficialPage() {
             <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
               <tr>
                 <th className="py-2 px-3 w-8 text-center">
-                  <input 
-                    type="checkbox" 
-                    className="rounded text-lgc-primary w-3 h-3 cursor-pointer"
-                    checked={paginatedNormas.length > 0 && selectedIds.length === paginatedNormas.length}
-                    onChange={handleSelectAll}
-                  />
+                  <input type="checkbox" className="rounded text-lgc-primary w-3 h-3 cursor-pointer" checked={paginatedNormas.length > 0 && selectedIds.length === paginatedNormas.length} onChange={handleSelectAll} />
                 </th>
                 <th className="py-2 px-2 font-bold text-slate-500 uppercase w-20">Jurisdicción</th>
                 <th className="py-2 px-2 font-bold text-slate-500 uppercase w-24">Tipo / Nro</th>
@@ -361,17 +323,9 @@ export default function BoletinOficialPage() {
                 const isSelected = selectedIds.includes(norma.id_norma_bo);
                 const hasMatch = norma.categorias_detectadas && norma.categorias_detectadas.trim() !== "";
                 return (
-                  <tr 
-                    key={norma.id_norma_bo} 
-                    className={`transition-colors ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}`}
-                  >
+                  <tr key={norma.id_norma_bo} className={`transition-colors ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}`}>
                     <td className="py-1.5 px-3 text-center">
-                      <input 
-                        type="checkbox" 
-                        className="rounded text-lgc-primary w-3 h-3 cursor-pointer"
-                        checked={isSelected}
-                        onChange={() => handleSelectOne(norma.id_norma_bo)}
-                      />
+                      <input type="checkbox" className="rounded text-lgc-primary w-3 h-3 cursor-pointer" checked={isSelected} onChange={() => handleSelectOne(norma.id_norma_bo)} />
                     </td>
                     <td className="py-1.5 px-2 font-bold text-slate-700 uppercase">{norma.jurisdiccion_desc}</td>
                     <td className="py-1.5 px-2 font-medium">
@@ -392,7 +346,6 @@ export default function BoletinOficialPage() {
         )}
       </div>
 
-      {/* PAGINADOR (sin cambios) */}
       <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center shrink-0 text-[11px]">
         <div className="flex items-center gap-2">
           <span className="text-slate-400 font-bold uppercase">Mostrar</span>

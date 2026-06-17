@@ -241,7 +241,22 @@ export default function MatricesPage() {
         body: JSON.stringify(formData)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.mensaje || "Error al procesar la matriz.");
+      if (!res.ok) {
+        // Manejo específico del error 409 (conflicto de borrador existente)
+        if (res.status === 409 && data.id_matriz_existente) {
+          const irAlBorrador = await confirm({
+            title: "Borrador existente",
+            message: `Ya existe un borrador (ID ${data.id_matriz_existente}, versión ${data.version_existente}) para esta combinación. ¿Desea ir a editarlo?`,
+            confirmText: "Ir al borrador",
+            cancelText: "Cancelar"
+          });
+          if (irAlBorrador) {
+            router.push(`/dashboard/matrices/${data.id_matriz_existente}`);
+          }
+          return;
+        }
+        throw new Error(data.mensaje || "Error al procesar la matriz.");
+      }
       setIsModalOpen(false);
       if (modalMode === "crear") {
         toast.showToast("Éxito", "Matriz creada correctamente.", "success");
