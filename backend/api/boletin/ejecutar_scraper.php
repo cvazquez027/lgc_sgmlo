@@ -41,6 +41,7 @@ if (!$nombre_script) {
     exit();
 }
 
+//Prueba
 $ruta_base = dirname(__FILE__) . '/../../scripts/';
 $ruta_script = $ruta_base . $nombre_script;
 
