@@ -39,9 +39,9 @@ if ID_JURISDICCION == 1 and URL_BOLETIN.rstrip('/') == 'https://www.boletinofici
     URL_BOLETIN = 'https://www.boletinoficial.gob.ar/seccion/primera'
 
 API_KEY_BACKEND = "Token_Seguro_Scraper_2026_XyZ!"
-URL_HISTORIAL = "http://localhost/lgc_sgmlo/backend/api/boletin/historial_scraping.php"
-URL_LEER_CATEGORIAS = "http://localhost/lgc_sgmlo/backend/api/boletin/leer_categorias_bot.php"
-URL_GUARDAR_NORMAS = "http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php"
+URL_HISTORIAL = "https://matrizonline.lamas-gc-com/backend/api/boletin/historial_scraping.php"
+URL_LEER_CATEGORIAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/leer_categorias_bot.php"
+URL_GUARDAR_NORMAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/ingresar_scraping.php"
 
 def verificar_boletin_procesado(fecha_boletin):
     try:

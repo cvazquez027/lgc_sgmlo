@@ -18,9 +18,9 @@ ID_JURISDICCION = int(sys.argv[1])
 URL_BOLETIN = sys.argv[2]  # Solo usado para extraer la fecha
 
 API_KEY_BACKEND = "Token_Seguro_Scraper_2026_XyZ!"
-URL_HISTORIAL = "http://localhost/lgc_sgmlo/backend/api/boletin/historial_scraping.php"
-URL_LEER_CATEGORIAS = "http://localhost/lgc_sgmlo/backend/api/boletin/leer_categorias_bot.php"
-URL_GUARDAR_NORMAS = "http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php"
+URL_HISTORIAL = "https://matrizonline.lamas-gc-com/backend/api/boletin/historial_scraping.php"
+URL_LEER_CATEGORIAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/leer_categorias_bot.php"
+URL_GUARDAR_NORMAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/ingresar_scraping.php"
 
 # --- Funciones auxiliares ---
 def salida(status, message, total=None):
