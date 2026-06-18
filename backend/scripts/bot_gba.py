@@ -1,9 +1,17 @@
+import os
 import requests
 import re
 import sys
 import json
 from bs4 import BeautifulSoup
 from datetime import datetime
+
+# Intentar cargar variables de entorno desde .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # Forzar UTF-8
 if sys.stdout.encoding.lower() != 'utf-8':
@@ -17,10 +25,11 @@ if len(sys.argv) < 3:
 ID_JURISDICCION = int(sys.argv[1])
 URL_BOLETIN = sys.argv[2]  # Solo usado para extraer la fecha
 
-API_KEY_BACKEND = "Token_Seguro_Scraper_2026_XyZ!"
-URL_HISTORIAL = "https://matrizonline.lamas-gc-com/backend/api/boletin/historial_scraping.php"
-URL_LEER_CATEGORIAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/leer_categorias_bot.php"
-URL_GUARDAR_NORMAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/ingresar_scraping.php"
+# --- Configuración desde variables de entorno ---
+API_KEY_BACKEND = os.getenv('API_KEY_BACKEND', 'Token_Seguro_Scraper_2026_XyZ!')
+URL_HISTORIAL = os.getenv('URL_HISTORIAL', 'http://localhost/lgc_sgmlo/backend/api/boletin/historial_scraping.php')
+URL_LEER_CATEGORIAS = os.getenv('URL_LEER_CATEGORIAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/leer_categorias_bot.php')
+URL_GUARDAR_NORMAS = os.getenv('URL_GUARDAR_NORMAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php')
 
 # --- Funciones auxiliares ---
 def salida(status, message, total=None):
@@ -58,7 +67,9 @@ def obtener_diccionario_categorias():
             frase = cat['descripcion'].strip()
             dic[id_cat] = re.compile(r'\b' + re.escape(frase) + r'\b', re.IGNORECASE)
         return dic
-    except:
+    except Exception as e:
+        # No abortamos, solo advertimos
+        print(json.dumps({"status": "warning", "message": f"No se pudieron obtener categorías: {e}. Se continuará sin categorizar."}))
         return {}
 
 def categorizar_texto(texto, dic):
@@ -88,23 +99,18 @@ def extraer_fecha_boletin():
                         dia, mes, anio = m.groups()
                         return f"{anio}-{mes}-{dia}"
         return None
-    except Exception as e:
+    except Exception:
         return None
 
 def limpiar_emisor(emisor):
-    """Elimina prefijos no deseados como 'DE LA ' y normaliza espacios."""
     if not emisor:
         return ""
-    # Eliminar "DE LA " (insensible a mayúsculas/minúsculas) del inicio
     emisor = re.sub(r'^DE\s+LA\s+', '', emisor, flags=re.IGNORECASE).strip()
-    # También eliminar "DEL " si apareciera (por consistencia)
     emisor = re.sub(r'^DEL\s+', '', emisor, flags=re.IGNORECASE).strip()
     return emisor
 
 def extraer_normas_desde_buscador(fecha_iso):
-    """Realiza la búsqueda en normas.gba.gob.ar y extrae todas las normas de todas las páginas."""
     fecha_dd_mm_aaaa = datetime.strptime(fecha_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
-    
     base_url = "https://normas.gba.gob.ar/resultados"
     params = {
         "q[date_ranges][publication_date][gte]": fecha_dd_mm_aaaa,
@@ -112,26 +118,21 @@ def extraer_normas_desde_buscador(fecha_iso):
         "q[sort]": "by_publication_date_desc",
         "page": 1
     }
-    
     todas_normas = []
     page = 1
     headers = {'User-Agent': 'Mozilla/5.0'}
-    
     while True:
         params["page"] = page
         try:
             res = requests.get(base_url, params=params, headers=headers, timeout=30)
             res.raise_for_status()
-        except Exception as e:
+        except:
             break
-        
         soup = BeautifulSoup(res.text, 'html.parser')
         cards = soup.find_all('div', class_='card rule-card')
         if not cards:
             break
-        
         for card in cards:
-            # Enlace y título
             link = card.find('h3', class_='rule-name')
             if not link:
                 continue
@@ -141,8 +142,6 @@ def extraer_normas_desde_buscador(fecha_iso):
             url_rel = a.get('href')
             url_norma = f"https://normas.gba.gob.ar{url_rel}"
             titulo = a.get_text(strip=True)
-            
-            # Parsear tipo, número y año desde el título
             tipo = ""
             numero = ""
             anio = ""
@@ -161,31 +160,18 @@ def extraer_normas_desde_buscador(fecha_iso):
                 tipo = titulo.upper()
                 numero = "S/N"
                 anio = fecha_iso.split('-')[0]
-            
-            # Normalizar tipo (eliminar acentos)
             tipo = tipo.replace('RESOLUCIÓN', 'RESOLUCION').replace('DISPOSICIÓN', 'DISPOSICION')
-            
-            # Extraer emisor
             emisor_elem = card.find('h6', class_='rule-source')
             emisor = emisor_elem.get_text(strip=True) if emisor_elem else ""
             if emisor.startswith('del '):
                 emisor = emisor[4:]
-            
-            # --- MEJORA 1: Limpiar prefijos no deseados ---
             emisor = limpiar_emisor(emisor)
-            
-            # --- MEJORA 2: Para decretos, forzar emisor específico ---
             if tipo == "DECRETO":
                 emisor = "Poder Ejecutivo Provincial"
-            # Si el emisor quedó vacío, asignar valor por defecto (no debería ocurrir)
             if not emisor:
                 emisor = "Poder Ejecutivo Provincial"
-            
-            # Extraer resumen
             blockquote = card.find('blockquote')
             sintesis = blockquote.get_text(strip=True) if blockquote else ""
-            
-            # Extraer fecha de publicación
             fecha_publicacion = fecha_iso
             for p in card.find_all('p'):
                 if 'Fecha de publicación:' in p.get_text():
@@ -194,7 +180,6 @@ def extraer_normas_desde_buscador(fecha_iso):
                     if m:
                         fecha_publicacion = datetime.strptime(m.group(1), "%d/%m/%Y").strftime("%Y-%m-%d")
                     break
-            
             todas_normas.append({
                 "tipo": tipo,
                 "numero": numero,
@@ -204,8 +189,6 @@ def extraer_normas_desde_buscador(fecha_iso):
                 "fecha_publicacion": fecha_publicacion,
                 "url": url_norma
             })
-        
-        # Paginación
         pagination = soup.find('ul', class_='pagination')
         if pagination:
             next_link = pagination.find('a', rel='next')
@@ -213,29 +196,26 @@ def extraer_normas_desde_buscador(fecha_iso):
                 page += 1
                 continue
         break
-    
     return todas_normas
 
 # --- Ejecución principal ---
 try:
-    # 1. Obtener fecha del boletín
     fecha_boletin = extraer_fecha_boletin()
     if not fecha_boletin:
         salida("error", "No se pudo determinar la fecha del boletín")
-    
-    # 2. Verificar historial
+
     if verificar_boletin_procesado(fecha_boletin):
         salida("info", f"Boletín del {fecha_boletin} ya fue procesado")
-    
-    # 3. Extraer normas desde el buscador
+
     normas_extraidas = extraer_normas_desde_buscador(fecha_boletin)
     if not normas_extraidas:
         salida("warning", "No se encontraron normas para la fecha")
-    
-    # 4. Obtener diccionario de categorías
+
     categorias = obtener_diccionario_categorias()
-    
-    # 5. Construir el array de normas a enviar
+    if not categorias:
+        # No falla, se continúa sin categorizar
+        print(json.dumps({"status": "warning", "message": "No se obtuvieron categorías, se continuará sin categorizar."}))
+
     normas_completas = []
     for n in normas_extraidas:
         cats = categorizar_texto(n["sintesis"], categorias) if categorias else []
@@ -250,19 +230,14 @@ try:
             "url_norma": n["url"],
             "categorias": cats
         })
-    
-    # 6. Enviar al backend
+
     payload = {"normas": normas_completas}
     headers_post = {"Authorization": f"Bearer {API_KEY_BACKEND}", "Content-Type": "application/json"}
     res = requests.post(URL_GUARDAR_NORMAS, json=payload, headers=headers_post, timeout=30)
     res.raise_for_status()
     respuesta = res.json()
-    
-    # 7. Registrar historial
     registrar_boletin_procesado(fecha_boletin, len(normas_completas))
-    
-    # 8. Éxito
     salida("success", respuesta.get('mensaje', 'OK'), total=len(normas_completas))
-    
+
 except Exception as e:
     salida("error", str(e))

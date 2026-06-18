@@ -1,29 +1,16 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
 import sys
 import json
-import locale
 
-# Configurar locale para español (opcional, usaremos mapeo manual)
-meses_es = {
-    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
-    'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
-}
-
-def convertir_fecha_espanol(fecha_str):
-    """Convierte '12 de Junio de 2026' a '2026-06-12'"""
-    patron = r'(\d+)\s+de\s+([A-Za-záéíóúñ]+)\s+de\s+(\d{4})'
-    match = re.search(patron, fecha_str, re.IGNORECASE)
-    if match:
-        dia = int(match.group(1))
-        mes_nombre = match.group(2).lower()
-        anio = int(match.group(3))
-        mes = meses_es.get(mes_nombre, 0)
-        if mes:
-            return f"{anio}-{mes:02d}-{dia:02d}"
-    return None
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -35,23 +22,21 @@ if len(sys.argv) < 3:
 ID_JURISDICCION = int(sys.argv[1])
 URL_BOLETIN = sys.argv[2]
 
+API_KEY_BACKEND = os.getenv('API_KEY_BACKEND', 'Token_Seguro_Scraper_2026_XyZ!')
+URL_HISTORIAL = os.getenv('URL_HISTORIAL', 'http://localhost/lgc_sgmlo/backend/api/boletin/historial_scraping.php')
+URL_LEER_CATEGORIAS = os.getenv('URL_LEER_CATEGORIAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/leer_categorias_bot.php')
+URL_GUARDAR_NORMAS = os.getenv('URL_GUARDAR_NORMAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php')
+
 if ID_JURISDICCION == 1 and URL_BOLETIN.rstrip('/') == 'https://www.boletinoficial.gob.ar':
     URL_BOLETIN = 'https://www.boletinoficial.gob.ar/seccion/primera'
-
-API_KEY_BACKEND = "Token_Seguro_Scraper_2026_XyZ!"
-URL_HISTORIAL = "https://matrizonline.lamas-gc-com/backend/api/boletin/historial_scraping.php"
-URL_LEER_CATEGORIAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/leer_categorias_bot.php"
-URL_GUARDAR_NORMAS = "https://matrizonline.lamas-gc-com/backend/api/boletin/ingresar_scraping.php"
 
 def verificar_boletin_procesado(fecha_boletin):
     try:
         payload = {"id_jurisdiccion": ID_JURISDICCION, "fecha_boletin": fecha_boletin, "accion": "verificar"}
         headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
         res = requests.post(URL_HISTORIAL, json=payload, headers=headers, timeout=10)
-        data = res.json()
-        return data.get('procesado', False)
-    except Exception as e:
-        print(json.dumps({"status": "warning", "message": f"No se pudo verificar historial: {e}"}))
+        return res.json().get('procesado', False)
+    except:
         return False
 
 def registrar_boletin_procesado(fecha_boletin, cantidad):
@@ -59,8 +44,8 @@ def registrar_boletin_procesado(fecha_boletin, cantidad):
         payload = {"id_jurisdiccion": ID_JURISDICCION, "fecha_boletin": fecha_boletin, "accion": "registrar", "cantidad_normas": cantidad}
         headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
         requests.post(URL_HISTORIAL, json=payload, headers=headers, timeout=10)
-    except Exception as e:
-        print(json.dumps({"status": "warning", "message": f"No se pudo registrar historial: {e}"}))
+    except:
+        pass
 
 def obtener_diccionario_categorias():
     headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
@@ -76,6 +61,7 @@ def obtener_diccionario_categorias():
             diccionario[id_cat] = re.compile(patron_regex, re.IGNORECASE)
         return diccionario
     except Exception as e:
+        print(json.dumps({"status": "warning", "message": f"No se pudieron obtener categorías: {e}. Se continuará sin categorizar."}))
         return {}
 
 def categorizar_texto(texto, diccionario_regex):
@@ -87,33 +73,53 @@ def categorizar_texto(texto, diccionario_regex):
             categorias_encontradas.add(id_cat)
     return list(categorias_encontradas)
 
+def convertir_fecha_espanol(fecha_str):
+    meses_es = {
+        'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4, 'mayo': 5, 'junio': 6,
+        'julio': 7, 'agosto': 8, 'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
+    }
+    patron = r'(\d+)\s+de\s+([A-Za-záéíóúñ]+)\s+de\s+(\d{4})'
+    match = re.search(patron, fecha_str, re.IGNORECASE)
+    if match:
+        dia = int(match.group(1))
+        mes_nombre = match.group(2).lower()
+        anio = int(match.group(3))
+        mes = meses_es.get(mes_nombre, 0)
+        if mes:
+            return f"{anio}-{mes:02d}-{dia:02d}"
+    return None
+
 def extraer_fecha_boletin(soup):
-    """Extrae la fecha del boletín desde el HTML específico del BORA."""
-    # Buscar el div con clase 'fecha-ultima-edicion'
+    # 1. Intentar con el div específico
     fecha_div = soup.find('div', class_='fecha-ultima-edicion')
     if fecha_div:
-        # Buscar el <h6> que contiene la fecha
         h6 = fecha_div.find('h6', class_='text-primary-alt')
         if h6:
-            # El texto puede estar dentro de <b> o directamente
             texto_fecha = h6.get_text(strip=True)
-            # Remover posibles etiquetas internas
             texto_fecha = re.sub(r'<.*?>', '', texto_fecha)
             fecha_iso = convertir_fecha_espanol(texto_fecha)
             if fecha_iso:
                 return fecha_iso
-    # Fallback: buscar cualquier texto que parezca una fecha en español
+    # 2. Buscar cualquier texto que contenga una fecha en español o dd/mm/aaaa
     texto_pagina = soup.get_text()
+    # Buscar formato "12 de junio de 2026"
     match = re.search(r'(\d{1,2})\s+de\s+([A-Za-záéíóúñ]+)\s+de\s+(\d{4})', texto_pagina, re.IGNORECASE)
     if match:
         return convertir_fecha_espanol(match.group(0))
-    return None
+    # Buscar formato "12/06/2026"
+    match2 = re.search(r'(\d{2})/(\d{2})/(\d{4})', texto_pagina)
+    if match2:
+        dia, mes, anio = match2.groups()
+        return f"{anio}-{mes}-{dia}"
+    # 3. Fallback: usar fecha actual (con advertencia)
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    print(json.dumps({"status": "warning", "message": f"No se pudo extraer fecha del HTML, usando fecha actual: {hoy}"}))
+    return hoy
 
 def ejecutar_bot_nacion():
     diccionario_categorias = obtener_diccionario_categorias()
     if not diccionario_categorias:
-        print(json.dumps({"status": "error", "message": "No se pudieron obtener categorías"}))
-        return
+        print(json.dumps({"status": "warning", "message": "No se obtuvieron categorías, se continuará sin categorizar."}))
 
     try:
         headers = {
@@ -134,15 +140,14 @@ def ejecutar_bot_nacion():
         print(json.dumps({"status": "warning", "message": "No se encontraron avisos"}))
         return
 
-    # --- EXTRAER FECHA REAL DEL BOLETÍN (una sola vez) ---
     fecha_boletin = extraer_fecha_boletin(soup)
     if not fecha_boletin:
+        # Esto ya no debería ocurrir por el fallback, pero por si acaso
         print(json.dumps({"status": "error", "message": "No se pudo determinar la fecha del boletín. Abortando."}))
         return
 
-    # --- VERIFICAR SI ESTE BOLETÍN YA FUE PROCESADO ---
     if verificar_boletin_procesado(fecha_boletin):
-        print(json.dumps({"status": "info", "message": f"Boletín del {fecha_boletin} ya fue procesado anteriormente. No se enviarán normas."}))
+        print(json.dumps({"status": "info", "message": f"Boletín del {fecha_boletin} ya fue procesado."}))
         return
 
     normas_procesadas = []
@@ -156,7 +161,6 @@ def ejecutar_bot_nacion():
         url_completa = f"https://www.boletinoficial.gob.ar{link_tag.get('href')}"
         partes = [p.strip() for p in texto_completo.split(' | ') if p.strip()]
 
-        # Extraer tipo, número, emisor
         matches_encontrados = []
         for i, part in enumerate(partes):
             m = re.search(r'^(Resolución General)\s*(?:N[°º]\s*|Nro\.?\s*|N\.\s*)?(\d+|S/N)?(?:/(\d{4}))?', part, re.IGNORECASE)
@@ -222,7 +226,6 @@ def ejecutar_bot_nacion():
         print(json.dumps({"status": "warning", "message": "No se extrajo ninguna norma"}))
         return
 
-    # Enviar al backend
     paquete_json = {"normas": normas_procesadas}
     headers_post = {"Authorization": f"Bearer {API_KEY_BACKEND}", "Content-Type": "application/json"}
     try:
