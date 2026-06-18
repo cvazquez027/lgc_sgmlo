@@ -52,7 +52,7 @@ if (!file_exists($ruta_script)) {
 
 // Ejecutar script
 chdir($ruta_base);
-$comando = "python " . escapeshellarg($nombre_script) . " " . escapeshellarg($id_jurisdiccion) . " " . escapeshellarg($jur['url_boletin']) . " 2>&1";
+$comando = "/usr/bin/python3 " . escapeshellarg($nombre_script) . " " . escapeshellarg($id_jurisdiccion) . " " . escapeshellarg($jur['url_boletin']) . " 2>&1";
 $salida = shell_exec($comando);
 
 // Intentar decodificar la salida como JSON
