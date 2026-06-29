@@ -26,7 +26,7 @@ const COLUMNAS_REGULATORIAS = [
 
 const COLUMNAS_CUMPLIMIENTO = [
   ...COLUMNAS_REGULATORIAS,
-  { id: 'evidencia_cumplimiento', label: 'Requerimiento Evidencia', custom: false },
+  { id: 'evidencia_cumplimiento', label: 'Requisito', custom: false },
   { id: 'id_responsable_establecimiento', label: 'Responsable (Sede)', custom: false },
   { id: 'verificacion_cumplimiento', label: 'Notas de Verificación', custom: false },
   { id: 'estado', label: 'Estado Cumplimiento', custom: false },
@@ -34,6 +34,21 @@ const COLUMNAS_CUMPLIMIENTO = [
   { id: 'fecha_cumplimiento', label: 'Fecha de Cumplimiento', custom: false },
   { id: 'obs_estado_cumplimiento', label: 'Observaciones Cumplimiento', custom: false },
   { id: 'adjuntos', label: 'Evidencia (Archivos)', custom: false }
+];
+
+const TODAS_LAS_COLUMNAS = COLUMNAS_CUMPLIMIENTO;
+
+const COLUMNAS_POR_DEFECTO_LEGAL = [
+  'norma_nivel_jur',
+  'normas',
+  'norma_emisor',
+  'norma_sintesis'
+];
+const COLUMNAS_POR_DEFECTO_REGULATORIA = [
+  'requisito',
+  'estado',
+  'obs_estado_cumplimiento',
+  'vencimiento_plazo'
 ];
 
 // COMPONENTES AUXILIARES
@@ -661,22 +676,26 @@ export default function WorkspaceMatrizPage() {
       }
       if (!Array.isArray(configParsed)) configParsed = [];
       
-      const ALL_COLS = info.id_tipo_matriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
-      
       if (configParsed.length > 0) {
-          if (typeof configParsed[0] === 'string') {
-              configParsed = configParsed.map((idStr:string) => {
-                 const match = ALL_COLS.find(c => c.id === idStr);
-                 return { 
-                     id: idStr, 
-                     label: match?.label || (idStr.startsWith('custom_') ? 'Columna Personalizada' : idStr), 
-                     custom: idStr.startsWith('custom_') 
-                 };
-              });
-          }
+        if (typeof configParsed[0] === 'string') {
+            configParsed = configParsed.map((idStr:string) => {
+              const match = TODAS_LAS_COLUMNAS.find(c => c.id === idStr);
+              return { 
+                  id: idStr, 
+                  label: match?.label || (idStr.startsWith('custom_') ? 'Columna Personalizada' : idStr), 
+                  custom: idStr.startsWith('custom_') 
+              };
+            });
+        }
       }
       
-      const configFinal = configParsed.length > 0 ? configParsed : ALL_COLS;
+      let columnasPorDefecto;
+      if (info.id_tipo_matriz === 1) {
+        columnasPorDefecto = COLUMNAS_POR_DEFECTO_LEGAL;
+      } else {
+        columnasPorDefecto = COLUMNAS_POR_DEFECTO_REGULATORIA;
+      }
+      const configFinal = configParsed.length > 0 ? configParsed : TODAS_LAS_COLUMNAS.filter(col => columnasPorDefecto.includes(col.id));
       setConfigColumnas(configFinal);
       setTempConfig(configFinal);
       setOpcionesEncabezado(configFinal.map((col:any) => ({ id: col.id, label: col.label })));
@@ -1268,8 +1287,7 @@ export default function WorkspaceMatrizPage() {
   const puedeReordenar = estadoMatriz === 1;
 
   if (showConfig) {
-    const COLUMNAS_BASE = tipoMatriz === 1 ? COLUMNAS_REGULATORIAS : COLUMNAS_CUMPLIMIENTO;
-    const columnasDisponibles = COLUMNAS_BASE.filter(c => !tempConfig.find(tc => tc.id === c.id));
+    const columnasDisponibles = TODAS_LAS_COLUMNAS.filter(c => !tempConfig.find(tc => tc.id === c.id));
     const opcionesHeader = tempConfig.map(col => ({ id: col.id, label: col.label }));
     return (
       <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 max-w-5xl mx-auto mt-3 animate-fade-in">

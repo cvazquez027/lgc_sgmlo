@@ -28,8 +28,23 @@ URL_BOLETIN = sys.argv[2]  # Solo usado para extraer la fecha
 # --- Configuración desde variables de entorno ---
 API_KEY_BACKEND = os.getenv('API_KEY_BACKEND', 'Token_Seguro_Scraper_2026_XyZ!')
 URL_HISTORIAL = os.getenv('URL_HISTORIAL', 'http://localhost/lgc_sgmlo/backend/api/boletin/historial_scraping.php')
-URL_LEER_CATEGORIAS = os.getenv('URL_LEER_CATEGORIAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/leer_categorias_bot.php')
 URL_GUARDAR_NORMAS = os.getenv('URL_GUARDAR_NORMAS', 'http://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php')
+
+HEADERS_WEB = {'User-Agent': 'Mozilla/5.0'}
+
+# ============================================================================
+# NOTA DE ARQUITECTURA
+# ----------------------------------------------------------------------------
+# Este bot ya NO categoriza ni pide el diccionario de categorías.
+# Toda la inteligencia (dedup de emisores, categorización sobre texto completo)
+# vive en el backend PHP (NormativaHelper.php). El bot solo:
+#   1. Scrapea las normas del día.
+#   2. Descarga el TEXTO COMPLETO de cada norma (campo "texto_completo").
+#   3. Manda todo crudo al backend.
+# Para crear un bot de otra jurisdicción, copiar esta estructura y reescribir
+# solo las funciones de scraping/extracción.
+# ============================================================================
+
 
 # --- Funciones auxiliares ---
 def salida(status, message, total=None):
@@ -39,52 +54,30 @@ def salida(status, message, total=None):
     print(json.dumps(out))
     sys.exit(0)
 
+
 def verificar_boletin_procesado(fecha_boletin):
     try:
         payload = {"id_jurisdiccion": ID_JURISDICCION, "fecha_boletin": fecha_boletin, "accion": "verificar"}
         headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
         res = requests.post(URL_HISTORIAL, json=payload, headers=headers, timeout=10)
         return res.json().get('procesado', False)
-    except:
+    except Exception:
         return False
+
 
 def registrar_boletin_procesado(fecha_boletin, cantidad):
     try:
         payload = {"id_jurisdiccion": ID_JURISDICCION, "fecha_boletin": fecha_boletin, "accion": "registrar", "cantidad_normas": cantidad}
         headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
         requests.post(URL_HISTORIAL, json=payload, headers=headers, timeout=10)
-    except:
+    except Exception:
         pass
 
-def obtener_diccionario_categorias():
-    headers = {"Authorization": f"Bearer {API_KEY_BACKEND}"}
-    try:
-        res = requests.get(URL_LEER_CATEGORIAS, headers=headers, timeout=10)
-        data = res.json().get('categorias', [])
-        dic = {}
-        for cat in data:
-            id_cat = cat['id_categoria']
-            frase = cat['descripcion'].strip()
-            dic[id_cat] = re.compile(r'\b' + re.escape(frase) + r'\b', re.IGNORECASE)
-        return dic
-    except Exception as e:
-        # No abortamos, solo advertimos
-        print(json.dumps({"status": "warning", "message": f"No se pudieron obtener categorías: {e}. Se continuará sin categorizar."}))
-        return {}
-
-def categorizar_texto(texto, dic):
-    if not texto: return []
-    encontradas = set()
-    for id_cat, regex in dic.items():
-        if regex.search(str(texto)):
-            encontradas.add(id_cat)
-    return list(encontradas)
 
 def extraer_fecha_boletin():
     """Obtiene la fecha del último boletín desde la página principal."""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(URL_BOLETIN, headers=headers, timeout=30)
+        res = requests.get(URL_BOLETIN, headers=HEADERS_WEB, timeout=30)
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
         fecha_div = soup.find('div', class_='bulletin-date')
@@ -102,12 +95,46 @@ def extraer_fecha_boletin():
     except Exception:
         return None
 
+
 def limpiar_emisor(emisor):
     if not emisor:
         return ""
     emisor = re.sub(r'^DE\s+LA\s+', '', emisor, flags=re.IGNORECASE).strip()
     emisor = re.sub(r'^DEL\s+', '', emisor, flags=re.IGNORECASE).strip()
     return emisor
+
+
+def descargar_texto_completo(url_norma):
+    """
+    Descarga la página de detalle de la norma y extrae el texto completo del cuerpo,
+    para que el backend pueda categorizar sobre el contenido real y no solo la síntesis.
+    Best-effort: si falla, devuelve "" y el backend cae a categorizar la síntesis.
+    """
+    try:
+        res = requests.get(url_norma, headers=HEADERS_WEB, timeout=30)
+        res.raise_for_status()
+        soup = BeautifulSoup(res.text, 'html.parser')
+
+        # Intentar acotar al contenedor principal del texto de la norma.
+        contenedor = (
+            soup.find('div', class_='rule-text')
+            or soup.find('div', class_='rule-content')
+            or soup.find('article')
+            or soup.find('main')
+        )
+        nodo = contenedor if contenedor else soup
+
+        # Quitar ruido (scripts, estilos, navegación)
+        for tag in nodo.find_all(['script', 'style', 'nav', 'footer', 'header']):
+            tag.decompose()
+
+        texto = nodo.get_text(separator=' ', strip=True)
+        texto = re.sub(r'\s+', ' ', texto)
+        # Cota de tamaño para no enviar payloads gigantes.
+        return texto[:20000]
+    except Exception:
+        return ""
+
 
 def extraer_normas_desde_buscador(fecha_iso):
     fecha_dd_mm_aaaa = datetime.strptime(fecha_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -120,13 +147,12 @@ def extraer_normas_desde_buscador(fecha_iso):
     }
     todas_normas = []
     page = 1
-    headers = {'User-Agent': 'Mozilla/5.0'}
     while True:
         params["page"] = page
         try:
-            res = requests.get(base_url, params=params, headers=headers, timeout=30)
+            res = requests.get(base_url, params=params, headers=HEADERS_WEB, timeout=30)
             res.raise_for_status()
-        except:
+        except Exception:
             break
         soup = BeautifulSoup(res.text, 'html.parser')
         cards = soup.find_all('div', class_='card rule-card')
@@ -180,12 +206,17 @@ def extraer_normas_desde_buscador(fecha_iso):
                     if m:
                         fecha_publicacion = datetime.strptime(m.group(1), "%d/%m/%Y").strftime("%Y-%m-%d")
                     break
+
+            # Descargar el texto completo de la norma para categorización en backend.
+            texto_completo = descargar_texto_completo(url_norma)
+
             todas_normas.append({
                 "tipo": tipo,
                 "numero": numero,
                 "anio": anio,
                 "emisor": emisor,
                 "sintesis": sintesis,
+                "texto_completo": texto_completo,
                 "fecha_publicacion": fecha_publicacion,
                 "url": url_norma
             })
@@ -197,6 +228,7 @@ def extraer_normas_desde_buscador(fecha_iso):
                 continue
         break
     return todas_normas
+
 
 # --- Ejecución principal ---
 try:
@@ -211,14 +243,8 @@ try:
     if not normas_extraidas:
         salida("warning", "No se encontraron normas para la fecha")
 
-    categorias = obtener_diccionario_categorias()
-    if not categorias:
-        # No falla, se continúa sin categorizar
-        print(json.dumps({"status": "warning", "message": "No se obtuvieron categorías, se continuará sin categorizar."}))
-
     normas_completas = []
     for n in normas_extraidas:
-        cats = categorizar_texto(n["sintesis"], categorias) if categorias else []
         normas_completas.append({
             "id_jurisdiccion": ID_JURISDICCION,
             "nombre_emisor": n["emisor"],
@@ -227,13 +253,13 @@ try:
             "anio": n["anio"],
             "fecha_publicacion": n["fecha_publicacion"],
             "sintesis": n["sintesis"],
-            "url_norma": n["url"],
-            "categorias": cats
+            "texto_completo": n["texto_completo"],
+            "url_norma": n["url"]
         })
 
     payload = {"normas": normas_completas}
     headers_post = {"Authorization": f"Bearer {API_KEY_BACKEND}", "Content-Type": "application/json"}
-    res = requests.post(URL_GUARDAR_NORMAS, json=payload, headers=headers_post, timeout=30)
+    res = requests.post(URL_GUARDAR_NORMAS, json=payload, headers=headers_post, timeout=120)
     res.raise_for_status()
     respuesta = res.json()
     registrar_boletin_procesado(fecha_boletin, len(normas_completas))
