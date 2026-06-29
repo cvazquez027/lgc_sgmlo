@@ -7,7 +7,7 @@ import { usePermissions } from "../../../../hooks/usePermissions";
 import { useToast } from "../../../../providers/ToastProvider";
 import { useConfirm } from "../../../../providers/ConfirmProvider";
 
-// Diccionario de etiquetas
+// Diccionario de etiquetas (actualizado)
 const COLUMN_LABELS: Record<string, string> = {
   'resumen_legal': 'Obligación / Resumen Legal',
   'normas': 'Normativas',
@@ -22,13 +22,15 @@ const COLUMN_LABELS: Record<string, string> = {
   'evidencia_cumplimiento': 'Evidencia',
   'verificacion_cumplimiento': 'Verificación',
   'interpretacion_aplicacion': 'Interpretación',
-  'id_tipo_modalidad': 'Tipo Modalidad',
+  'id_tipo_modalidad': 'Modalidad',   // ← Cambiado de "Tipo Modalidad"
   'obs_modalidad': 'Obs. Modalidad',
   'editable1': 'Campo Editable 1',
   'editable2': 'Campo Editable 2',
   'editable3': 'Campo Editable 3',
   'editable4': 'Campo Editable 4',
   'editable5': 'Campo Editable 5',
+  'norma_sintesis': 'Síntesis y Categorías',  // ← Nuevo
+  'adjuntos': 'Evidencia (Archivos)',         // ← Nuevo
 };
 
 export default function PreviewMatrizPage() {
@@ -206,7 +208,7 @@ export default function PreviewMatrizPage() {
     }
   };
 
-  // Función para renderizar el contenido de una celda (reutilizada para tabla y exportación)
+  // Función para renderizar el contenido de una celda
   const renderContent = (item: any, colId: string) => {
     switch (colId) {
       case 'normas':
@@ -242,6 +244,35 @@ export default function PreviewMatrizPage() {
       case 'norma_nivel_jur':
         const niveles = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.nivel_jurisdiccion_desc || n.jurisdiccion_desc).filter(Boolean)));
         return niveles.join(', ') || '-';
+      case 'id_tipo_modalidad':
+        return item.tipo_modalidad_desc || '-';
+      case 'norma_sintesis':
+        const normas = item.normas_vinculadas || [];
+        if (normas.length === 0) return '-';
+        return normas.map((n: any) => (
+          <div key={n.id_norma} className="mb-2">
+            <p className="text-[10px] text-slate-600 wrap-break-words">{n.sintesis || 'Sin síntesis'}</p>
+            {n.categorias && n.categorias.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {n.categorias.map((c: string, idx: number) => (
+                  <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shadow-sm">
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ));
+      case 'adjuntos':
+        const docs = item.documentos_vinculados || [];
+        if (docs.length === 0) return '-';
+        return docs.map((doc: any) => (
+          <div key={doc.id_documentacion} className="text-[10px] text-slate-600">
+            <a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" rel="noopener noreferrer" className="text-lgc-accent hover:underline">
+              {doc.nombre_original}
+            </a>
+          </div>
+        ));
       default:
         return item[colId] || '-';
     }
@@ -249,17 +280,34 @@ export default function PreviewMatrizPage() {
 
   // Función para obtener el valor plano de una celda (para exportación)
   const getPlainTextContent = (item: any, colId: string): string => {
-    const content = renderContent(item, colId);
-    if (typeof content === 'string') return content;
-    if (React.isValidElement(content)) {
-      if (colId === 'normas') {
+    switch (colId) {
+      case 'normas':
         const normas = item.normas_vinculadas || [];
         return normas.map((n: any) => `${n.tipo_norma_desc || n.tipo_norma} ${n.numero}/${n.anio}`).join('; ');
-      }
-      if (colId === 'estado') return item.estado_cumplimiento_desc || '-';
-      return item[colId] || '-';
+      case 'estado':
+        return item.estado_cumplimiento_desc || '-';
+      case 'id_tipo_modalidad':
+        return item.tipo_modalidad_desc || '-';
+      case 'norma_sintesis':
+        const normas2 = item.normas_vinculadas || [];
+        if (normas2.length === 0) return '-';
+        return normas2.map((n: any) => {
+          let texto = n.sintesis || '';
+          if (n.categorias && n.categorias.length > 0) {
+            texto += ` (Categorías: ${n.categorias.join(', ')})`;
+          }
+          return texto;
+        }).join('; ');
+      case 'adjuntos':
+        const docs = item.documentos_vinculados || [];
+        if (docs.length === 0) return '-';
+        return docs.map((doc: any) => doc.nombre_original).join('; ');
+      default:
+        const val = item[colId];
+        if (val === undefined || val === null) return '-';
+        if (typeof val === 'string') return val.replace(/[\n\r]+/g, ' ').replace(/"/g, '""');
+        return String(val);
     }
-    return content || '-';
   };
 
   // Exportar a CSV (Excel)

@@ -457,7 +457,7 @@ export default function BoletinOficialPage() {
             setSearchText(e.target.value);
             setCurrentPage(1);
           }}
-          className="flex-1 min-w-[150px] p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
+          className="flex-1 min-w-37.5 p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
         />
 
         <select
@@ -466,7 +466,7 @@ export default function BoletinOficialPage() {
             setFiltroTipo(e.target.value);
             setCurrentPage(1);
           }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-[130px]"
+          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
         >
           <option value="">Todos los tipos</option>
           {tiposNorma.map((t) => (
@@ -482,7 +482,7 @@ export default function BoletinOficialPage() {
             setFiltroEmisor(e.target.value);
             setCurrentPage(1);
           }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-[130px]"
+          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
         >
           <option value="">Todos los emisores</option>
           {emisoresNorma.map((e) => (
@@ -500,7 +500,7 @@ export default function BoletinOficialPage() {
             setFiltroCategoria(selectedOptions);
             setCurrentPage(1);
           }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-[180px] max-h-[100px]"
+          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-45 max-h-25"
           size={4}
         >
           <option value="">Todas las categorías</option>
@@ -519,7 +519,7 @@ export default function BoletinOficialPage() {
             setFechaDesde(e.target.value);
             setCurrentPage(1);
           }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-[140px]"
+          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
         />
 
         <span className="text-slate-400 text-sm">a</span>
@@ -532,7 +532,7 @@ export default function BoletinOficialPage() {
             setFechaHasta(e.target.value);
             setCurrentPage(1);
           }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-[140px]"
+          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
         />
 
         <button
