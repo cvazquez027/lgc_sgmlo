@@ -1,8 +1,8 @@
 <?php
-EnvLoader::load(__DIR__ . '/.env');
-require_once 'config/Mailer.php';
 
-$mailer = Mailer::getInstance();
+require_once 'config/MailerDebug.php';
+
+$mailer = MailerDebug::getInstance();
 $resultado = $mailer->enviarAlerta(
     'christian@datav.com.ar',
     'Christian',
