@@ -1,7 +1,8 @@
 <?php
-// cron_alertas.php – Ejecutar diariamente
-require_once '../../config/Database.php';
-require_once '../../helpers/AlertaHelper.php';
+// cron_alertas.php – Ejecutar diariamente (ej. a las 6 AM)
+// Usar __DIR__ para rutas absolutas
+require_once __DIR__ . '/../../config/Database.php';
+require_once __DIR__ . '/../../helpers/AlertaHelper.php';
 
 $database = new Database();
 $db = $database->getConnection();
@@ -44,7 +45,8 @@ foreach ($matrices as $mat) {
         $diff = $hoy->diff($venc);
         $dias_diff = (int)$diff->format('%r%a');
 
-        if ($dias_diff < -30 || $dias_diff > 30) continue; // solo nos importa vencidos o próximos 30 días
+        // Solo nos interesa si está vencido o dentro de los próximos 30 días
+        if ($dias_diff < -30 || $dias_diff > 30) continue;
 
         $tipo = null;
         $titulo = '';
@@ -104,6 +106,7 @@ foreach ($matrices as $mat) {
             ]);
             if (!$stmt_check->fetch()) {
                 $url = "/dashboard/matrices/{$id_matriz}?item={$item['id_item_matriz']}";
+                // Usar AlertaHelper para insertar y enviar correos
                 AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, $item['id_item_matriz'], $tipo, $titulo, $mensaje, $url);
             }
         }
