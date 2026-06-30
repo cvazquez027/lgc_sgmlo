@@ -1,5 +1,7 @@
 <?php
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/phpmailer/src/PHPMailer.php';
+require_once __DIR__ . '/../vendor/phpmailer/src/SMTP.php';
+require_once __DIR__ . '/../vendor/phpmailer/src/Exception.php';
 require_once __DIR__ . '/EnvLoader.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -10,7 +12,6 @@ class Mailer {
     private $mail;
 
     private function __construct() {
-        // Cargar .env si no está cargado
         EnvLoader::load(__DIR__ . '/../.env');
 
         $this->mail = new PHPMailer(true);
@@ -62,7 +63,7 @@ class Mailer {
 
             return $this->mail->send();
         } catch (Exception $e) {
-            error_log("Mailer error: " . $e->getMessage());
+            error_log("Mailer: Error al enviar a $para: " . $e->getMessage());
             return false;
         }
     }
