@@ -1,8 +1,7 @@
 <?php
+require_once 'config/Mailer.php';
 
-require_once 'config/MailerDebug.php';
-
-$mailer = MailerDebug::getInstance();
+$mailer = Mailer::getInstance();
 $resultado = $mailer->enviarAlerta(
     'christian@datav.com.ar',
     'Christian',
