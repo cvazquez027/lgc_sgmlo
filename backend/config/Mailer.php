@@ -1,10 +1,6 @@
 <?php
-require_once __DIR__ . '/../vendor/phpmailer/src/PHPMailer.php';
-require_once __DIR__ . '/../vendor/phpmailer/src/SMTP.php';
-require_once __DIR__ . '/../vendor/phpmailer/src/Exception.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/EnvLoader.php';
-
-EnvLoader::load(__DIR__ . '/.env');
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -14,17 +10,18 @@ class Mailer {
     private $mail;
 
     private function __construct() {
-        EnvLoader::load(__DIR__ . '/../.env');
+        // Cargar .env con Dotenv
+        EnvLoader::load(__DIR__ . '/..');
 
         $this->mail = new PHPMailer(true);
         $this->mail->isSMTP();
-        $this->mail->Host       = getenv('SMTP_HOST');
+        $this->mail->Host       = $_ENV['SMTP_HOST'] ?? getenv('SMTP_HOST');
         $this->mail->SMTPAuth   = true;
-        $this->mail->Username   = getenv('SMTP_USER');
-        $this->mail->Password   = getenv('SMTP_PASS');
+        $this->mail->Username   = $_ENV['SMTP_USER'] ?? getenv('SMTP_USER');
+        $this->mail->Password   = $_ENV['SMTP_PASS'] ?? getenv('SMTP_PASS');
         $this->mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $this->mail->Port       = getenv('SMTP_PORT');
-        $this->mail->setFrom(getenv('SMTP_USER'), 'SGMLO - Sistema de Alertas');
+        $this->mail->Port       = $_ENV['SMTP_PORT'] ?? getenv('SMTP_PORT');
+        $this->mail->setFrom($this->mail->Username, 'SGMLO - Sistema de Alertas');
         $this->mail->isHTML(true);
         $this->mail->CharSet = 'UTF-8';
     }
@@ -43,7 +40,7 @@ class Mailer {
 
             $this->mail->Subject = "📢 SGMLO Alerta: $titulo";
 
-            $app_url = rtrim(getenv('APP_URL') ?: 'http://localhost', '/');
+            $app_url = rtrim($_ENV['APP_URL'] ?? getenv('APP_URL') ?: 'http://localhost', '/');
             $link = $url ? "$app_url$url" : $app_url;
 
             $html = "

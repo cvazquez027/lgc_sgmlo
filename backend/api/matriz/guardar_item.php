@@ -12,7 +12,7 @@ error_reporting(E_ALL);
 ini_set('log_errors', 1);
 
 include_once '../../config/Database.php';
-include_once '../../helpers/AlertaHelperDebug.php'; // VERSIÓN DEBUG
+include_once '../../helpers/AlertaHelper.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
@@ -170,7 +170,7 @@ try {
             $titulo = "Cambio de estado de cumplimiento en ítem #{$orden}";
             $mensaje = "El ítem \"{$descripcion_item}\" ha cambiado de estado de '{$nombre_estado_anterior}' a '{$nombre_estado_nuevo}'.";
             $url = "/dashboard/matrices/{$id_matriz}?item={$id_item_matriz}";
-            $res = AlertaHelperDebug::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'cambio_estado_cumplimiento', $titulo, $mensaje, $url);
+            $res = AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'cambio_estado_cumplimiento', $titulo, $mensaje, $url);
             $resultados_correo[] = ["tipo" => "cambio_estado", "resultado" => $res];
         }
 
@@ -185,7 +185,7 @@ try {
             $titulo = "Responsable asignado/modificado en ítem #{$orden}";
             $mensaje = "El responsable del ítem \"{$descripcion_item}\" ha sido modificado.";
             $url = "/dashboard/matrices/{$id_matriz}?item={$id_item_matriz}";
-            $res = AlertaHelperDebug::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'responsable_asignado', $titulo, $mensaje, $url);
+            $res = AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'responsable_asignado', $titulo, $mensaje, $url);
             $resultados_correo[] = ["tipo" => "responsable", "resultado" => $res];
         }
 
@@ -221,7 +221,7 @@ try {
                         $mensaje_venc = "El ítem \"{$descripcion_item}\" tiene vencimiento el {$fecha_formateada} (dentro de {$dias} días).";
                     }
                     $url_venc = "/dashboard/matrices/{$id_matriz}?item={$id_item_matriz}";
-                    $res = AlertaHelperDebug::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'vencimiento_proximo', $titulo_venc, $mensaje_venc, $url_venc);
+                    $res = AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, $id_item_matriz, 'vencimiento_proximo', $titulo_venc, $mensaje_venc, $url_venc);
                     $resultados_correo[] = ["tipo" => "vencimiento", "resultado" => $res];
                 }
             }
