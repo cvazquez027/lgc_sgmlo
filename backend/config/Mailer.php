@@ -1,6 +1,6 @@
 <?php
 // Asegurar que se carga PHPMailer desde la ruta correcta
-$phpmailer_base = __DIR__ . '/../vendor/phpmailer/src/';
+$phpmailer_base = __DIR__ . '/../vendor/phpmailer/phpmailer/src/';
 
 if (!file_exists($phpmailer_base . 'PHPMailer.php')) {
     error_log("Mailer: PHPMailer no encontrado en " . $phpmailer_base);
