@@ -1,5 +1,5 @@
 <?php
-// Carga manual de PHPMailer (sin autoloader)
+// Carga manual de PHPMailer (igual que en process-form.php)
 require_once __DIR__ . '/../vendor/phpmailer/src/PHPMailer.php';
 require_once __DIR__ . '/../vendor/phpmailer/src/SMTP.php';
 require_once __DIR__ . '/../vendor/phpmailer/src/Exception.php';
@@ -16,15 +16,21 @@ class Mailer {
     private $mail;
 
     private function __construct() {
+        // Leer variables de entorno (igual que process-form.php)
+        $smtp_host = getenv('SMTP_HOST') ?: 'smtp.hostinger.com';
+        $smtp_user = getenv('SMTP_USER') ?: 'info@lamas-gc.com';
+        $smtp_pass = getenv('SMTP_PASS') ?: '';
+        $smtp_port = getenv('SMTP_PORT') ?: 465;
+
         $this->mail = new PHPMailer(true);
         $this->mail->isSMTP();
-        $this->mail->Host       = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+        $this->mail->Host       = $smtp_host;
         $this->mail->SMTPAuth   = true;
-        $this->mail->Username   = getenv('SMTP_USER') ?: '';
-        $this->mail->Password   = getenv('SMTP_PASS') ?: '';
+        $this->mail->Username   = $smtp_user;
+        $this->mail->Password   = $smtp_pass;
         $this->mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $this->mail->Port       = getenv('SMTP_PORT') ?: 465;
-        $this->mail->setFrom($this->mail->Username, 'SGMLO - Sistema de Alertas');
+        $this->mail->Port       = $smtp_port;
+        $this->mail->setFrom($smtp_user, 'SGMLO - Sistema de Alertas');
         $this->mail->isHTML(true);
         $this->mail->CharSet = 'UTF-8';
     }
