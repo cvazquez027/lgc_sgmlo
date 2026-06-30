@@ -1,7 +1,6 @@
 <?php
-require_once 'config/Mailer.php';
-
 EnvLoader::load(__DIR__ . '/.env');
+require_once 'config/Mailer.php';
 
 $mailer = Mailer::getInstance();
 $resultado = $mailer->enviarAlerta(
