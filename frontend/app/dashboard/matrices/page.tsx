@@ -68,6 +68,7 @@ export default function MatricesPage() {
 
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
   const [userClienteId, setUserClienteId] = useState<string | null>(null);
+  const isUserCliente = !!userClienteId; // ← NUEVO
 
   useEffect(() => {
     const raw = localStorage.getItem("sgml_cliente_id");
@@ -193,7 +194,7 @@ export default function MatricesPage() {
   };
 
   const openCrearModal = () => {
-    if (!canEdit("matriz")) return;
+    if (!canEdit("matriz") || isUserCliente) return; // ← MODIFICADO
     setModalMode("crear");
     setFormClienteId("");
     setEstablecimientosForm([]);
@@ -211,7 +212,7 @@ export default function MatricesPage() {
   };
 
   const openEditarModal = async (matriz: Matriz) => {
-    if (!canEdit("matriz")) return;
+    if (!canEdit("matriz") || isUserCliente) return; // ← MODIFICADO
     setModalMode("editar");
     const idCli = matriz.id_cliente?.toString() || "";
     setFormClienteId(idCli);
@@ -231,7 +232,7 @@ export default function MatricesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit("matriz")) return;
+    if (!canEdit("matriz") || isUserCliente) return; // ← MODIFICADO
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
     try {
@@ -242,7 +243,6 @@ export default function MatricesPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        // Manejo específico del error 409 (conflicto de borrador existente)
         if (res.status === 409 && data.id_matriz_existente) {
           const irAlBorrador = await confirm({
             title: "Borrador existente",
@@ -332,8 +332,11 @@ export default function MatricesPage() {
     setListado({ clientesExpandidos: newSet });
   };
 
-  // Función unificada para eliminar usando el modal de confirmación global
   const handleEliminarMatriz = async (matriz: Matriz) => {
+    if (isUserCliente) {
+      toast.showToast("Atención", "Los usuarios cliente no pueden eliminar matrices.", "warning");
+      return;
+    }
     if (matriz.id_estado_matriz !== 1) {
       toast.showToast("Atención", "Solo se pueden eliminar matrices en estado Borrador.", "warning");
       return;
@@ -388,7 +391,8 @@ export default function MatricesPage() {
               Matrices Legales
             </h1>
           </div>
-          {canEdit("matriz") && (
+          {/* ← BOTÓN CREAR MATRIZ OCULTO PARA CLIENTES */}
+          {canEdit("matriz") && !isUserCliente && (
             <button onClick={openCrearModal} className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
               Crear Matriz
@@ -397,12 +401,18 @@ export default function MatricesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 bg-slate-50">
-          <select value={filtroCliente} onChange={e => setListado({ filtroCliente: e.target.value })} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm">
+          {/* ← SELECT DE CLIENTES DESHABILITADO SI EL USUARIO ES CLIENTE */}
+          <select 
+            value={filtroCliente} 
+            onChange={e => setListado({ filtroCliente: e.target.value })} 
+            disabled={isUserCliente}
+            className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <option value="">Todos los Clientes</option>
             {clientes.map(c => <option key={c.id_cliente} value={c.id_cliente}>{c.nombre_fantasia || c.razon_social}</option>)}
           </select>
           
-          <select value={filtroEstablecimiento} onChange={e => setListado({ filtroEstablecimiento: e.target.value })} disabled={!filtroCliente} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50 shadow-sm">
+          <select value={filtroEstablecimiento} onChange={e => setListado({ filtroEstablecimiento: e.target.value })} disabled={!filtroCliente || isUserCliente} className="p-2 bg-white border border-slate-200 rounded text-xs text-slate-700 outline-none focus:border-lgc-primary min-w-45 disabled:opacity-50 shadow-sm">
             <option value="">Todos los Establecimientos</option>
             {establecimientosFiltro.map(e => <option key={e.id_cliente_establecimiento} value={e.id_cliente_establecimiento}>{e.descripcion}</option>)}
           </select>
@@ -520,7 +530,8 @@ export default function MatricesPage() {
                                 {new Date(matriz.fecha_desde).toLocaleDateString('es-AR')}
                               </td>
                               <td className="p-4 text-right flex justify-end gap-2 items-center">
-                                {canEdit("matriz") && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
+                                {/* ← BOTONES DE EDICIÓN Y ELIMINACIÓN OCULTOS PARA CLIENTES */}
+                                {canEdit("matriz") && !isUserCliente && matriz.id_estado_matriz !== 2 && matriz.id_estado_matriz !== 3 && (
                                   <>
                                     <button onClick={() => openEditarModal(matriz)} className="text-slate-400 hover:text-lgc-primary transition-colors p-2" title="Editar Propiedades">
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
@@ -548,8 +559,8 @@ export default function MatricesPage() {
         )}
       </div>
 
-      {/* Modal de creación/edición (sin cambios) */}
-      {isModalOpen && canEdit("matriz") && (
+      {/* Modal de creación/edición (sin cambios, pero el acceso ya está restringido) */}
+      {isModalOpen && canEdit("matriz") && !isUserCliente && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">

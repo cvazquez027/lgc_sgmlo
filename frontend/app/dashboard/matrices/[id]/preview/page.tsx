@@ -7,7 +7,7 @@ import { usePermissions } from "../../../../hooks/usePermissions";
 import { useToast } from "../../../../providers/ToastProvider";
 import { useConfirm } from "../../../../providers/ConfirmProvider";
 
-// Diccionario de etiquetas (actualizado)
+// Diccionario de etiquetas
 const COLUMN_LABELS: Record<string, string> = {
   'resumen_legal': 'Obligación / Resumen Legal',
   'normas': 'Normativas',
@@ -22,15 +22,15 @@ const COLUMN_LABELS: Record<string, string> = {
   'evidencia_cumplimiento': 'Evidencia',
   'verificacion_cumplimiento': 'Verificación',
   'interpretacion_aplicacion': 'Interpretación',
-  'id_tipo_modalidad': 'Modalidad',   // ← Cambiado de "Tipo Modalidad"
+  'id_tipo_modalidad': 'Modalidad',
   'obs_modalidad': 'Obs. Modalidad',
   'editable1': 'Campo Editable 1',
   'editable2': 'Campo Editable 2',
   'editable3': 'Campo Editable 3',
   'editable4': 'Campo Editable 4',
   'editable5': 'Campo Editable 5',
-  'norma_sintesis': 'Síntesis y Categorías',  // ← Nuevo
-  'adjuntos': 'Evidencia (Archivos)',         // ← Nuevo
+  'norma_sintesis': 'Síntesis y Categorías',
+  'adjuntos': 'Evidencia (Archivos)',
 };
 
 export default function PreviewMatrizPage() {
@@ -51,6 +51,14 @@ export default function PreviewMatrizPage() {
   const [isCopying, setIsCopying] = useState(false);
   const [cumplimientoTotal, setCumplimientoTotal] = useState<number>(0);
   const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
+
+  // --- NUEVO: Control de cliente ---
+  const [isUserCliente, setIsUserCliente] = useState(false);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("sgml_cliente_id");
+    setIsUserCliente(!!(raw && raw !== "null"));
+  }, []);
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
@@ -101,7 +109,7 @@ export default function PreviewMatrizPage() {
       const dataEst = await resEst.json();
       setEstadosCumplimiento(dataEst.registros || []);
 
-      // Calcular porcentaje de cumplimiento (estado "Cumple")
+      // Calcular porcentaje de cumplimiento
       const itemsConEstado = dataI.registros || [];
       const totalItems = itemsConEstado.length;
       const cumpleItems = itemsConEstado.filter((item: any) => {
@@ -208,7 +216,7 @@ export default function PreviewMatrizPage() {
     }
   };
 
-  // Función para renderizar el contenido de una celda
+  // Función para renderizar el contenido de una celda (reutilizada para tabla y exportación)
   const renderContent = (item: any, colId: string) => {
     switch (colId) {
       case 'normas':
@@ -407,14 +415,14 @@ export default function PreviewMatrizPage() {
               Pantalla Completa
             </button>
 
-            {canEdit("matriz") && headerInfo?.id_estado_matriz === 1 && (
+            {canEdit("matriz") && headerInfo?.id_estado_matriz === 1 && !isUserCliente && (
               <button onClick={handlePublicar} disabled={isPublishing} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {isPublishing ? 'Publicando...' : 'Publicar Matriz'}
               </button>
             )}
 
-            {canEdit("matriz") && headerInfo?.id_estado_matriz === 2 && (
+            {canEdit("matriz") && headerInfo?.id_estado_matriz === 2 && !isUserCliente && (
               <button onClick={handleCopiar} disabled={isCopying} className="bg-lgc-accent hover:bg-[#D97920] text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                 {isCopying ? 'Copiando...' : 'Nueva Versión (Borrador)'}

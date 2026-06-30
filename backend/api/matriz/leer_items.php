@@ -65,7 +65,8 @@ try {
                   WHERE cn.id_norma = :id_norma";
     $stmt_cat = $db->prepare($query_cat);
 
-    $query_docs = "SELECT d.id_documentacion, d.nombre_original, d.path_archivos, d.tipo_mime, d.peso_bytes
+    // Consulta para documentos (INCLUYENDO id_usuario_subida)
+    $query_docs = "SELECT d.id_documentacion, d.nombre_original, d.path_archivos, d.tipo_mime, d.peso_bytes, d.id_usuario_subida
                    FROM doc_item_matriz dim
                    INNER JOIN documentacion d ON dim.id_documentacion = d.id_documentacion
                    WHERE dim.id_item_matriz = :id_item_matriz AND d.vigente = 1";
@@ -84,7 +85,7 @@ try {
         $row['normas_vinculadas'] = $normas_v;
         $row['normas_ids'] = array_column($normas_v, 'id_norma');
 
-        // Cargar Documentos
+        // Cargar Documentos (con id_usuario_subida)
         $stmt_docs->execute([':id_item_matriz' => $id_item]);
         $row['documentos_vinculados'] = $stmt_docs->fetchAll(PDO::FETCH_ASSOC);
         $row['documentos_ids'] = array_column($row['documentos_vinculados'], 'id_documentacion');
@@ -98,7 +99,7 @@ try {
                 }
             }
         }
-        unset($row['datos_dinamicos']); // Ocultamos el crudo
+        unset($row['datos_dinamicos']);
 
         $items[] = $row;
     }

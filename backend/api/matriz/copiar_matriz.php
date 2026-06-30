@@ -45,17 +45,18 @@ $db = $database->getConnection();
 try {
     $db->beginTransaction();
 
-    // 1. Leer cabecera de la matriz origen (incluyendo los nuevos campos)
+    // 1. Leer cabecera de la matriz origen (incluyendo TODOS los campos de configuración)
     $stmt_cab = $db->prepare(
         "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz,
-                fecha_desde, config_columnas, version, mostrar_cumplimiento, campo_encabezado_item
+                fecha_desde, config_columnas, version, mostrar_cumplimiento, 
+                campo_encabezado_item, columnas_editables_publicada
          FROM matriz WHERE id_matriz = :id"
     );
     $stmt_cab->execute([':id' => $id_origen]);
     $origen = $stmt_cab->fetch(PDO::FETCH_ASSOC);
     if (!$origen) throw new Exception("Matriz origen no encontrada.");
 
-    // *** VALIDACIÓN: Ya existe un borrador con la misma combinación? ***
+    // --- VALIDACIÓN: Ya existe un borrador con la misma combinación? ---
     $query_check = "SELECT COUNT(*) FROM matriz 
                     WHERE id_cliente_establecimiento = :est
                       AND id_especialidad_matriz = :esp
@@ -93,15 +94,21 @@ try {
     ]);
     $nueva_version = (int)$stmt_ver->fetchColumn();
 
-    // 3. Insertar nueva cabecera en estado BORRADOR (incluyendo los nuevos campos)
+    // 3. Valores por defecto para la configuración (por si vienen nulos)
+    $config_columnas = $origen['config_columnas'] ?? '[]';
+    $mostrar_cumplimiento = isset($origen['mostrar_cumplimiento']) ? (int)$origen['mostrar_cumplimiento'] : 1;
+    $campo_encabezado_item = $origen['campo_encabezado_item'] ?? 'normas';
+    $columnas_editables_publicada = $origen['columnas_editables_publicada'] ?? '[]';
+
+    // 4. Insertar nueva cabecera en estado BORRADOR con TODA la configuración
     $stmt_nueva = $db->prepare(
         "INSERT INTO matriz
             (id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz,
              fecha_desde, version, id_estado_matriz, vigente, config_columnas,
-             mostrar_cumplimiento, campo_encabezado_item)
+             mostrar_cumplimiento, campo_encabezado_item, columnas_editables_publicada)
          VALUES
             (:est, :tipo, :esp, :fecha, :ver, 1, 1, :config,
-             :mostrar_cumplimiento, :campo_encabezado_item)"
+             :mostrar_cumplimiento, :campo_encabezado, :columnas_editables)"
     );
     $stmt_nueva->execute([
         ':est'    => $origen['id_cliente_establecimiento'],
@@ -109,13 +116,14 @@ try {
         ':esp'    => $origen['id_especialidad_matriz'],
         ':fecha'  => date('Y-m-d'),
         ':ver'    => $nueva_version,
-        ':config' => $origen['config_columnas'],
-        ':mostrar_cumplimiento' => $origen['mostrar_cumplimiento'],
-        ':campo_encabezado_item' => $origen['campo_encabezado_item']
+        ':config' => $config_columnas,
+        ':mostrar_cumplimiento' => $mostrar_cumplimiento,
+        ':campo_encabezado' => $campo_encabezado_item,
+        ':columnas_editables' => $columnas_editables_publicada
     ]);
     $id_nueva = (int)$db->lastInsertId();
 
-    // 4. Copiar todos los ítems (sin cambios)
+    // 5. Copiar todos los ítems (incluyendo datos_dinamicos)
     $stmt_items = $db->prepare(
         "SELECT * FROM item_matriz WHERE id_matriz = :id ORDER BY orden ASC, id_item_matriz ASC"
     );

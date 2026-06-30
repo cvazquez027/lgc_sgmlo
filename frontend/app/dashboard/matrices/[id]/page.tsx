@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { usePermissions } from "../../../hooks/usePermissions"; 
+import { usePermissions } from "../../../hooks/usePermissions";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -56,7 +56,7 @@ const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
 
-  const filtered = options.filter((o: any) => 
+  const filtered = options.filter((o: any) =>
     o.descripcion?.toLowerCase().includes(query.toLowerCase()) &&
     !selected.includes(o.descripcion)
   );
@@ -92,9 +92,9 @@ const MultiSelectTags = ({ options, selected, onChange, placeholder }: any) => {
       {isOpen && filtered.length > 0 && (
         <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1 transition-all">
           {filtered.map((o: any) => (
-            <div 
-              key={o.id} 
-              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
+            <div
+              key={o.id}
+              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100"
               onMouseDown={(e: React.MouseEvent) => { e.preventDefault(); addTag(o.descripcion); }}
             >
               {o.descripcion}
@@ -170,7 +170,7 @@ const InlineNormSelectorConAutocompletado = ({ selectedNormas, onChange, onAutoc
       if (anio) params.append('anio', anio);
       if (idEstablecimiento) params.append('id_establecimiento', idEstablecimiento.toString());
       url += params.toString();
-      
+
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       setResultados(data.registros || []);
@@ -260,9 +260,9 @@ const InlineNormSelectorConAutocompletado = ({ selectedNormas, onChange, onAutoc
             </div>
           )}
           {resultados.map((r: any) => (
-            <div 
-              key={r.id_norma} 
-              className="p-3 hover:bg-slate-50 cursor-pointer border-b last:border-0" 
+            <div
+              key={r.id_norma}
+              className="p-3 hover:bg-slate-50 cursor-pointer border-b last:border-0"
               onMouseDown={() => seleccionarNorma(r)}
             >
               <div className="font-bold text-lgc-primary text-xs">{r.tipo_norma_desc} {r.numero}/{r.anio}</div>
@@ -290,8 +290,8 @@ const InlineNormSelector = ({ selectedNormas, onChange }: any) => {
         const data = await res.json();
         const qLower = query.toLowerCase();
         setResults((data.registros || []).filter((r: any) => (r.numero && r.numero.toString().toLowerCase().includes(qLower)) || (r.tipo_norma_desc && r.tipo_norma_desc.toLowerCase().includes(qLower))));
-      } catch (e) {} 
-    }, 400); 
+      } catch (e) {}
+    }, 400);
     return () => clearTimeout(timeoutId);
   }, [query]);
 
@@ -336,8 +336,26 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
   );
 };
 
-// COMPONENTE SORTABLE ROW
-const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEdit, canEditField, estadosCumplimiento, responsables, tiposModalidad, onOpenEvidencia, forceExpand, isDragDisabled, onSolicitarNuevaNorma, idEstablecimiento, campoEncabezado }: any) => {
+// COMPONENTE SORTABLE ROW (MODIFICADO)
+const SortableRow = ({
+  item,
+  columnasVisibles,
+  onUpdate,
+  onDelete,
+  onCopy,
+  canEdit,
+  canEditField,
+  estadosCumplimiento,
+  responsables,
+  tiposModalidad,
+  onOpenEvidencia,
+  forceExpand,
+  isDragDisabled,
+  onSolicitarNuevaNorma,
+  idEstablecimiento,
+  campoEncabezado,
+  showActionButtons  // ← NUEVA PROP
+}: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
   useEffect(() => { setIsExpanded(forceExpand); }, [forceExpand]);
 
@@ -346,7 +364,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
 
   const renderCelda = (colId: string, isReadOnly: boolean) => {
     if (colId.startsWith('custom_')) {
-        return isReadOnly 
+        return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 wrap-break-words">{item[colId] || <span className="italic text-slate-300">—</span>}</div>
           : <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} placeholder="Valor personalizado..." />;
     }
@@ -359,17 +377,17 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
       case 'evidencia_cumplimiento':
       case 'verificacion_cumplimiento':
       case 'obs_estado_cumplimiento':
-        return isReadOnly 
+        return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 wrap-break-words">{item[colId] || <span className="italic text-slate-300">—</span>}</div>
           : <EditableCell value={item[colId]} onSave={(val:string) => onUpdate(item.id_item_matriz, colId, val)} />;
-      
-      case 'vencimiento_plazo': 
+
+      case 'vencimiento_plazo':
       case 'fecha_cumplimiento':
         return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{item[colId] ? new Date(item[colId]).toLocaleDateString('es-AR') : <span className="italic text-slate-300">—</span>}</div>
           : <input type="date" className="w-full text-[11px] p-2.5 border border-slate-200 hover:border-slate-300 hover:bg-white bg-slate-50 rounded-lg outline-none transition-colors" value={item[colId] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(item.id_item_matriz, colId, e.target.value)} />;
-      
-      case 'normas': 
+
+      case 'normas':
         return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12 flex flex-col gap-1">{item.normas_vinculadas?.length > 0 ? item.normas_vinculadas.map((n:any, i:number) => <span key={i} className="font-bold">{n.tipo_norma_desc || n.tipo_norma} {n.numero}/{n.anio}</span>) : <span className="italic text-slate-300">—</span>}</div>
           : <InlineNormSelectorConAutocompletado
@@ -380,7 +398,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
               idEstablecimiento={idEstablecimiento}
               onSolicitarNuevaNorma={() => onSolicitarNuevaNorma(item)}
             />;
-      
+
       case 'norma_sintesis':
         return (
           <div className="flex flex-col gap-2">
@@ -396,7 +414,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
             ))}
           </div>
         );
-      
+
       case 'id_tipo_modalidad':
         return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{tiposModalidad.find((t:any) => t.id == item.id_tipo_modalidad)?.descripcion || <span className="italic text-slate-300">—</span>}</div>
@@ -404,7 +422,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
               <option value="">Sin Asignar</option>
               {tiposModalidad.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}
             </select>;
-      
+
       case 'id_responsable_establecimiento':
         return isReadOnly
           ? <div className="text-[11px] p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 min-h-12">{responsables.find((r:any) => r.id_responsable_establecimiento == item.id_responsable_establecimiento)?.descripcion || <span className="italic text-slate-300">—</span>}</div>
@@ -412,23 +430,23 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
               <option value="">Sin Asignar</option>
               {responsables.map((r: any) => <option key={r.id_responsable_establecimiento} value={r.id_responsable_establecimiento}>{r.descripcion}</option>)}
             </select>;
-      
+
       case 'adjuntos':
         return (
           <button onClick={() => onOpenEvidencia(item)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-lg border border-slate-300 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors w-max shadow-sm">
-            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg> 
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
             {item.documentos_vinculados?.length || 0} Archivos Cargados
           </button>
         );
-      
+
       case 'norma_emisor':
         const emisores_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.emisor_desc).filter(Boolean)));
         return <div className="flex flex-col gap-1 w-full p-1.5">{emisores_unicos.length > 0 ? emisores_unicos.map((emi: any, i: number) => <span key={i} className="text-slate-600 text-[11px] font-bold uppercase truncate" title={emi as string}>• {emi}</span>) : <span className="text-slate-400 text-[10px] italic">No hay normas vinculadas</span>}</div>;
-      
+
       case 'norma_nivel_jur':
         const niveles_unicos = Array.from(new Set(item.normas_vinculadas?.map((n:any) => n.nivel_jurisdiccion_desc || n.jurisdiccion_desc).filter(Boolean)));
         return <div className="flex flex-wrap gap-1.5 w-full p-1.5">{niveles_unicos.length > 0 ? niveles_unicos.map((niv: any, i: number) => <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-bold uppercase px-2 py-1 rounded-md shadow-sm">{niv}</span>) : <span className="text-slate-400 text-[10px] italic">No hay normas vinculadas</span>}</div>;
-      
+
       case 'estado':
         const color = item.color_hex ? `#${item.color_hex}` : '#cbd5e1';
         return isReadOnly
@@ -437,7 +455,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
               <option value="" disabled>Seleccione...</option>
               {estadosCumplimiento.map((est: any) => <option key={est.id} value={est.id}>{est.descripcion}</option>)}
             </select>;
-      
+
       default: return '-';
     }
   };
@@ -479,7 +497,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
             )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4 shrink-0 pl-2 border-l border-slate-100">
           {!isExpanded && item.documentos_vinculados?.length > 0 && (
              <span className="flex items-center gap-1.5 bg-blue-50 text-blue-600 border border-blue-100 text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm">
@@ -490,7 +508,8 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
           {!isExpanded && item.color_hex && (
              <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: `#${item.color_hex}` }} title="Estado"></div>
           )}
-          {canEdit && (
+          {/* --- BOTONES DE ELIMINAR Y COPIAR (MODIFICADO) --- */}
+          {showActionButtons && canEdit && (
             <div className="flex gap-1">
               <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id_item_matriz); }} className="text-slate-400 hover:text-red-500 p-1" title="Eliminar ítem">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -505,7 +524,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
           </div>
         </div>
       </div>
-      
+
       {isExpanded && (
         <div className="transition-all duration-300 overflow-visible border-t border-slate-100">
           <div className="p-5 md:p-6 bg-slate-50/30 rounded-b-xl">
@@ -513,7 +532,7 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
               {columnasVisibles.map((col: any) => (
                 <div key={col.id} className="flex flex-col gap-2 group/field">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-1.5 ml-1">
-                    {col.label} 
+                    {col.label}
                     {col.custom && <span className="bg-orange-100 text-orange-600 text-[8px] px-1.5 py-0.5 rounded ml-1">CUSTOM</span>}
                   </label>
                   <div className="relative w-full z-10 hover:z-40 focus-within:z-50">
@@ -529,25 +548,26 @@ const SortableRow = ({ item, columnasVisibles, onUpdate, onDelete, onCopy, canEd
   );
 };
 
+// COMPONENTE PRINCIPAL
 export default function WorkspaceMatrizPage() {
   const router = useRouter();
-  const params = useParams(); 
+  const params = useParams();
   const searchParams = useSearchParams();
-  const idMatriz = params.id as string; 
+  const idMatriz = params.id as string;
   const { canRead, canEdit } = usePermissions();
   const { workspace, setWorkspace } = useMatrizFilters();
   const { isFilterOpen, filtros } = workspace;
   const toast = useToast();
   const confirm = useConfirm();
-  
+
   const [items, setItems] = useState<any[]>([]);
-  const [headerInfo, setHeaderInfo] = useState<any>(null); 
+  const [headerInfo, setHeaderInfo] = useState<any>(null);
   const [tipoMatriz, setTipoMatriz] = useState<number>(1);
   const [estadoMatriz, setEstadoMatriz] = useState<number>(1);
   const [configColumnas, setConfigColumnas] = useState<any[]>([]);
   const [tempConfig, setTempConfig] = useState<any[]>([]);
   const [nuevaColumna, setNuevaColumna] = useState("");
-  
+
   const [loading, setLoading] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -558,12 +578,12 @@ export default function WorkspaceMatrizPage() {
   const quickAddFormRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
   const mainContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // DICCIONARIOS
   const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
   const [tiposModalidad, setTiposModalidad] = useState<any[]>([]);
   const [responsables, setResponsables] = useState<any[]>([]);
-  
+
   const [tiposNorma, setTiposNorma] = useState<any[]>([]);
   const [emisoresNorma, setEmisoresNorma] = useState<any[]>([]);
   const [estadosNorma, setEstadosNorma] = useState<any[]>([]);
@@ -600,7 +620,8 @@ export default function WorkspaceMatrizPage() {
   const [mostrarCumplimiento, setMostrarCumplimiento] = useState<boolean>(true);
   const [campoEncabezadoItem, setCampoEncabezadoItem] = useState<string>('normas');
   const [opcionesEncabezado, setOpcionesEncabezado] = useState<{ id: string; label: string }[]>([]);
-
+  const [columnasEditablesPublicada, setColumnasEditablesPublicada] = useState<string[]>([]);
+  
   // NUEVO: Modal de nueva normativa
   const [showNuevaNormaModal, setShowNuevaNormaModal] = useState(false);
   const [cargandoNuevaNorma, setCargandoNuevaNorma] = useState(false);
@@ -615,6 +636,48 @@ export default function WorkspaceMatrizPage() {
     origen_carga: "Manual",
     fecha_publicacion: ""
   });
+
+  // --- NUEVO: Estado para control de cliente ---
+  const [isUserCliente, setIsUserCliente] = useState(false);
+  const [usuarioId, setUsuarioId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("sgml_cliente_id");
+    setIsUserCliente(!!(raw && raw !== "null"));
+    
+    const token = localStorage.getItem("sgml_token");
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        // Intentar con diferentes nombres de campo
+        let id = payload.id_usuario || payload.user_id || payload.id || payload.userId || null;
+        if (id) {
+          setUsuarioId(Number(id));
+        } else {
+          // Fallback: buscar en sgml_user
+          const userStr = localStorage.getItem("sgml_user");
+          if (userStr) {
+            const userObj = JSON.parse(userStr);
+            if (userObj.id_usuario || userObj.id) {
+              setUsuarioId(Number(userObj.id_usuario || userObj.id));
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error decodificando token", e);
+        // Fallback: intentar desde sgml_user
+        try {
+          const userStr = localStorage.getItem("sgml_user");
+          if (userStr) {
+            const userObj = JSON.parse(userStr);
+            if (userObj.id_usuario || userObj.id) {
+              setUsuarioId(Number(userObj.id_usuario || userObj.id));
+            }
+          }
+        } catch (err) {}
+      }
+    }
+  }, []);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
@@ -662,6 +725,23 @@ export default function WorkspaceMatrizPage() {
       setIdEstablecimiento(info.id_cliente_establecimiento);
       setMostrarCumplimiento(info.mostrar_cumplimiento == 1);
       setCampoEncabezadoItem(info.campo_encabezado_item || 'normas');
+      // --- Cargar columnas editables en estado publicada (parseando JSON) ---
+      let columnasEditables = [];
+      if (info.columnas_editables_publicada) {
+        try {
+          const parsed = typeof info.columnas_editables_publicada === 'string'
+            ? JSON.parse(info.columnas_editables_publicada)
+            : info.columnas_editables_publicada;
+          columnasEditables = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          console.warn("Error parseando columnas_editables_publicada:", e);
+          columnasEditables = [];
+        }
+      } else {
+        columnasEditables = [];
+      }
+      setColumnasEditablesPublicada(columnasEditables);
+      console.log("columnasEditablesPublicada establecido:", columnasEditables);
 
       const resR = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/responsables/leer_responsables.php?id_establecimiento=${info.id_cliente_establecimiento}`, { headers: { "Authorization": `Bearer ${token}` } });
       const dataR = await resR.json();
@@ -669,26 +749,26 @@ export default function WorkspaceMatrizPage() {
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/leer_items.php?id_matriz=${idMatriz}`, { headers: { "Authorization": `Bearer ${token}` } });
       const data = await res.json();
-      
+
       let configParsed = data.config_columnas;
       if (typeof configParsed === 'string') {
           try { configParsed = JSON.parse(configParsed); } catch(e) { configParsed = []; }
       }
       if (!Array.isArray(configParsed)) configParsed = [];
-      
+
       if (configParsed.length > 0) {
         if (typeof configParsed[0] === 'string') {
             configParsed = configParsed.map((idStr:string) => {
               const match = TODAS_LAS_COLUMNAS.find(c => c.id === idStr);
-              return { 
-                  id: idStr, 
-                  label: match?.label || (idStr.startsWith('custom_') ? 'Columna Personalizada' : idStr), 
-                  custom: idStr.startsWith('custom_') 
+              return {
+                  id: idStr,
+                  label: match?.label || (idStr.startsWith('custom_') ? 'Columna Personalizada' : idStr),
+                  custom: idStr.startsWith('custom_')
               };
             });
         }
       }
-      
+
       let columnasPorDefecto;
       if (info.id_tipo_matriz === 1) {
         columnasPorDefecto = COLUMNAS_POR_DEFECTO_LEGAL;
@@ -700,8 +780,8 @@ export default function WorkspaceMatrizPage() {
       setTempConfig(configFinal);
       setOpcionesEncabezado(configFinal.map((col:any) => ({ id: col.id, label: col.label })));
       setItems(data.registros || []);
-      
-      if (configFinal.length === 0) setShowConfig(true); 
+
+      if (configFinal.length === 0) setShowConfig(true);
     } catch (err) {} finally { setLoading(false); }
   }, [idMatriz]);
 
@@ -752,10 +832,10 @@ export default function WorkspaceMatrizPage() {
             if (filtros.norma.emisor && !(n.emisor_desc?.toLowerCase().includes(filtros.norma.emisor.toLowerCase()))) return false;
             if (filtros.norma.nivel && !(n.nivel_jurisdiccion_desc?.toLowerCase().includes(filtros.norma.nivel.toLowerCase()))) return false;
             if (filtros.norma.jurisdiccion && !(n.jurisdiccion_desc?.toLowerCase().includes(filtros.norma.jurisdiccion.toLowerCase()))) return false;
-            
+
             if (filtros.norma.categorias && filtros.norma.categorias.length > 0) {
                if (!n.categorias) return false;
-               const hasAll = filtros.norma.categorias.every((catFilter: string) => 
+               const hasAll = filtros.norma.categorias.every((catFilter: string) =>
                   n.categorias.some((c:string) => c.toLowerCase().includes(catFilter.toLowerCase()))
                );
                if (!hasAll) return false;
@@ -773,7 +853,7 @@ export default function WorkspaceMatrizPage() {
           if (searchVal) {
               let field = colId;
               if (colId === 'estado') field = 'id_estado_cumplimiento';
-              
+
               if (colId === 'estado' || colId === 'id_tipo_modalidad' || colId === 'id_responsable_establecimiento') {
                   if (item[field]?.toString() !== searchVal.toString()) return false;
               } else {
@@ -863,7 +943,8 @@ export default function WorkspaceMatrizPage() {
       body: JSON.stringify({
         id_matriz: idMatriz,
         mostrar_cumplimiento: mostrarCumplimiento ? 1 : 0,
-        campo_encabezado_item: campoEncabezadoItem
+        campo_encabezado_item: campoEncabezadoItem,
+        columnas_editables_publicada: columnasEditablesPublicada // NUEVO
       })
     });
     setConfigColumnas(tempConfig);
@@ -1059,7 +1140,7 @@ export default function WorkspaceMatrizPage() {
       cancelText: "Cancelar"
     });
     if (!ok) return;
-    
+
     const getJurStr = (item: any) => {
        if (item.normas_vinculadas && item.normas_vinculadas.length > 0) {
           let nivel = item.normas_vinculadas[0].nivel_jurisdiccion_desc || item.normas_vinculadas[0].jurisdiccion_desc || "";
@@ -1075,12 +1156,12 @@ export default function WorkspaceMatrizPage() {
     const sortedItems = [...items].sort((a, b) => getJurStr(a).localeCompare(getJurStr(b)));
     const itemsConOrden = sortedItems.map((it, idx) => ({ ...it, orden: idx }));
     setItems(itemsConOrden);
-    
+
     const token = localStorage.getItem("sgml_token");
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/reordenar_items.php`, { 
-       method: "POST", 
-       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }, 
-       body: JSON.stringify(itemsConOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx }))) 
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/reordenar_items.php`, {
+       method: "POST",
+       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+       body: JSON.stringify(itemsConOrden.map((it, idx) => ({ id_item: it.id_item_matriz, orden: idx })))
     }).catch(err => console.error("Error al ordenar por jurisdicción:", err));
     toast.showToast("Éxito", "Ordenamiento por jurisdicción aplicado.", "success");
   };
@@ -1106,9 +1187,7 @@ export default function WorkspaceMatrizPage() {
     }));
   };
 
-  // Función para abrir el modal de nueva norma
   const abrirNuevaNormaModal = (itemParaEditar: any = null) => {
-    console.log("🔵 abrirNuevaNormaModal llamado con:", itemParaEditar);
     itemEnEdicionRef.current = itemParaEditar;
     setItemEnEdicion(itemParaEditar);
     setNuevaNormaForm({
@@ -1125,9 +1204,7 @@ export default function WorkspaceMatrizPage() {
     setShowNuevaNormaModal(true);
   };
 
-  // Función para guardar la nueva norma
   const handleGuardarNuevaNorma = async () => {
-    console.log("🔴 handleGuardarNuevaNorma ejecutado");
     if (!nuevaNormaForm.id_tipo_norma || !nuevaNormaForm.numero || !nuevaNormaForm.anio || !nuevaNormaForm.id_emisor_norma) {
       toast.showToast("Atención", "Complete los campos obligatorios: Tipo, Número, Año y Emisor.", "warning");
       return;
@@ -1170,7 +1247,6 @@ export default function WorkspaceMatrizPage() {
       };
 
       if (itemEnEdicionRef.current) {
-        // === MODO EDICIÓN DE ÍTEM ===
         const nuevosItems = items.map(i =>
           i.id_item_matriz === itemEnEdicionRef.current.id_item_matriz
             ? { ...i, normas_vinculadas: [...(i.normas_vinculadas || []), nuevaNormaParaItem] }
@@ -1207,7 +1283,6 @@ export default function WorkspaceMatrizPage() {
         setItemEnEdicion(null);
         toast.showToast("Éxito", "Norma agregada al ítem existente.", "success");
       } else {
-        // === MODO NUEVA FILA ===
         setNewRowData((prev: any) => ({
           ...prev,
           normas_vinculadas: [...(prev.normas_vinculadas || []), nuevaNormaParaItem],
@@ -1278,9 +1353,16 @@ export default function WorkspaceMatrizPage() {
 
   const COLS_CUMPLIMIENTO_IDS = ['evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'];
   const puedeEditarCampo = (colId: string): boolean => {
-    if (estadoMatriz === 3) return false;                            
-    if (estadoMatriz === 1) return true;                             
-    return COLS_CUMPLIMIENTO_IDS.includes(colId) || colId.startsWith('custom_');
+    if (estadoMatriz === 3) return false; // Archivada: solo lectura
+    if (estadoMatriz === 1) return true;  // Borrador: todo editable
+    // Publicada: usar configuración de columnas editables
+    if (estadoMatriz === 2) {
+      // Si no hay configuración, usar el comportamiento anterior (columnas de cumplimiento)
+      const defaultColumns = COLS_CUMPLIMIENTO_IDS;
+      const editableColumns = columnasEditablesPublicada.length > 0 ? columnasEditablesPublicada : defaultColumns;
+      return editableColumns.includes(colId) || colId.startsWith('custom_');
+    }
+    return false;
   };
   const puedeAgregarFilas = estadoMatriz === 1;
   const puedeConfigurar = estadoMatriz === 1;
@@ -1336,7 +1418,6 @@ export default function WorkspaceMatrizPage() {
           </div>
         </div>
 
-        {/* Configuración adicional */}
         <div className="border-t border-slate-200 pt-6 mt-4">
           <h3 className="text-sm font-bold text-slate-700 mb-4">Configuración adicional de la matriz</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1352,6 +1433,33 @@ export default function WorkspaceMatrizPage() {
               <p className="text-[9px] text-slate-400 mt-1">Determina qué dato se muestra en la línea superior de cada ítem (cuando está colapsado).</p>
             </div>
           </div>
+
+          {/* NUEVO BLOQUE: Columnas editables en estado Publicada */}
+          {canEdit("matriz") && (
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h4 className="text-xs font-bold uppercase text-slate-600 tracking-widest mb-3">Columnas editables cuando la matriz está publicada</h4>
+            <p className="text-[10px] text-slate-400 mb-3">Seleccione las columnas que podrán ser editadas por los usuarios clientes cuando la matriz esté en estado PUBLICADA. Las columnas no seleccionadas serán de solo lectura.</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {configColumnas.map((col: any) => (
+                <label key={col.id} className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={columnasEditablesPublicada.includes(col.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setColumnasEditablesPublicada([...columnasEditablesPublicada, col.id]);
+                      } else {
+                        setColumnasEditablesPublicada(columnasEditablesPublicada.filter(id => id !== col.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-lgc-primary focus:ring-lgc-primary"
+                  />
+                  {col.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          )}
         </div>
       </div>
     );
@@ -1363,7 +1471,7 @@ export default function WorkspaceMatrizPage() {
 
   return (
     <div className="space-y-4 animate-fade-in flex flex-col h-[calc(100vh-100px)]">
-      
+
       {/* HEADER DINÁMICO */}
       <div className="bg-[#005F78] px-6 py-4 rounded-xl shadow-md flex justify-between items-center shrink-0 border border-[#004D62]">
         <div className="flex items-center gap-5">
@@ -1405,7 +1513,7 @@ export default function WorkspaceMatrizPage() {
           )}
           <Link href={`/dashboard/matrices/${idMatriz}/preview`} className="bg-white/10 hover:bg-white/20 text-white font-bold py-2 px-4 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-white/20 flex items-center gap-2 shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-            Vista Previa
+            {estadoMatriz === 1 ? 'Vista Previa' : 'Ver Matriz'}
           </Link>
         </div>
       </div>
@@ -1609,7 +1717,8 @@ export default function WorkspaceMatrizPage() {
            </div>
         </div>
 
-        {canEdit("matriz") && puedeAgregarFilas && (
+        {/* BOTÓN NUEVA FILA (MODIFICADO) */}
+        {canEdit("matriz") && puedeAgregarFilas && !isUserCliente && (
           <div className="sticky top-14 z-40 mb-4"><button onClick={() => { setShowQuickAdd(true); setTimeout(() => { if (quickAddFormRef.current && mainContainerRef.current) { const container = mainContainerRef.current; const element = quickAddFormRef.current; const elementRect = element.getBoundingClientRect(); const containerRect = container.getBoundingClientRect(); container.scrollTop += elementRect.top - containerRect.top - 120; } }, 100); }} className="w-full bg-[#e6f7f5] hover:bg-[#ccefec] text-[#005F78] font-bold py-3 rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[#005F78]/20 shadow-sm">+ Nueva Fila</button></div>
         )}
 
@@ -1635,7 +1744,26 @@ export default function WorkspaceMatrizPage() {
                   <div className="p-16 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 shadow-sm border-dashed"><svg className="w-12 h-12 mb-3 text-slate-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="font-bold uppercase tracking-widest text-[11px]">{hasActiveFilters ? 'No hay resultados para estos filtros.' : 'No hay filas en la matriz.'}</span></div>
                 ) : (
                   itemsFiltrados.map(item => (
-                    <SortableRow key={item.id_item_matriz} item={item} columnasVisibles={configColumnas} canEdit={canEdit("matriz") && estadoMatriz !== 3} canEditField={puedeEditarCampo} onUpdate={handleUpdateExistingRow} onDelete={handleDeleteItem} onCopy={handleCopyItem} estadosCumplimiento={estadosCumplimiento} responsables={responsables} tiposModalidad={tiposModalidad} onOpenEvidencia={setItemEvidencia} forceExpand={expandAll} isDragDisabled={hasActiveFilters || !puedeReordenar} onSolicitarNuevaNorma={abrirNuevaNormaModal} idEstablecimiento={idEstablecimiento} campoEncabezado={campoEncabezadoItem} />
+                    <SortableRow
+                      key={item.id_item_matriz}
+                      item={item}
+                      columnasVisibles={configColumnas}
+                      canEdit={canEdit("matriz") && estadoMatriz !== 3}
+                      canEditField={puedeEditarCampo}
+                      onUpdate={handleUpdateExistingRow}
+                      onDelete={handleDeleteItem}
+                      onCopy={handleCopyItem}
+                      estadosCumplimiento={estadosCumplimiento}
+                      responsables={responsables}
+                      tiposModalidad={tiposModalidad}
+                      onOpenEvidencia={setItemEvidencia}
+                      forceExpand={expandAll}
+                      isDragDisabled={hasActiveFilters || !puedeReordenar}
+                      onSolicitarNuevaNorma={abrirNuevaNormaModal}
+                      idEstablecimiento={idEstablecimiento}
+                      campoEncabezado={campoEncabezadoItem}
+                      showActionButtons={estadoMatriz === 1 && !isUserCliente}  // ← NUEVA PROP
+                    />
                   ))
                 )}
               </SortableContext>
@@ -1647,12 +1775,27 @@ export default function WorkspaceMatrizPage() {
         {showScrollBottom && (<button onClick={scrollToBottom} className="fixed bottom-6 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50" title="Ir abajo"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg></button>)}
       </div>
 
+      {/* MODAL EVIDENCIAS (MODIFICADO) */}
       {itemEvidencia && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-slate-200">
             <h3 className="text-lg font-bold text-lgc-primary uppercase mb-4 border-b border-slate-100 pb-3 flex items-center gap-3"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg> Repositorio de Evidencias <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-xs ml-2">Ítem #{itemEvidencia.id_item_matriz}</span></h3>
             <div className="mb-6 bg-slate-50 p-5 rounded-xl border border-slate-200 border-dashed"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Subir nuevo documento probatorio</label><div className="flex gap-3 items-center"><input ref={fileInputRef} type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEvidenciaFile(e.target.files?.[0] || null)} /><button onClick={handleUploadEvidencia} disabled={!evidenciaFile || isUploading} className="bg-lgc-accent hover:bg-[#D97920] text-white px-6 py-2.5 text-xs font-bold rounded-lg shadow-md disabled:opacity-50 transition-colors uppercase tracking-widest flex items-center gap-2">{isUploading ? <><svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Subiendo</> : 'Adjuntar'}</button></div></div>
-            <div className="space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar pr-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Archivos Vinculados</label>{itemEvidencia.documentos_vinculados?.length === 0 ? (<div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-100"><p className="text-xs text-slate-400 italic">No hay evidencias cargadas para este ítem.</p></div>) : itemEvidencia.documentos_vinculados?.map((doc: any) => (<div key={doc.id_documentacion} className="flex justify-between items-center p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-lgc-primary transition-colors group"><div className="flex items-center gap-3 overflow-hidden"><div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></div><a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" className="text-xs text-slate-700 font-bold hover:text-lgc-primary truncate transition-colors" title={doc.nombre_original}>{doc.nombre_original}</a></div><button onClick={() => handleBorrarEvidencia(doc.id_documentacion)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar archivo"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>))}</div>
+            <div className="space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar pr-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Archivos Vinculados</label>{itemEvidencia.documentos_vinculados?.length === 0 ? (<div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-100"><p className="text-xs text-slate-400 italic">No hay evidencias cargadas para este ítem.</p></div>) : itemEvidencia.documentos_vinculados?.map((doc: any) => (<div key={doc.id_documentacion} className="flex justify-between items-center p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-lgc-primary transition-colors group"><div className="flex items-center gap-3 overflow-hidden"><div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></div><a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" className="text-xs text-slate-700 font-bold hover:text-lgc-primary truncate transition-colors" title={doc.nombre_original}>{doc.nombre_original}</a></div>
+                  {/* BOTÓN ELIMINAR ARCHIVO (CONDICIONAL) */}
+                  {(() => {
+                    // Convertir ambos a number para comparación segura
+                    const idUsuario = Number(usuarioId);
+                    const idPropietario = Number(doc.id_usuario_subida);
+                    const puedeEliminar = !isUserCliente || (idUsuario === idPropietario);
+                    
+                    return puedeEliminar ? (
+                      <button onClick={() => handleBorrarEvidencia(doc.id_documentacion)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar archivo">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    ) : null;
+                  })()}
+                </div>))}</div>
             <div className="mt-8 flex justify-end"><button onClick={() => setItemEvidencia(null)} className="bg-slate-100 hover:bg-slate-200 px-8 py-3 rounded-xl text-xs font-bold uppercase text-slate-600 tracking-widest transition-colors shadow-sm">Terminar y Cerrar</button></div>
           </div>
         </div>

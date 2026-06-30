@@ -13,14 +13,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(true);
 
-  // Estado para controlar si el menú lateral está abierto o cerrado
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  
-  // Guardián de seguridad para filtrar el menú
   const { canRead } = usePermissions();
 
-  // Estados para Avatar y Menú de Perfil
-  const [userInitials, setUserInitials] = useState("AD");
+  const [userInitials, setUserInitials] = useState("US");
+  const [userFullName, setUserFullName] = useState("");
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
   // Protección de Ruta Básica y carga de Iniciales
@@ -30,26 +27,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push("/");
     } else {
       setIsLoading(false);
-      // Decodificar Token JWT para extraer iniciales del usuario
+      // Decodificar Token JWT para extraer datos del usuario
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const nombre = payload.nombre || payload.name || payload.usuario || '';
-        const apellido = payload.apellido || payload.lastname || '';
-        if (nombre) {
-           const init = (nombre.charAt(0) + (apellido ? apellido.charAt(0) : '')).toUpperCase();
-           setUserInitials(init);
+        let nombre = payload.nombre || payload.name || payload.usuario || '';
+        let apellido = payload.apellido || payload.lastname || '';
+        let email = payload.email || '';
+
+        if (nombre && apellido) {
+          setUserFullName(`${nombre} ${apellido}`);
+          setUserInitials((nombre.charAt(0) + apellido.charAt(0)).toUpperCase());
+        } else if (nombre) {
+          setUserFullName(nombre);
+          setUserInitials(nombre.charAt(0).toUpperCase());
+        } else {
+          // Fallback: buscar en sgml_user
+          const userStr = localStorage.getItem("sgml_user");
+          if (userStr) {
+            try {
+              const userObj = JSON.parse(userStr);
+              const nombre2 = userObj.nombre || userObj.name || '';
+              const apellido2 = userObj.apellido || userObj.lastname || '';
+              if (nombre2 && apellido2) {
+                setUserFullName(`${nombre2} ${apellido2}`);
+                setUserInitials((nombre2.charAt(0) + apellido2.charAt(0)).toUpperCase());
+              } else if (nombre2) {
+                setUserFullName(nombre2);
+                setUserInitials(nombre2.charAt(0).toUpperCase());
+              }
+            } catch (err) {}
+          }
+          // Si aún no hay, usar email
+          if (!userFullName && email) {
+            setUserInitials(email.charAt(0).toUpperCase());
+          }
         }
       } catch(e) {
-        // Fallback por si guardás los datos del usuario en otro item
-        const userStr = localStorage.getItem("sgml_user");
-        if (userStr) {
-          try {
-            const userObj = JSON.parse(userStr);
-            if (userObj.nombre) {
-              setUserInitials((userObj.nombre.charAt(0) + (userObj.apellido ? userObj.apellido.charAt(0) : '')).toUpperCase());
-            }
-          } catch(err) {}
-        }
+        console.error("Error decoding token", e);
+        // Fallback final
+        setUserInitials("US");
       }
     }
   }, [router]);
@@ -83,7 +99,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // DICCIONARIO DE MENÚ
+  // DICCIONARIO DE MENÚ (sin cambios)
   const menuItems = [
     { 
       name: "Inicio", 
@@ -140,7 +156,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen font-sans bg-slate-50">
       
-      {/* MENÚ LATERAL (SIDEBAR) COLAPSABLE */}
+      {/* MENÚ LATERAL (SIDEBAR) */}
       <aside className={`bg-slate-900 text-slate-300 flex flex-col shadow-2xl z-50 transition-all duration-300 shrink-0 ${isMenuOpen ? 'w-60' : 'w-0 overflow-hidden'}`}>
         <div className="w-60 flex flex-col h-full">
           
@@ -200,8 +216,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative transition-all duration-300">
         
-        {/* HEADER SUPERIOR - AHORA CON FONDO AZUL SLATE-900 */}
-        <header className="h-20 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shadow-md z-10 sticky top-0 shrink-0 transition-colors duration-300">
+        {/* HEADER SUPERIOR */}
+        <header className="h-20 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shadow-md z-10 sticky top-0 shrink-0">
           <div className="flex items-center gap-5">
             
             <button 
@@ -214,7 +230,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </svg>
             </button>
 
-            {/* LOGO DINÁMICO: Solo visible si el menú lateral está cerrado */}
             {!isMenuOpen && (
               <div className="hidden sm:block animate-fade-in mr-2 pr-4 border-r border-slate-700">
                 <Image 
@@ -246,15 +261,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div 
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="w-10 h-10 rounded-full bg-lgc-primary border border-lgc-primary/30 flex items-center justify-center text-white font-bold shadow-sm cursor-pointer hover:bg-[#006A8A] transition-colors select-none" 
-              title="Opciones de Perfil"
+              title={userFullName || "Usuario"}
             >
               {userInitials}
             </div>
 
-            {/* Menú Flotante del Usuario */}
             {isProfileMenuOpen && (
               <>
-                {/* Capa invisible para cerrar el menú al hacer clic afuera */}
                 <div 
                   className="fixed inset-0 z-40" 
                   onClick={() => setIsProfileMenuOpen(false)}
@@ -263,6 +276,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="absolute top-12 right-0 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-fade-in">
                    <div className="p-3 border-b border-slate-100 bg-slate-50">
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tu Cuenta</p>
+                      {userFullName && <p className="text-xs font-semibold text-slate-700 mt-0.5">{userFullName}</p>}
                    </div>
                    <Link 
                      href="/dashboard/perfil" 

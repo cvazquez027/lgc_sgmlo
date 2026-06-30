@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 include_once '../../config/Database.php';
+include_once '../../helpers/AlertaHelper.php';
 
 $data = json_decode(file_get_contents("php://input"));
 
@@ -36,7 +37,7 @@ try {
     $db->beginTransaction();
 
     // 1. Obtener datos de la matriz
-    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, version 
+    $query_info = "SELECT id_cliente_establecimiento, id_tipo_matriz, id_especialidad_matriz, version, campo_encabezado_item
                    FROM matriz WHERE id_matriz = :id_matriz FOR UPDATE";
     $stmt_info = $db->prepare($query_info);
     $stmt_info->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
@@ -47,7 +48,7 @@ try {
         throw new Exception("La matriz solicitada no existe.");
     }
 
-    // *** VALIDACIÓN: La matriz debe tener al menos un ítem para poder publicarse ***
+    // Validar que tenga al menos un ítem
     $query_items_count = "SELECT COUNT(*) FROM item_matriz WHERE id_matriz = :id_matriz";
     $stmt_count = $db->prepare($query_items_count);
     $stmt_count->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
@@ -85,7 +86,7 @@ try {
     $stmt_publicar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
     $stmt_publicar->execute();
 
-    // 4. --- DISPARADOR DE ALERTA: nueva versión publicada ---
+    // 4. Obtener cliente
     $query_cliente = "SELECT ce.id_cliente 
                       FROM matriz m
                       JOIN cliente_establecimiento ce ON m.id_cliente_establecimiento = ce.id_cliente_establecimiento
@@ -93,8 +94,9 @@ try {
     $stmt_cliente = $db->prepare($query_cliente);
     $stmt_cliente->execute([':id_matriz' => $id_matriz]);
     $id_cliente = $stmt_cliente->fetchColumn();
-    
+
     if ($id_cliente) {
+        // Nombre de la matriz para el mensaje
         $query_nombre = "SELECT CONCAT(tm.descripcion, ' - ', em.descripcion, ' - ', ce.descripcion) as nombre_matriz
                          FROM matriz m
                          JOIN tipo_matriz tm ON m.id_tipo_matriz = tm.id_tipo_matriz
@@ -105,34 +107,29 @@ try {
         $stmt_nombre->execute([':id_matriz' => $id_matriz]);
         $nombre_matriz = $stmt_nombre->fetchColumn();
         $nombre_matriz = $nombre_matriz ?: "Matriz ID $id_matriz";
-        
+
         $version = $matriz_actual['version'];
         $titulo = "Nueva versión de matriz publicada";
         $mensaje = "La matriz \"{$nombre_matriz}\" ha sido publicada en su versión {$version}.0. Ya está disponible para consulta.";
         $url = "/dashboard/matrices/{$id_matriz}";
-        
-        $stmt_alerta = $db->prepare("INSERT INTO alerta (id_cliente, id_matriz, tipo, titulo, mensaje, url, fecha_creacion, leido)
-                                     VALUES (:id_cliente, :id_matriz, 'nueva_version_matriz', :titulo, :mensaje, :url, NOW(), 0)");
-        $stmt_alerta->execute([
-            ':id_cliente' => $id_cliente,
-            ':id_matriz' => $id_matriz,
-            ':titulo' => $titulo,
-            ':mensaje' => $mensaje,
-            ':url' => $url
-        ]);
+
+        // Usar AlertaHelper
+        AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, null, 'nueva_version_matriz', $titulo, $mensaje, $url);
     }
-    
-    // 5. Verificar vencimientos próximos inmediatamente
-    $query_vencimientos = "SELECT im.id_item_matriz, im.vencimiento_plazo, im.resumen_legal
-                           FROM item_matriz im
-                           WHERE im.id_matriz = :id_matriz
-                             AND im.vencimiento_plazo IS NOT NULL
-                             AND im.vencimiento_plazo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
-    $stmt_venc = $db->prepare($query_vencimientos);
+
+    // 5. Verificar vencimientos próximos inmediatamente (corregido con zona horaria Argentina)
+    $campo_encabezado = $matriz_actual['campo_encabezado_item'] ?? 'resumen_legal';
+    $query_items = "SELECT im.id_item_matriz, im.vencimiento_plazo, im.resumen_legal, im.datos_dinamicos
+                    FROM item_matriz im
+                    WHERE im.id_matriz = :id_matriz
+                      AND im.vencimiento_plazo IS NOT NULL
+                      AND im.vencimiento_plazo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
+    $stmt_venc = $db->prepare($query_items);
     $stmt_venc->execute([':id_matriz' => $id_matriz]);
     $items_venc = $stmt_venc->fetchAll(PDO::FETCH_ASSOC);
-    
+
     foreach ($items_venc as $item) {
+        // Evitar duplicados
         $check_duplicate = "SELECT COUNT(*) FROM alerta 
                             WHERE id_item_matriz = :id_item 
                               AND tipo = 'vencimiento_proximo' 
@@ -140,23 +137,53 @@ try {
         $stmt_check = $db->prepare($check_duplicate);
         $stmt_check->execute([':id_item' => $item['id_item_matriz']]);
         $existe = $stmt_check->fetchColumn();
-        
+
         if (!$existe && $id_cliente) {
-            $dias = (new DateTime($item['vencimiento_plazo']))->diff(new DateTime())->days;
-            $titulo_venc = "Vencimiento próximo";
-            $mensaje_venc = "El ítem \"{$item['resumen_legal']}\" tiene vencimiento el {$item['vencimiento_plazo']} (dentro de {$dias} días).";
-            $url_venc = "/dashboard/matrices/{$id_matriz}?item={$item['id_item_matriz']}";
-            
-            $stmt_insert_venc = $db->prepare("INSERT INTO alerta (id_cliente, id_matriz, id_item_matriz, tipo, titulo, mensaje, url, fecha_creacion, leido)
-                                              VALUES (:id_cliente, :id_matriz, :id_item, 'vencimiento_proximo', :titulo, :mensaje, :url, NOW(), 0)");
-            $stmt_insert_venc->execute([
-                ':id_cliente' => $id_cliente,
-                ':id_matriz' => $id_matriz,
-                ':id_item' => $item['id_item_matriz'],
-                ':titulo' => $titulo_venc,
-                ':mensaje' => $mensaje_venc,
-                ':url' => $url_venc
-            ]);
+            // Obtener descripción del ítem según el campo_encabezado
+            $descripcion_item = '';
+            if ($campo_encabezado === 'normas') {
+                $query_normas = "SELECT CONCAT(tn.descripcion, ' ', n.numero, '/', n.anio) AS norma_text
+                                 FROM item_matriz_norma imn
+                                 JOIN norma n ON imn.id_norma = n.id_norma
+                                 JOIN tipo_norma tn ON n.id_tipo_norma = tn.id_tipo_norma
+                                 WHERE imn.id_item_matriz = :id_item";
+                $stmt_normas = $db->prepare($query_normas);
+                $stmt_normas->execute([':id_item' => $item['id_item_matriz']]);
+                $normas = $stmt_normas->fetchAll(PDO::FETCH_COLUMN);
+                $descripcion_item = implode(', ', $normas);
+            } elseif ($campo_encabezado === 'resumen_legal') {
+                $descripcion_item = $item['resumen_legal'];
+            } elseif (strpos($campo_encabezado, 'custom_') === 0) {
+                $dinamicos = json_decode($item['datos_dinamicos'], true);
+                $descripcion_item = isset($dinamicos[$campo_encabezado]) ? $dinamicos[$campo_encabezado] : $item['resumen_legal'];
+            } else {
+                $descripcion_item = $item[$campo_encabezado] ?? $item['resumen_legal'];
+            }
+            if (empty($descripcion_item)) {
+                $descripcion_item = $item['resumen_legal'] ?: 'Ítem sin descripción';
+            }
+
+            $fecha_formateada = date('d/m/Y', strtotime($item['vencimiento_plazo']));
+
+            // Cálculo de días con zona horaria Argentina
+            $tz = new DateTimeZone('America/Argentina/Buenos_Aires');
+            $hoy = new DateTime('today', $tz);
+            $venc = new DateTime($item['vencimiento_plazo'], $tz);
+            $venc->setTime(0, 0, 0);
+            $diff = $hoy->diff($venc);
+            $dias = (int)$diff->format('%r%a');
+
+            if ($dias >= 0 && $dias <= 30) {
+                $titulo_venc = "Vencimiento próximo";
+                if ($dias == 0) {
+                    $mensaje_venc = "El ítem \"{$descripcion_item}\" vence HOY ({$fecha_formateada}).";
+                } else {
+                    $mensaje_venc = "El ítem \"{$descripcion_item}\" tiene vencimiento el {$fecha_formateada} (dentro de {$dias} días).";
+                }
+                $url_venc = "/dashboard/matrices/{$id_matriz}?item={$item['id_item_matriz']}";
+
+                AlertaHelper::insertarAlerta($db, $id_cliente, $id_matriz, $item['id_item_matriz'], 'vencimiento_proximo', $titulo_venc, $mensaje_venc, $url_venc);
+            }
         }
     }
 
@@ -169,4 +196,3 @@ try {
     http_response_code(500);
     echo json_encode(["mensaje" => "Error interno al publicar.", "error" => $e->getMessage()]);
 }
-?>

@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 include_once '../../config/Database.php';
 include_once '../../config/JwtHandler.php';
 
-// Extraer token
+// --- Extracción robusta del token ---
 $token = '';
 if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
     $token = trim(str_ireplace('Bearer', '', $_SERVER['HTTP_AUTHORIZATION']));
@@ -37,55 +37,71 @@ if (!$payload) {
     exit();
 }
 
-// Convertir payload a array si es objeto
 $payload_array = (array) $payload;
 $id_cliente = isset($payload_array['id_cliente']) ? $payload_array['id_cliente'] : null;
 $id_usuario = isset($payload_array['id_usuario']) ? $payload_array['id_usuario'] : null;
+$rol = isset($payload_array['rol']) ? $payload_array['rol'] : null;
+$es_admin = ($id_cliente === null) || ($rol === 'admin' || $rol === 'administrador');
 
-// Si aún no se obtuvo id_cliente, intentar como propiedad del objeto (por si acaso)
-if ($id_cliente === null && property_exists($payload, 'id_cliente')) {
-    $id_cliente = $payload->id_cliente;
-}
-if ($id_usuario === null && property_exists($payload, 'id_usuario')) {
-    $id_usuario = $payload->id_usuario;
-}
-
-// Log en archivo de errores de PHP (útil para debugging)
-error_log("=== [ALERTAS] id_cliente desde payload: " . ($id_cliente ?? 'null'));
-error_log("=== [ALERTAS] id_usuario desde payload: " . ($id_usuario ?? 'null'));
-
-if (!$id_cliente) {
-    // No lanzamos error, devolvemos vacío con debug
-    echo json_encode([
-        "alertas" => [],
-        "debug_id_cliente" => null,
-        "debug_payload" => $payload_array,
-        "mensaje" => "No se encontró id_cliente en el token"
-    ]);
-    exit();
-}
-
+// Filtros opcionales
 $incluir_leidas = isset($_GET['incluir_leidas']) && filter_var($_GET['incluir_leidas'], FILTER_VALIDATE_BOOLEAN);
+$filtro_cliente = isset($_GET['id_cliente']) ? (int)$_GET['id_cliente'] : null;
 
 $database = new Database();
 $db = $database->getConnection();
 
-$query = "SELECT * FROM alerta WHERE id_cliente = :id_cliente";
-if (!$incluir_leidas) {
-    $query .= " AND leido = 0";
+try {
+    // Construir consulta
+    $query = "SELECT a.*, 
+                     c.nombre_fantasia as cliente_nombre,
+                     c.razon_social as cliente_razon
+              FROM alerta a
+              LEFT JOIN cliente c ON a.id_cliente = c.id_cliente
+              WHERE 1=1";
+    $params = [];
+
+    if (!$es_admin) {
+        // Cliente: solo sus alertas
+        if (!$id_cliente) {
+            // Si es cliente pero no tiene id_cliente, no debería pasar, pero devolvemos vacío
+            http_response_code(200);
+            echo json_encode(["alertas" => [], "debug_id_cliente" => null]);
+            exit();
+        }
+        $query .= " AND a.id_cliente = :id_cliente";
+        $params[':id_cliente'] = $id_cliente;
+    } else {
+        // Admin: puede filtrar por cliente si se especifica
+        if ($filtro_cliente) {
+            $query .= " AND a.id_cliente = :filtro_cliente";
+            $params[':filtro_cliente'] = $filtro_cliente;
+        }
+    }
+
+    if (!$incluir_leidas) {
+        $query .= " AND a.leido = 0";
+    }
+
+    $query .= " ORDER BY a.fecha_creacion DESC";
+
+    $stmt = $db->prepare($query);
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value);
+    }
+    $stmt->execute();
+
+    $alertas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    http_response_code(200);
+    echo json_encode([
+        "alertas" => $alertas,
+        "debug_es_admin" => $es_admin,
+        "debug_id_cliente" => $id_cliente,
+        "debug_total" => count($alertas)
+    ]);
+
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(["mensaje" => "Error al leer alertas.", "error" => $e->getMessage()]);
 }
-$query .= " ORDER BY fecha_creacion DESC";
-
-$stmt = $db->prepare($query);
-$stmt->bindParam(':id_cliente', $id_cliente, PDO::PARAM_INT);
-$stmt->execute();
-
-$alertas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-http_response_code(200);
-echo json_encode([
-    "alertas" => $alertas,
-    "debug_id_cliente" => $id_cliente,
-    "debug_total" => count($alertas)
-]);
 ?>

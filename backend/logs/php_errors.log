@@ -1,0 +1,290 @@
+[30-Jun-2026 05:25:58 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:25:58 Europe/Berlin] stdClass Object
+(
+    [id_item_matriz] => 71
+    [id_matriz] => 36
+    [resumen_legal] => 
+    [articulos_aplicables] => 
+    [interpretacion_aplicacion] => 
+    [id_tipo_modalidad] => 
+    [obs_modalidad] => 
+    [vencimiento_plazo] => 2026-03-31
+    [fecha_cumplimiento] => 
+    [obs_plazo] => 
+    [evidencia_cumplimiento] => 
+    [responsable_cumplimiento] => 
+    [verificacion_cumplimiento] => 
+    [id_estado_cumplimiento] => 3
+    [obs_estado_cumplimiento] => 
+    [orden] => 0
+    [id_responsable_establecimiento] => 7
+    [estado_cumplimiento_desc] => No cumple
+    [color_hex] => E85235
+    [tipo_modalidad_desc] => 
+    [normas_vinculadas] => Array
+        (
+            [0] => 3
+        )
+
+    [normas_ids] => Array
+        (
+            [0] => 3
+        )
+
+    [documentos_vinculados] => Array
+        (
+        )
+
+    [documentos_ids] => Array
+        (
+        )
+
+)
+
+[30-Jun-2026 05:25:58 Europe/Berlin] id_estado_cumplimiento recibido: 3
+[30-Jun-2026 05:25:58 Europe/Berlin] Estado anterior: 2
+[30-Jun-2026 05:25:58 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:25:59 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:26:05 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:26:05 Europe/Berlin] stdClass Object
+(
+    [id_item_matriz] => 72
+    [id_matriz] => 36
+    [resumen_legal] => 
+    [articulos_aplicables] => 
+    [interpretacion_aplicacion] => 
+    [id_tipo_modalidad] => 
+    [obs_modalidad] => 
+    [vencimiento_plazo] => 2026-07-15
+    [fecha_cumplimiento] => 
+    [obs_plazo] => 
+    [evidencia_cumplimiento] => 
+    [responsable_cumplimiento] => 
+    [verificacion_cumplimiento] => 
+    [id_estado_cumplimiento] => 6
+    [obs_estado_cumplimiento] => 
+    [orden] => 1
+    [id_responsable_establecimiento] => 7
+    [estado_cumplimiento_desc] => En Trámite
+    [color_hex] => A6C9EC
+    [tipo_modalidad_desc] => 
+    [normas_vinculadas] => Array
+        (
+            [0] => 3
+        )
+
+    [normas_ids] => Array
+        (
+            [0] => 3
+        )
+
+    [documentos_vinculados] => Array
+        (
+        )
+
+    [documentos_ids] => Array
+        (
+        )
+
+)
+
+[30-Jun-2026 05:26:05 Europe/Berlin] id_estado_cumplimiento recibido: 6
+[30-Jun-2026 05:26:05 Europe/Berlin] Estado anterior: 5
+[30-Jun-2026 05:26:05 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:26:05 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:26:31 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:26:31 Europe/Berlin] stdClass Object
+(
+    [id_matriz] => 36
+    [id_estado_cumplimiento] => 
+    [id_tipo_modalidad] => 
+    [normas_vinculadas] => Array
+        (
+        )
+
+    [norma_emisor] => 
+    [norma_nivel_jur] => 
+    [norma_sintesis] => 
+    [sintesis_categorias] => 
+    [url_norma] => 
+)
+
+[30-Jun-2026 05:26:31 Europe/Berlin] id_estado_cumplimiento recibido: 1
+[30-Jun-2026 05:26:31 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:26:31 Europe/Berlin] Nuevo ID: 74
+[30-Jun-2026 05:26:31 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:26:36 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:26:36 Europe/Berlin] stdClass Object
+(
+    [id_matriz] => 36
+    [id_estado_cumplimiento] => 1
+    [id_tipo_modalidad] => 
+    [normas_vinculadas] => Array
+        (
+        )
+
+    [norma_emisor] => 
+    [norma_nivel_jur] => 
+    [norma_sintesis] => 
+    [sintesis_categorias] => 
+    [url_norma] => 
+)
+
+[30-Jun-2026 05:26:36 Europe/Berlin] id_estado_cumplimiento recibido: 1
+[30-Jun-2026 05:26:36 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:26:36 Europe/Berlin] Nuevo ID: 75
+[30-Jun-2026 05:26:36 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:30:25 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:30:25 Europe/Berlin] stdClass Object
+(
+    [id_item_matriz] => 73
+    [id_matriz] => 36
+    [resumen_legal] => 
+    [articulos_aplicables] => 
+    [interpretacion_aplicacion] => 
+    [id_tipo_modalidad] => 
+    [obs_modalidad] => 
+    [vencimiento_plazo] => 2026-07-10
+    [fecha_cumplimiento] => 
+    [obs_plazo] => 
+    [evidencia_cumplimiento] => 
+    [responsable_cumplimiento] => 
+    [verificacion_cumplimiento] => 
+    [id_estado_cumplimiento] => 3
+    [obs_estado_cumplimiento] => 
+    [orden] => 2
+    [id_responsable_establecimiento] => 7
+    [estado_cumplimiento_desc] => Cumple
+    [color_hex] => 90A224
+    [tipo_modalidad_desc] => 
+    [normas_vinculadas] => Array
+        (
+            [0] => 10181
+        )
+
+    [normas_ids] => Array
+        (
+            [0] => 10181
+        )
+
+    [documentos_vinculados] => Array
+        (
+        )
+
+    [documentos_ids] => Array
+        (
+        )
+
+)
+
+[30-Jun-2026 05:30:25 Europe/Berlin] id_estado_cumplimiento recibido: 3
+[30-Jun-2026 05:30:25 Europe/Berlin] matriz_publicada: NO
+[30-Jun-2026 05:30:25 Europe/Berlin] id_cliente: 6
+[30-Jun-2026 05:30:25 Europe/Berlin] Estado anterior: 1
+[30-Jun-2026 05:30:25 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:30:25 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:30:25 Europe/Berlin] No se generan alertas: matriz_publicada=NO, id_cliente=6
+[30-Jun-2026 05:30:33 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:30:33 Europe/Berlin] stdClass Object
+(
+    [id_item_matriz] => 68
+    [id_matriz] => 35
+    [resumen_legal] => 
+    [articulos_aplicables] => 
+    [interpretacion_aplicacion] => 
+    [id_tipo_modalidad] => 
+    [obs_modalidad] => 
+    [vencimiento_plazo] => 2026-03-31
+    [fecha_cumplimiento] => 
+    [obs_plazo] => 
+    [evidencia_cumplimiento] => 
+    [responsable_cumplimiento] => 
+    [verificacion_cumplimiento] => 
+    [id_estado_cumplimiento] => 6
+    [obs_estado_cumplimiento] => 
+    [orden] => 0
+    [id_responsable_establecimiento] => 7
+    [estado_cumplimiento_desc] => No cumple
+    [color_hex] => E85235
+    [tipo_modalidad_desc] => 
+    [normas_vinculadas] => Array
+        (
+            [0] => 3
+        )
+
+    [normas_ids] => Array
+        (
+            [0] => 3
+        )
+
+    [documentos_vinculados] => Array
+        (
+        )
+
+    [documentos_ids] => Array
+        (
+        )
+
+)
+
+[30-Jun-2026 05:30:33 Europe/Berlin] id_estado_cumplimiento recibido: 6
+[30-Jun-2026 05:30:33 Europe/Berlin] matriz_publicada: SI
+[30-Jun-2026 05:30:33 Europe/Berlin] id_cliente: 6
+[30-Jun-2026 05:30:33 Europe/Berlin] Estado anterior: 2
+[30-Jun-2026 05:30:33 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:30:33 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:30:33 Europe/Berlin] === GENERANDO ALERTAS PARA EL ÍTEM ===
+[30-Jun-2026 05:30:33 Europe/Berlin] descripcion_item: Ley 25675/2002
+[30-Jun-2026 05:30:33 Europe/Berlin] Alerta: Cambio de estado - Cambio de estado de cumplimiento en ítem #0
+[30-Jun-2026 05:30:36 Europe/Berlin] === GUARDAR_ITEM: Datos recibidos ===
+[30-Jun-2026 05:30:36 Europe/Berlin] stdClass Object
+(
+    [id_item_matriz] => 68
+    [id_matriz] => 35
+    [resumen_legal] => 
+    [articulos_aplicables] => 
+    [interpretacion_aplicacion] => 
+    [id_tipo_modalidad] => 
+    [obs_modalidad] => 
+    [vencimiento_plazo] => 2026-03-31
+    [fecha_cumplimiento] => 
+    [obs_plazo] => 
+    [evidencia_cumplimiento] => 
+    [responsable_cumplimiento] => 
+    [verificacion_cumplimiento] => 
+    [id_estado_cumplimiento] => 3
+    [obs_estado_cumplimiento] => 
+    [orden] => 0
+    [id_responsable_establecimiento] => 7
+    [estado_cumplimiento_desc] => No aplica
+    [color_hex] => ADADAD
+    [tipo_modalidad_desc] => 
+    [normas_vinculadas] => Array
+        (
+            [0] => 3
+        )
+
+    [normas_ids] => Array
+        (
+            [0] => 3
+        )
+
+    [documentos_vinculados] => Array
+        (
+        )
+
+    [documentos_ids] => Array
+        (
+        )
+
+)
+
+[30-Jun-2026 05:30:36 Europe/Berlin] id_estado_cumplimiento recibido: 3
+[30-Jun-2026 05:30:36 Europe/Berlin] matriz_publicada: SI
+[30-Jun-2026 05:30:36 Europe/Berlin] id_cliente: 6
+[30-Jun-2026 05:30:36 Europe/Berlin] Estado anterior: 6
+[30-Jun-2026 05:30:36 Europe/Berlin] Ejecución del statement exitosa.
+[30-Jun-2026 05:30:36 Europe/Berlin] Transacción commit exitosa.
+[30-Jun-2026 05:30:36 Europe/Berlin] === GENERANDO ALERTAS PARA EL ÍTEM ===
+[30-Jun-2026 05:30:36 Europe/Berlin] descripcion_item: Ley 25675/2002
+[30-Jun-2026 05:30:36 Europe/Berlin] Alerta: Cambio de estado - Cambio de estado de cumplimiento en ítem #0
