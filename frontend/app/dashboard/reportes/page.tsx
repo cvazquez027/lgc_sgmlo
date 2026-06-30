@@ -251,7 +251,6 @@ export default function ReportesPage() {
     const token = localStorage.getItem("sgml_token");
     try {
       if (modalMode === "crear") {
-        // Construir payload para creación
         const payload = {
           id_cliente: parseInt(formData.id_cliente),
           tipo: formData.tipo,
@@ -268,7 +267,6 @@ export default function ReportesPage() {
         });
         if (!res.ok) throw new Error("Error al crear");
       } else {
-        // Modo edición: solo enviamos id_alerta, titulo, mensaje
         const payload = {
           id_alerta: parseInt(formData.id_alerta),
           titulo: formData.titulo,
@@ -338,12 +336,15 @@ export default function ReportesPage() {
                   <option key={c.id_cliente} value={c.id_cliente}>{c.nombre_fantasia || c.razon_social}</option>
                 ))}
               </select>
+              {/* Botón de crear alerta comentado temporalmente */}
+              {/*
               <button 
                 onClick={abrirModalCrear}
                 className="bg-white text-lgc-primary hover:bg-slate-100 font-bold py-2.5 px-5 rounded-lg transition-all text-xs uppercase tracking-widest shadow-md"
               >
                 + Crear alerta
               </button>
+              */}
             </>
           )}
           {alertasNoLeidas.length > 0 && !esAdmin && (
@@ -360,12 +361,12 @@ export default function ReportesPage() {
 
       {/* Sección de Alertas */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">
+        <div className="bg-[#005F78] px-6 py-3 border-b border-[#004D62] flex justify-between items-center">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">
             Notificaciones recientes {esAdmin && `(${alertas.length})`}
           </h2>
           {esAdmin && (
-            <span className="text-[10px] text-slate-400 font-bold uppercase">
+            <span className="text-[10px] text-white/80 font-bold uppercase">
               {alertasNoLeidas.length} no leídas
             </span>
           )}
@@ -397,29 +398,38 @@ export default function ReportesPage() {
                       </Link>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 items-center">
                     {!alerta.leido && (
                       <button
                         onClick={() => marcarComoLeida(alerta.id_alerta)}
                         disabled={marcando}
-                        className="text-slate-400 hover:text-slate-600 text-xs font-bold uppercase whitespace-nowrap disabled:opacity-50"
+                        title="Marcar como leída"
+                        className="text-slate-400 hover:text-green-600 transition-colors disabled:opacity-50"
                       >
-                        Marcar leída
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
                       </button>
                     )}
                     {esAdmin && (
                       <>
                         <button
                           onClick={() => abrirModalEditar(alerta)}
-                          className="text-blue-500 hover:text-blue-700 text-xs font-bold uppercase"
+                          title="Editar alerta"
+                          className="text-slate-400 hover:text-blue-600 transition-colors"
                         >
-                          Editar
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
                         </button>
                         <button
                           onClick={() => eliminarAlerta(alerta.id_alerta)}
-                          className="text-red-500 hover:text-red-700 text-xs font-bold uppercase"
+                          title="Eliminar alerta"
+                          className="text-slate-400 hover:text-red-600 transition-colors"
                         >
-                          Eliminar
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       </>
                     )}
@@ -433,15 +443,15 @@ export default function ReportesPage() {
 
       {/* Sección de Vencimientos */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-slate-50 px-6 py-3 border-b border-slate-200">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Próximos vencimientos (30 días)</h2>
+        <div className="bg-[#005F78] px-6 py-3 border-b border-[#004D62]">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-white">Vencimientos</h2>
         </div>
         {vencimientos.length === 0 ? (
           <div className="p-8 text-center text-slate-400 italic">No hay vencimientos próximos ni vencidos.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="text-[10px] uppercase tracking-widest text-slate-500 bg-slate-50 border-b">
+              <thead className="text-[10px] uppercase tracking-widest text-white bg-[#005F78]">
                 <tr>
                   <th className="p-4">Matriz</th>
                   <th className="p-4">Ítem</th>
@@ -469,8 +479,8 @@ export default function ReportesPage() {
                     <tr key={`${v.id_matriz}-${v.id_item_matriz}`} className="hover:bg-slate-50 transition">
                       <td className="p-4 font-bold text-slate-700 text-sm">{v.nombre_matriz}</td>
                       <td className="p-4 text-slate-600 text-xs">{v.item_resumen || "Sin descripción"}</td>
-                      <td className="p-4 text-xs text-slate-600">{v.vencimiento_plazo.split('-').reverse().join('/')}</td>
-                      <td className="p-4">
+                      <td className="p-4 text-xs text-slate-600 whitespace-nowrap">{v.vencimiento_plazo.split('-').reverse().join('/')}</td>
+                      <td className="p-4 whitespace-nowrap">
                         <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border ${estadoClase}`}>
                           {estadoTexto}
                         </span>

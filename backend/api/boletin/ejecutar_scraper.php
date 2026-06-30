@@ -4,11 +4,9 @@ header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 
-// --- Robustez para scrapers largos (CABA puede tardar varios minutos) ---
-set_time_limit(0);              // sin límite de tiempo de ejecución PHP
+set_time_limit(0);
 ini_set('memory_limit', '512M');
-ignore_user_abort(true);        // si el browser corta, el scraper igual termina
-// IMPORTANTE: no mostrar errores como HTML; romperían el JSON de respuesta.
+ignore_user_abort(true);
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
@@ -19,39 +17,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 include_once '../../config/Database.php';
 
-/**
- * Devuelve SIEMPRE un JSON limpio y corta la ejecución.
- */
-function responder($arr, $http = 200)
-{
+function responder($arr, $http = 200) {
     http_response_code($http);
     echo json_encode($arr);
     exit();
 }
 
-/**
- * Extrae el último objeto JSON válido de una salida que puede venir mezclada
- * con logs, warnings o texto suelto. Los bots imprimen su resultado como un
- * objeto JSON por línea; nos quedamos con el último JSON parseable.
- */
-function extraer_json_de_salida($salida)
-{
-    if ($salida === null) {
-        return null;
-    }
+function extraer_json_de_salida($salida) {
+    if ($salida === null) return null;
     $lineas = preg_split('/\r\n|\r|\n/', trim($salida));
-    // Recorrer de atrás hacia adelante: el resultado final es lo último que imprime el bot.
     for ($i = count($lineas) - 1; $i >= 0; $i--) {
         $linea = trim($lineas[$i]);
-        if ($linea === '' || $linea[0] !== '{') {
-            continue;
-        }
+        if ($linea === '' || $linea[0] !== '{') continue;
         $obj = json_decode($linea, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($obj)) {
             return $obj;
         }
     }
-    // Fallback: intentar parsear toda la salida como un único JSON.
     $obj = json_decode(trim($salida), true);
     if (json_last_error() === JSON_ERROR_NONE && is_array($obj)) {
         return $obj;
@@ -75,7 +57,7 @@ try {
     $stmt->execute([':id' => $id_jurisdiccion]);
     $jur = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    error_log("=== EJECUTAR_SCRAPER: Error DB: " . $e->getMessage());
+    error_log("EJECUTAR_SCRAPER: Error DB: " . $e->getMessage());
     responder(["status" => "error", "message" => "Error de base de datos."], 500);
 }
 
@@ -95,43 +77,62 @@ if (!file_exists($ruta_script)) {
     responder(["status" => "error", "message" => "No se encontró el script '$nombre_script' para esta jurisdicción."], 404);
 }
 
-// --- Ejecución del bot ---
-// Separamos stdout (donde el bot imprime su JSON) de stderr (logs INFO/ERROR).
-// Antes se usaba 2>&1, que mezclaba los logs con el JSON y rompía el parseo.
-// Acá redirigimos stderr a un archivo de log y dejamos stdout limpio.
+// --- Determinar el intérprete de Python ---
+$python_cmd = 'python3';
+// Verificar si python3 existe en el sistema
+exec("which python3 2>/dev/null", $output, $return_code);
+if ($return_code !== 0) {
+    // Fallback a python
+    $python_cmd = 'python';
+    exec("which python 2>/dev/null", $output, $return_code);
+    if ($return_code !== 0) {
+        responder(["status" => "error", "message" => "No se encontró Python (python3 o python) en el sistema."], 500);
+    }
+}
+
 chdir($ruta_base);
 
-$log_stderr = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'scraper_' . $id_jurisdiccion . '_' . date('Ymd_His') . '.log';
+// --- Variables de entorno para el script Python ---
+// Leer el .env de backend para pasar las URLs al script
+$env_file = dirname(__FILE__) . '/../../.env';
+$env_vars = [];
+if (file_exists($env_file)) {
+    $lines = file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        if (strpos($line, '=') === false) continue;
+        list($name, $value) = explode('=', $line, 2);
+        $env_vars[trim($name)] = trim($value);
+    }
+}
 
-$comando = "python " . escapeshellarg($nombre_script)
+// Construir el comando con las variables de entorno
+$cmd_env = '';
+foreach ($env_vars as $key => $value) {
+    // Escapar valores para shell
+    $cmd_env .= "export $key=" . escapeshellarg($value) . "; ";
+}
+
+$comando = $cmd_env . $python_cmd . " " . escapeshellarg($nombre_script)
          . " " . escapeshellarg($id_jurisdiccion)
          . " " . escapeshellarg($jur['url_boletin'])
-         . " 2>" . escapeshellarg($log_stderr);
+         . " 2>&1"; // Redirigir stderr a stdout para capturar todo
 
-$salida_stdout = shell_exec($comando);
+error_log("EJECUTAR_SCRAPER: Comando: $comando");
 
-// Guardar muestra del stdout para depuración.
-error_log("=== EJECUTAR_SCRAPER ($nombre_script): stdout(0..500): " . substr((string)$salida_stdout, 0, 500));
-error_log("=== EJECUTAR_SCRAPER ($nombre_script): stderr log en: $log_stderr");
+$salida = shell_exec($comando);
+error_log("EJECUTAR_SCRAPER: Salida (primeros 1000 chars): " . substr($salida, 0, 1000));
 
-$resultado = extraer_json_de_salida($salida_stdout);
+$resultado = extraer_json_de_salida($salida);
 
 if ($resultado !== null) {
-    // El bot devolvió un JSON válido (success / warning / info / error).
     responder($resultado, 200);
 } else {
-    // No hubo JSON parseable: el bot murió antes de imprimir su resultado
-    // (timeout, crash de Selenium, OOM...). Devolvemos un JSON de error con
-    // pistas, pero SIN romper el contrato JSON con el frontend.
-    $stderr_tail = '';
-    if (is_file($log_stderr)) {
-        $contenido = file_get_contents($log_stderr);
-        $stderr_tail = substr(trim($contenido), -800); // últimas líneas del log
-    }
-    error_log("=== EJECUTAR_SCRAPER ($nombre_script): SIN JSON. stderr tail: " . $stderr_tail);
+    error_log("EJECUTAR_SCRAPER: No se pudo parsear JSON. Salida completa: $salida");
     responder([
-        "status"  => "error",
-        "message" => "El scraper no devolvió un resultado válido. Es posible que el proceso se haya interrumpido (revisar el log del servidor).",
-        "detalle" => $stderr_tail
+        "status" => "error",
+        "message" => "El scraper no devolvió un resultado JSON válido. Revisa los logs.",
+        "debug" => substr($salida, 0, 500)
     ], 200);
 }
+?>
