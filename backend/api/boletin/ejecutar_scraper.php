@@ -78,17 +78,7 @@ if (!file_exists($ruta_script)) {
 }
 
 // --- Determinar el intérprete de Python ---
-$python_cmd = 'python3';
-// Verificar si python3 existe en el sistema
-exec("which python3 2>/dev/null", $output, $return_code);
-if ($return_code !== 0) {
-    // Fallback a python
-    $python_cmd = 'python';
-    exec("which python 2>/dev/null", $output, $return_code);
-    if ($return_code !== 0) {
-        responder(["status" => "error", "message" => "No se encontró Python (python3 o python) en el sistema."], 500);
-    }
-}
+$python_cmd = '/var/www/matrizonline/backend/.venv/bin/python';
 
 chdir($ruta_base);
 
