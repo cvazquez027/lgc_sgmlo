@@ -5,7 +5,12 @@ class EnvLoader {
     public static function load($path) {
         if (self::$loaded) return;
 
-        $file = rtrim($path, '/');
+        // Asegurar que $path es un directorio
+        if (is_file($path)) {
+            $path = dirname($path);
+        }
+
+        $file = rtrim($path, '/') . '/.env';
         if (!file_exists($file)) {
             error_log("EnvLoader: .env no encontrado en $file");
             return;
@@ -20,7 +25,7 @@ class EnvLoader {
             $name = trim($name);
             $value = trim($value);
 
-            // Si el valor tiene comillas, las quitamos
+            // Quitar comillas si existen
             if (preg_match('/^"(.*)"$/', $value, $matches)) {
                 $value = $matches[1];
             }

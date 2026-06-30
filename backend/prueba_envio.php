@@ -4,9 +4,9 @@ error_reporting(E_ALL);
 
 echo "=== PRUEBA DE ENVÍO SMTP ===\n";
 
-// Cargar EnvLoader
+// Cargar EnvLoader desde config/
 require_once __DIR__ . '/config/EnvLoader.php';
-EnvLoader::load(__DIR__);
+EnvLoader::load(__DIR__);  // <-- Pasar el directorio backend
 
 // Mostrar configuración
 echo "SMTP_HOST: " . getenv('SMTP_HOST') . "\n";

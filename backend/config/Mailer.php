@@ -1,11 +1,18 @@
 <?php
-// Carga manual de PHPMailer (igual que en process-form.php)
-require_once __DIR__ . '/../vendor/phpmailer/src/PHPMailer.php';
-require_once __DIR__ . '/../vendor/phpmailer/src/SMTP.php';
-require_once __DIR__ . '/../vendor/phpmailer/src/Exception.php';
+// Asegurar que se carga PHPMailer desde la ruta correcta
+$phpmailer_base = __DIR__ . '/../vendor/phpmailer/src/';
+
+if (!file_exists($phpmailer_base . 'PHPMailer.php')) {
+    error_log("Mailer: PHPMailer no encontrado en " . $phpmailer_base);
+    die("Error: PHPMailer no está instalado. Contacte al administrador.");
+}
+
+require_once $phpmailer_base . 'PHPMailer.php';
+require_once $phpmailer_base . 'SMTP.php';
+require_once $phpmailer_base . 'Exception.php';
 require_once __DIR__ . '/EnvLoader.php';
 
-// Cargar variables de entorno
+// Cargar .env
 EnvLoader::load(__DIR__ . '/..');
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -16,7 +23,6 @@ class Mailer {
     private $mail;
 
     private function __construct() {
-        // Leer variables de entorno (igual que process-form.php)
         $smtp_host = getenv('SMTP_HOST') ?: 'smtp.hostinger.com';
         $smtp_user = getenv('SMTP_USER') ?: 'info@lamas-gc.com';
         $smtp_pass = getenv('SMTP_PASS') ?: 'L03g01c02.2026!';
