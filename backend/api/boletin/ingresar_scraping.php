@@ -76,7 +76,7 @@ try {
     $q_cat = "INSERT INTO categoria_norma_bo (id_norma_bo, id_categoria) VALUES (:id_nbo, :id_cat)";
     $stmt_cat = $db->prepare($q_cat);
 
-    // <<< MODIFICACIÓN 1: Cargar combinaciones únicas existentes (norma_bo + norma)
+    // Combinaciones existentes (para evitar duplicados)
     $combinaciones_existentes = [];
     $stmt_comb = $db->prepare("
         SELECT CONCAT(id_tipo_norma, '|', numero, '|', anio, '|', id_emisor_norma) as clave 
@@ -89,9 +89,8 @@ try {
     while ($row = $stmt_comb->fetchColumn()) {
         $combinaciones_existentes[$row] = true;
     }
-    // Fin de la modificación
 
-    // Dedup por URL y por id_externo (existente)
+    // URLs existentes para dedup
     $urls_existentes = [];
     $stmt_urls = $db->prepare("SELECT url_norma FROM norma_bo UNION SELECT url_norma FROM norma");
     $stmt_urls->execute();
@@ -112,11 +111,20 @@ try {
     $omitidas_sin_categoria = 0;
     $errores = 0;
     $total_categorias_asignadas = 0;
+    $errores_detalles = [];
 
     foreach ($normas as $index => $norma) {
         try {
+            // --- Validar campos obligatorios ---
+            if (!isset($norma['tipo_norma_desc']) || empty($norma['tipo_norma_desc'])) {
+                throw new Exception("Tipo de norma vacío en índice $index");
+            }
+            if (!isset($norma['nombre_emisor']) || empty($norma['nombre_emisor'])) {
+                throw new Exception("Emisor vacío en índice $index");
+            }
+
             // --- TIPO ---
-            $tipo_norma_desc = isset($norma['tipo_norma_desc']) ? strtoupper(trim($norma['tipo_norma_desc'])) : 'OTRO';
+            $tipo_norma_desc = strtoupper(trim($norma['tipo_norma_desc']));
             if (isset($cache_tipos[$tipo_norma_desc])) {
                 $id_tipo = $cache_tipos[$tipo_norma_desc];
             } else {
@@ -127,16 +135,18 @@ try {
 
             // --- EMISOR ---
             $id_jur = isset($norma['id_jurisdiccion']) ? (int)$norma['id_jurisdiccion'] : $id_jurisdiccion;
-            $emisor_desc = isset($norma['nombre_emisor']) ? trim($norma['nombre_emisor']) : '';
+            $emisor_desc = trim($norma['nombre_emisor']);
             if ($emisor_desc === '') {
                 $emisor_desc = 'PODER EJECUTIVO DE LA CIUDAD DE BUENOS AIRES';
             }
             $id_emisor_final = NormativaHelper::resolverEmisor($db, $id_jur, $emisor_desc, $cache_emisores);
+            if (!$id_emisor_final) {
+                throw new Exception("No se pudo resolver el emisor '$emisor_desc' para índice $index");
+            }
 
             // --- CAMPOS DE LA NORMA ---
             $numero = isset($norma['numero']) ? htmlspecialchars(strip_tags($norma['numero'])) : 'S/N';
             $anio = isset($norma['anio']) ? filter_var($norma['anio'], FILTER_VALIDATE_INT) : date('Y');
-            // Asegurar que nunca sean null (ya tienen valores por defecto)
             if ($numero === '' || $numero === null) $numero = 'S/N';
             if ($anio === '' || $anio === null || $anio === false) $anio = (int)date('Y');
 
@@ -145,39 +155,17 @@ try {
             $sintesis = isset($norma['sintesis']) ? htmlspecialchars(strip_tags($norma['sintesis'])) : '';
             $texto_completo = isset($norma['texto_completo']) ? (string)$norma['texto_completo'] : '';
 
-            // --- Verificación de duplicados por URL e id_externo (existente) ---
-            $id_externo = isset($norma['id_externo']) && $norma['id_externo'] !== ''
-                ? (string)$norma['id_externo'] : '';
-
-            if ($id_externo !== '') {
-                $clave_dedup = 'ext:' . $id_externo;
-                if (isset($urls_existentes[$clave_dedup])) {
-                    $omitidas++;
-                    continue;
-                }
-            } else {
-                if (empty($url)) {
-                    $omitidas++;
-                    continue;
-                }
-                if (isset($urls_existentes[$url])) {
-                    $omitidas++;
-                    continue;
-                }
+            // --- Verificación de duplicados por URL ---
+            if (!empty($url) && isset($urls_existentes[$url])) {
+                $omitidas++;
+                continue;
             }
 
-            // <<< MODIFICACIÓN 2: Verificar combinación única antes de insertar
+            // --- Verificar combinación única ---
             $clave_unica = "{$id_tipo}|{$numero}|{$anio}|{$id_emisor_final}";
             if (isset($combinaciones_existentes[$clave_unica])) {
                 $omitidas++;
                 continue;
-            }
-            // Fin de modificación
- 
-            if ($id_externo == '91548') {
-                error_log("=== DEBUG: texto_a_clasificar = " . $texto_a_clasificar);
-                error_log("=== DEBUG: sintesis = " . $sintesis);
-                error_log("=== DEBUG: texto_completo = " . $texto_completo);
             }
 
             // --- Categorización ---
@@ -197,19 +185,18 @@ try {
             $stmt_norma->bindParam(":fecha", $fecha);
             $stmt_norma->bindParam(":sintesis", $sintesis);
             $stmt_norma->bindParam(":url", $url);
-            $stmt_norma->execute();
+            if (!$stmt_norma->execute()) {
+                $errorInfo = $stmt_norma->errorInfo();
+                throw new Exception("Error en INSERT: " . $errorInfo[2]);
+            }
 
             $id_norma_bo = $db->lastInsertId();
             $procesadas++;
 
             // Marcar como ya visto
-            if ($id_externo !== '') {
-                $urls_existentes['ext:' . $id_externo] = true;
-            }
             if (!empty($url)) {
                 $urls_existentes[$url] = true;
             }
-            // También agregar a combinaciones_existentes para evitar duplicados en la misma corrida
             $combinaciones_existentes[$clave_unica] = true;
 
             // Insertar categorías
@@ -222,8 +209,9 @@ try {
 
         } catch (Exception $e) {
             $errores++;
-            error_log("=== INGRESAR_SCRAPING: Error en norma $index: " . $e->getMessage());
-            continue;
+            $errores_detalles[] = "Índice $index: " . $e->getMessage();
+            error_log("INGRESAR_SCRAPING: Error en norma $index: " . $e->getMessage());
+            // Continuar con la siguiente norma
         }
     }
 
@@ -243,6 +231,9 @@ try {
     }
 
     $mensaje = "Se procesaron $procesadas normas nuevas. Duplicados omitidos: $omitidas. Sin categoría omitidas: $omitidas_sin_categoria. Errores: $errores. Categorías asignadas: $total_categorias_asignadas.";
+    if ($errores > 0) {
+        $mensaje .= " Primeros errores: " . implode('; ', array_slice($errores_detalles, 0, 5));
+    }
     http_response_code(200);
     echo json_encode([
         "mensaje" => $mensaje,
@@ -250,13 +241,13 @@ try {
         "omitidas" => $omitidas,
         "omitidas_sin_categoria" => $omitidas_sin_categoria,
         "errores" => $errores,
-        "categorias_asignadas" => $total_categorias_asignadas
+        "categorias_asignadas" => $total_categorias_asignadas,
+        "detalle_errores" => $errores_detalles // opcional, para depuración
     ]);
 
 } catch (Exception $e) {
     $db->rollBack();
-    error_log("=== INGRESAR_SCRAPING: ERROR CRÍTICO: " . $e->getMessage());
-    error_log("=== INGRESAR_SCRAPING: Trace: " . $e->getTraceAsString());
+    error_log("INGRESAR_SCRAPING: ERROR CRÍTICO: " . $e->getMessage());
     http_response_code(500);
     echo json_encode(["mensaje" => "Error al guardar en la BD.", "error" => $e->getMessage()]);
 }
