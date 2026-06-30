@@ -5,7 +5,7 @@ class EnvLoader {
     public static function load($path) {
         if (self::$loaded) return;
 
-        $file = rtrim($path, '/') . '/.env';
+        $file = '/../' . rtrim($path, '/');
         if (!file_exists($file)) {
             error_log("EnvLoader: .env no encontrado en $file");
             return;
