@@ -19,7 +19,7 @@ class Mailer {
         // Leer variables de entorno (igual que process-form.php)
         $smtp_host = getenv('SMTP_HOST') ?: 'smtp.hostinger.com';
         $smtp_user = getenv('SMTP_USER') ?: 'info@lamas-gc.com';
-        $smtp_pass = getenv('SMTP_PASS') ?: '';
+        $smtp_pass = getenv('SMTP_PASS') ?: 'L03g01c02.2026';
         $smtp_port = getenv('SMTP_PORT') ?: 465;
 
         $this->mail = new PHPMailer(true);
