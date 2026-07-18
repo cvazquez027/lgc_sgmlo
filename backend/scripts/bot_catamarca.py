@@ -61,6 +61,7 @@ import io
 import sys
 import json
 import argparse
+import time
 import requests
 from datetime import datetime
 
@@ -98,13 +99,41 @@ URL_GUARDAR_NORMAS = get_env_clean(
 
 API_BASE = 'https://api-portal.catamarca.gob.ar'
 API_BOLETINES = API_BASE + '/api/v1/boletin_oficial/'
+PORTAL_BASE = 'https://portal.catamarca.gob.ar'
+PORTAL_BOLETIN = PORTAL_BASE + '/boletin/'
 
+# El portal tiene una capa de detección de bots adelante. Desde una IP
+# residencial no molesta, pero desde el datacenter de un VPS es habitual que
+# devuelva 403 si la petición no se parece a la de un navegador real. Por eso
+# mandamos el juego completo de cabeceras que emite Chrome, incluidos Referer y
+# Origin (la API se consume desde el portal, así que una petición legítima
+# SIEMPRE los trae) y las sec-ch-* / sec-fetch-*.
 HEADERS_WEB = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                   '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'),
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    'Accept-Language': 'es-AR,es;q=0.9,es-ES;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': PORTAL_BOLETIN,
+    'Origin': PORTAL_BASE,
     'Connection': 'keep-alive',
+    'sec-ch-ua': '"Chromium";v="126", "Not:A-Brand";v="24", "Google Chrome";v="126"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
 }
+
+# Cabeceras para pedir el PDF: ahí sí navegamos a un documento, no a una API.
+HEADERS_DESCARGA = dict(HEADERS_WEB, **{
+    'Accept': 'application/pdf,application/octet-stream,*/*',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+})
+
+REINTENTOS = 3
+ESPERA_ENTRE_REINTENTOS = 4   # segundos, se multiplica por el número de intento
 
 MAX_TEXTO_COMPLETO = 20000   # mismo tope que bot_nacion.py
 MAX_SINTESIS = 700
@@ -155,6 +184,87 @@ def limpiar_texto(texto):
     if not texto:
         return ""
     return re.sub(r'\s+', ' ', texto).strip()
+
+
+# ---------------------------------------------------------------------------
+# CAPA DE RED
+# ---------------------------------------------------------------------------
+_SESION = None
+
+
+def obtener_sesion():
+    """
+    Sesión reutilizada para todas las peticiones al portal.
+
+    Antes de tocar la API hace una visita al portal para recoger las cookies que
+    entrega la capa de protección. Un navegador real siempre llega a la API
+    después de haber cargado la página, y algunos filtros validan justamente
+    eso. Si la visita falla no abortamos: puede que no haga falta.
+    """
+    global _SESION
+    if _SESION is not None:
+        return _SESION
+    s = requests.Session()
+    s.headers.update(HEADERS_WEB)
+    try:
+        s.get(PORTAL_BOLETIN, timeout=20,
+              headers={'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                       'Sec-Fetch-Dest': 'document',
+                       'Sec-Fetch-Mode': 'navigate',
+                       'Sec-Fetch-Site': 'none'})
+    except Exception as e:
+        print(f"AVISO: no se pudo precargar el portal ({e}); se sigue igual.", file=sys.stderr)
+    _SESION = s
+    return s
+
+
+def _describir_bloqueo(resp):
+    """
+    Ante un 4xx, identifica quién está bloqueando. Un 403 puede venir de la
+    aplicación o de un WAF/CDN intermedio, y la diferencia cambia por completo
+    qué hay que hacer: lo primero se arregla en el código, lo segundo no.
+    """
+    pistas = []
+    for cabecera in ('Server', 'CF-Ray', 'CF-Mitigated', 'X-Sucuri-ID', 'X-Powered-By'):
+        valor = resp.headers.get(cabecera)
+        if valor:
+            pistas.append(f"{cabecera}={valor}")
+    cuerpo = ''
+    try:
+        cuerpo = limpiar_texto(re.sub(r'<[^>]+>', ' ', resp.text or ''))[:220]
+    except Exception:
+        pass
+    if resp.headers.get('CF-Ray') or 'cloudflare' in (resp.headers.get('Server', '')).lower():
+        pistas.append("=> parece Cloudflare: es un bloqueo por reputación de IP, "
+                      "no algo que se arregle con cabeceras")
+    detalle = '; '.join(pistas)
+    if cuerpo:
+        detalle += f" | cuerpo: {cuerpo}"
+    return detalle
+
+
+def get_con_reintentos(url, headers=None, params=None, timeout=45, intentos=REINTENTOS):
+    """GET con reintentos y, si falla, un mensaje que explique el porqué."""
+    sesion = obtener_sesion()
+    ultimo = None
+    for intento in range(1, intentos + 1):
+        try:
+            resp = sesion.get(url, headers=headers, params=params, timeout=timeout)
+            if resp.status_code == 200:
+                return resp
+            ultimo = RuntimeError(
+                f"HTTP {resp.status_code} en {url} :: {_describir_bloqueo(resp)}")
+            # 4xx que no sea 403/429 no se arregla reintentando
+            if resp.status_code not in (403, 408, 429) and resp.status_code < 500:
+                break
+        except requests.RequestException as e:
+            ultimo = RuntimeError(f"Error de red en {url}: {e}")
+        if intento < intentos:
+            espera = ESPERA_ENTRE_REINTENTOS * intento
+            print(f"AVISO: intento {intento}/{intentos} falló; reintento en {espera}s.",
+                  file=sys.stderr)
+            time.sleep(espera)
+    raise ultimo
 
 
 def normalizar_emisor(emisor):
@@ -314,8 +424,7 @@ def obtener_boletin_mas_reciente():
     """
     params = {'ordering': '-fecha', 'page_size': 20, 'include': 'instrumento'}
     try:
-        res = requests.get(API_BOLETINES, params=params, headers=HEADERS_WEB, timeout=45)
-        res.raise_for_status()
+        res = get_con_reintentos(API_BOLETINES, params=params, timeout=45)
         payload = res.json()
     except Exception as e:
         raise RuntimeError(f"No se pudo consultar la API del boletín: {e}")
@@ -793,8 +902,7 @@ def _main():
                 salida("info", f"Boletín del {fecha_boletin} ya fue procesado")
 
         try:
-            resp = requests.get(url_pdf, headers=HEADERS_WEB, timeout=120)
-            resp.raise_for_status()
+            resp = get_con_reintentos(url_pdf, headers=HEADERS_DESCARGA, timeout=120)
             origen = resp.content
         except Exception as e:
             salida("error", f"No se pudo descargar el PDF: {e}")
@@ -871,4 +979,4 @@ if __name__ == '__main__':
     except SystemExit:
         raise
     except Exception as e:
-        salida("error", str(e)) 
+        salida("error", str(e))
