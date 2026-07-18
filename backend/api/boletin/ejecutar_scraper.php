@@ -132,14 +132,35 @@ if (file_exists($env_file)) {
         if (strpos(trim($line), '#') === 0) continue;
         if (strpos($line, '=') === false) continue;
         list($name, $value) = explode('=', $line, 2);
-        $env_vars[trim($name)] = trim($value);
+        $name  = trim($name);
+        $value = trim($value);
+        // Quitar comillas envolventes si las hubiera (VAR="algo" / VAR='algo').
+        if (strlen($value) >= 2) {
+            $ini = $value[0];
+            $fin = $value[strlen($value) - 1];
+            if (($ini === '"' && $fin === '"') || ($ini === "'" && $fin === "'")) {
+                $value = substr($value, 1, -1);
+            }
+        }
+        if ($name !== '') {
+            $env_vars[$name] = $value;
+        }
     }
 }
 
-$cmd_env = '';
+// --- Variables de entorno para el proceso hijo ---
+// ANTES esto se hacía prefijando el comando con "export CLAVE=valor; ", que es
+// sintaxis de bash: funciona en el VPS (Linux) pero en Windows cmd.exe no
+// conoce 'export' ni ';', así que el comando moría antes de invocar a Python y
+// shell_exec devolvía vacío (de ahí el "El scraper no devolvió un resultado
+// válido", que además afectaba a TODOS los bots por igual).
+//
+// putenv() modifica el entorno del propio proceso PHP y los procesos hijos lo
+// heredan, así que no hace falta sintaxis de shell y el archivo sirve igual en
+// Windows y en Linux. Además el bot ya lee estas mismas variables por su cuenta
+// con load_dotenv(), así que esto es refuerzo, no requisito.
 foreach ($env_vars as $key => $value) {
-    // Escapar valores para shell
-    $cmd_env .= "export $key=" . escapeshellarg($value) . "; ";
+    putenv("$key=$value");
 }
 
 // --- Ejecución del bot ---
@@ -148,9 +169,17 @@ foreach ($env_vars as $key => $value) {
 // acá redirigimos stderr a un archivo de log y dejamos stdout limpio.
 $log_stderr = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'scraper_' . $id_jurisdiccion . '_' . date('Ymd_His') . '.log';
 
-$comando = $cmd_env . escapeshellarg($python_cmd) . " " . escapeshellarg($nombre_script)
-         . " " . escapeshellarg($id_jurisdiccion)
-         . " " . escapeshellarg($jur['url_boletin'])
+// El intérprete se entrecomilla sólo si hace falta: en Windows, un comando que
+// empieza con un token entrecomillado y lleva más comillas después puede ser
+// mal interpretado por cmd.exe. Si es un simple 'python' / 'python3' no se toca;
+// si es una ruta absoluta (el venv de producción) sí se escapa.
+$python_token = (strpbrk($python_cmd, " \t") === false)
+    ? $python_cmd
+    : escapeshellarg($python_cmd);
+
+$comando = $python_token . " " . escapeshellarg($nombre_script)
+         . " " . escapeshellarg((string)$id_jurisdiccion)
+         . " " . escapeshellarg((string)$jur['url_boletin'])
          . " 2>" . escapeshellarg($log_stderr);
 
 error_log("=== EJECUTAR_SCRAPER: Comando: $comando");

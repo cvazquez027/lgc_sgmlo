@@ -336,7 +336,7 @@ const SortableConfigItem = ({ col, onRemove }: any) => {
   );
 };
 
-// COMPONENTE SORTABLE ROW (MODIFICADO)
+// COMPONENTE SORTABLE ROW
 const SortableRow = ({
   item,
   columnasVisibles,
@@ -354,7 +354,7 @@ const SortableRow = ({
   onSolicitarNuevaNorma,
   idEstablecimiento,
   campoEncabezado,
-  showActionButtons  // ← NUEVA PROP
+  showActionButtons
 }: any) => {
   const [isExpanded, setIsExpanded] = useState(false);
   useEffect(() => { setIsExpanded(forceExpand); }, [forceExpand]);
@@ -508,7 +508,6 @@ const SortableRow = ({
           {!isExpanded && item.color_hex && (
              <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: `#${item.color_hex}` }} title="Estado"></div>
           )}
-          {/* --- BOTONES DE ELIMINAR Y COPIAR (MODIFICADO) --- */}
           {showActionButtons && canEdit && (
             <div className="flex gap-1">
               <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id_item_matriz); }} className="text-slate-400 hover:text-red-500 p-1" title="Eliminar ítem">
@@ -621,7 +620,7 @@ export default function WorkspaceMatrizPage() {
   const [campoEncabezadoItem, setCampoEncabezadoItem] = useState<string>('normas');
   const [opcionesEncabezado, setOpcionesEncabezado] = useState<{ id: string; label: string }[]>([]);
   const [columnasEditablesPublicada, setColumnasEditablesPublicada] = useState<string[]>([]);
-  
+
   // NUEVO: Modal de nueva normativa
   const [showNuevaNormaModal, setShowNuevaNormaModal] = useState(false);
   const [cargandoNuevaNorma, setCargandoNuevaNorma] = useState(false);
@@ -641,20 +640,34 @@ export default function WorkspaceMatrizPage() {
   const [isUserCliente, setIsUserCliente] = useState(false);
   const [usuarioId, setUsuarioId] = useState<number | null>(null);
 
+  // --- NUEVO: Estado para búsqueda de emisor en el modal ---
+  const [searchEmisor, setSearchEmisor] = useState("");
+  const [isEmisorOpen, setIsEmisorOpen] = useState(false);
+  const emisorContainerRef = useRef<HTMLDivElement>(null);
+
+  // Efecto para cerrar el desplegable de emisor al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emisorContainerRef.current && !emisorContainerRef.current.contains(event.target as Node)) {
+        setIsEmisorOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const raw = localStorage.getItem("sgml_cliente_id");
     setIsUserCliente(!!(raw && raw !== "null"));
-    
+
     const token = localStorage.getItem("sgml_token");
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        // Intentar con diferentes nombres de campo
         let id = payload.id_usuario || payload.user_id || payload.id || payload.userId || null;
         if (id) {
           setUsuarioId(Number(id));
         } else {
-          // Fallback: buscar en sgml_user
           const userStr = localStorage.getItem("sgml_user");
           if (userStr) {
             const userObj = JSON.parse(userStr);
@@ -665,7 +678,6 @@ export default function WorkspaceMatrizPage() {
         }
       } catch (e) {
         console.error("Error decodificando token", e);
-        // Fallback: intentar desde sgml_user
         try {
           const userStr = localStorage.getItem("sgml_user");
           if (userStr) {
@@ -725,7 +737,6 @@ export default function WorkspaceMatrizPage() {
       setIdEstablecimiento(info.id_cliente_establecimiento);
       setMostrarCumplimiento(info.mostrar_cumplimiento == 1);
       setCampoEncabezadoItem(info.campo_encabezado_item || 'normas');
-      // --- Cargar columnas editables en estado publicada (parseando JSON) ---
       let columnasEditables = [];
       if (info.columnas_editables_publicada) {
         try {
@@ -937,14 +948,13 @@ export default function WorkspaceMatrizPage() {
       method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ id_matriz: idMatriz, columnas: tempConfig })
     });
-    // Guardar configuración de visualización
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/guardar_config_visualizacion.php`, {
       method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({
         id_matriz: idMatriz,
         mostrar_cumplimiento: mostrarCumplimiento ? 1 : 0,
         campo_encabezado_item: campoEncabezadoItem,
-        columnas_editables_publicada: columnasEditablesPublicada // NUEVO
+        columnas_editables_publicada: columnasEditablesPublicada
       })
     });
     setConfigColumnas(tempConfig);
@@ -1187,6 +1197,7 @@ export default function WorkspaceMatrizPage() {
     }));
   };
 
+  // Función para abrir el modal de nueva norma
   const abrirNuevaNormaModal = (itemParaEditar: any = null) => {
     itemEnEdicionRef.current = itemParaEditar;
     setItemEnEdicion(itemParaEditar);
@@ -1201,9 +1212,17 @@ export default function WorkspaceMatrizPage() {
       origen_carga: "Manual",
       fecha_publicacion: ""
     });
+    if (itemParaEditar?.id_emisor_norma) {
+      const emisor = emisoresNorma.find(e => e.id === itemParaEditar.id_emisor_norma);
+      if (emisor) setSearchEmisor(emisor.descripcion);
+    } else {
+      setSearchEmisor("");
+    }
+    setIsEmisorOpen(false);
     setShowNuevaNormaModal(true);
   };
 
+  // Función para guardar la nueva norma
   const handleGuardarNuevaNorma = async () => {
     if (!nuevaNormaForm.id_tipo_norma || !nuevaNormaForm.numero || !nuevaNormaForm.anio || !nuevaNormaForm.id_emisor_norma) {
       toast.showToast("Atención", "Complete los campos obligatorios: Tipo, Número, Año y Emisor.", "warning");
@@ -1296,6 +1315,8 @@ export default function WorkspaceMatrizPage() {
       }
 
       setShowNuevaNormaModal(false);
+      setSearchEmisor("");
+      setIsEmisorOpen(false);
     } catch (error: any) {
       console.error(error);
       toast.showToast("Error", error.message, "error");
@@ -1353,11 +1374,9 @@ export default function WorkspaceMatrizPage() {
 
   const COLS_CUMPLIMIENTO_IDS = ['evidencia_cumplimiento', 'id_responsable_establecimiento', 'verificacion_cumplimiento', 'estado', 'vencimiento_plazo', 'fecha_cumplimiento', 'obs_estado_cumplimiento', 'adjuntos'];
   const puedeEditarCampo = (colId: string): boolean => {
-    if (estadoMatriz === 3) return false; // Archivada: solo lectura
-    if (estadoMatriz === 1) return true;  // Borrador: todo editable
-    // Publicada: usar configuración de columnas editables
+    if (estadoMatriz === 3) return false;
+    if (estadoMatriz === 1) return true;
     if (estadoMatriz === 2) {
-      // Si no hay configuración, usar el comportamiento anterior (columnas de cumplimiento)
       const defaultColumns = COLS_CUMPLIMIENTO_IDS;
       const editableColumns = columnasEditablesPublicada.length > 0 ? columnasEditablesPublicada : defaultColumns;
       return editableColumns.includes(colId) || colId.startsWith('custom_');
@@ -1434,7 +1453,6 @@ export default function WorkspaceMatrizPage() {
             </div>
           </div>
 
-          {/* NUEVO BLOQUE: Columnas editables en estado Publicada */}
           {canEdit("matriz") && (
           <div className="mt-6 pt-6 border-t border-slate-200">
             <h4 className="text-xs font-bold uppercase text-slate-600 tracking-widest mb-3">Columnas editables cuando la matriz está publicada</h4>
@@ -1717,7 +1735,6 @@ export default function WorkspaceMatrizPage() {
            </div>
         </div>
 
-        {/* BOTÓN NUEVA FILA (MODIFICADO) */}
         {canEdit("matriz") && puedeAgregarFilas && !isUserCliente && (
           <div className="sticky top-14 z-40 mb-4"><button onClick={() => { setShowQuickAdd(true); setTimeout(() => { if (quickAddFormRef.current && mainContainerRef.current) { const container = mainContainerRef.current; const element = quickAddFormRef.current; const elementRect = element.getBoundingClientRect(); const containerRect = container.getBoundingClientRect(); container.scrollTop += elementRect.top - containerRect.top - 120; } }, 100); }} className="w-full bg-[#e6f7f5] hover:bg-[#ccefec] text-[#005F78] font-bold py-3 rounded-xl transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[#005F78]/20 shadow-sm">+ Nueva Fila</button></div>
         )}
@@ -1762,7 +1779,7 @@ export default function WorkspaceMatrizPage() {
                       onSolicitarNuevaNorma={abrirNuevaNormaModal}
                       idEstablecimiento={idEstablecimiento}
                       campoEncabezado={campoEncabezadoItem}
-                      showActionButtons={estadoMatriz === 1 && !isUserCliente}  // ← NUEVA PROP
+                      showActionButtons={estadoMatriz === 1 && !isUserCliente}
                     />
                   ))
                 )}
@@ -1775,20 +1792,17 @@ export default function WorkspaceMatrizPage() {
         {showScrollBottom && (<button onClick={scrollToBottom} className="fixed bottom-6 right-14 bg-lgc-primary text-white p-3 rounded-full shadow-lg hover:bg-[#006A8A] transition-all z-50" title="Ir abajo"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg></button>)}
       </div>
 
-      {/* MODAL EVIDENCIAS (MODIFICADO) */}
+      {/* MODAL EVIDENCIAS */}
       {itemEvidencia && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl p-6 border border-slate-200">
             <h3 className="text-lg font-bold text-lgc-primary uppercase mb-4 border-b border-slate-100 pb-3 flex items-center gap-3"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg> Repositorio de Evidencias <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-xs ml-2">Ítem #{itemEvidencia.id_item_matriz}</span></h3>
             <div className="mb-6 bg-slate-50 p-5 rounded-xl border border-slate-200 border-dashed"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Subir nuevo documento probatorio</label><div className="flex gap-3 items-center"><input ref={fileInputRef} type="file" className="flex-1 text-xs file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-lgc-primary/10 file:text-lgc-primary hover:file:bg-lgc-primary/20 transition-all cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEvidenciaFile(e.target.files?.[0] || null)} /><button onClick={handleUploadEvidencia} disabled={!evidenciaFile || isUploading} className="bg-lgc-accent hover:bg-[#D97920] text-white px-6 py-2.5 text-xs font-bold rounded-lg shadow-md disabled:opacity-50 transition-colors uppercase tracking-widest flex items-center gap-2">{isUploading ? <><svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Subiendo</> : 'Adjuntar'}</button></div></div>
             <div className="space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar pr-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Archivos Vinculados</label>{itemEvidencia.documentos_vinculados?.length === 0 ? (<div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-100"><p className="text-xs text-slate-400 italic">No hay evidencias cargadas para este ítem.</p></div>) : itemEvidencia.documentos_vinculados?.map((doc: any) => (<div key={doc.id_documentacion} className="flex justify-between items-center p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-lgc-primary transition-colors group"><div className="flex items-center gap-3 overflow-hidden"><div className="w-8 h-8 rounded bg-blue-50 text-blue-500 flex items-center justify-center shrink-0"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></div><a href={`${process.env.NEXT_PUBLIC_IMG_URL}/${doc.path_archivos}`} target="_blank" className="text-xs text-slate-700 font-bold hover:text-lgc-primary truncate transition-colors" title={doc.nombre_original}>{doc.nombre_original}</a></div>
-                  {/* BOTÓN ELIMINAR ARCHIVO (CONDICIONAL) */}
                   {(() => {
-                    // Convertir ambos a number para comparación segura
                     const idUsuario = Number(usuarioId);
                     const idPropietario = Number(doc.id_usuario_subida);
                     const puedeEliminar = !isUserCliente || (idUsuario === idPropietario);
-                    
                     return puedeEliminar ? (
                       <button onClick={() => handleBorrarEvidencia(doc.id_documentacion)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors shrink-0" title="Eliminar archivo">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -1801,23 +1815,86 @@ export default function WorkspaceMatrizPage() {
         </div>
       )}
 
+      {/* MODAL NUEVA NORMA - CON BUSCADOR DE EMISOR EN VIVO */}
       {showNuevaNormaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0"><h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">Cargar nueva normativa</h2><button onClick={() => setShowNuevaNormaModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button></div>
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0"><h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">Cargar nueva normativa</h2><button onClick={() => { setShowNuevaNormaModal(false); setSearchEmisor(""); setIsEmisorOpen(false); }} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button></div>
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Tipo de Norma *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_tipo_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_tipo_norma: e.target.value})}><option value="">Seleccione...</option>{tiposNorma.map((t: any) => <option key={t.id} value={t.id}>{t.descripcion}</option>)}</select></div>
                 <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Número *</label><input type="text" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.numero} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, numero: e.target.value})} /></div>
                 <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Año *</label><input type="number" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.anio} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, anio: e.target.value})} /></div>
-                <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_emisor_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_emisor_norma: e.target.value})}><option value="">Seleccione...</option>{emisoresNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select></div>
+
+                {/* NUEVO CAMPO EMISOR CON BUSCADOR EN VIVO Y CIERRE AUTOMÁTICO */}
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor *</label>
+                  <div className="relative" ref={emisorContainerRef}>
+                    <input
+                      type="text"
+                      className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm"
+                      placeholder="Buscar emisor..."
+                      value={searchEmisor}
+                      onChange={(e) => {
+                        setSearchEmisor(e.target.value);
+                        setNuevaNormaForm({...nuevaNormaForm, id_emisor_norma: ""});
+                        setIsEmisorOpen(true);
+                      }}
+                      onFocus={() => {
+                        if (!searchEmisor) {
+                          setIsEmisorOpen(true);
+                        }
+                      }}
+                    />
+                    {isEmisorOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        {emisoresNorma
+                          .filter((e: any) =>
+                            e.descripcion.toLowerCase().includes(searchEmisor.toLowerCase())
+                          )
+                          .map((e: any) => (
+                            <div
+                              key={e.id}
+                              className="p-2 hover:bg-slate-50 cursor-pointer text-sm border-b last:border-0"
+                              onMouseDown={() => {
+                                setNuevaNormaForm({...nuevaNormaForm, id_emisor_norma: e.id});
+                                setSearchEmisor(e.descripcion);
+                                setIsEmisorOpen(false);
+                              }}
+                            >
+                              {e.descripcion}
+                            </div>
+                          ))}
+                        {emisoresNorma.filter((e: any) =>
+                          e.descripcion.toLowerCase().includes(searchEmisor.toLowerCase())
+                        ).length === 0 && (
+                          <div className="p-2 text-sm text-slate-400">No se encontraron emisores</div>
+                        )}
+                      </div>
+                    )}
+                    {nuevaNormaForm.id_emisor_norma && !isEmisorOpen && (
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <span className="text-xs text-slate-400">✓</span>
+                      </div>
+                    )}
+                  </div>
+                  {nuevaNormaForm.id_emisor_norma && !isEmisorOpen && (
+                    <div className="text-xs text-slate-500 mt-1">
+                      Seleccionado: {emisoresNorma.find(e => e.id === nuevaNormaForm.id_emisor_norma)?.descripcion}
+                    </div>
+                  )}
+                </div>
+
                 <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Síntesis</label><textarea rows={3} className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm resize-none" value={nuevaNormaForm.sintesis} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, sintesis: e.target.value})} /></div>
                 <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">URL</label><input type="url" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.url_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, url_norma: e.target.value})} /></div>
                 <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado Normativo *</label><select className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.id_estado_norma} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, id_estado_norma: e.target.value})}>{estadosNorma.map((e: any) => <option key={e.id} value={e.id}>{e.descripcion}</option>)}</select></div>
                 <div><label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Fecha Publicación (opcional)</label><input type="date" className="w-full p-3 bg-white border border-lgc-primary rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-sm" value={nuevaNormaForm.fecha_publicacion || ''} onChange={(e) => setNuevaNormaForm({...nuevaNormaForm, fecha_publicacion: e.target.value})} /></div>
               </div>
             </div>
-            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0"><button onClick={() => setShowNuevaNormaModal(false)} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Cancelar</button><button onClick={handleGuardarNuevaNorma} disabled={cargandoNuevaNorma} className="px-8 py-2.5 bg-lgc-primary text-white font-bold rounded-lg uppercase text-xs shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">{cargandoNuevaNorma ? "Guardando..." : "Guardar Norma"}</button></div>
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-4 shrink-0">
+              <button onClick={() => { setShowNuevaNormaModal(false); setSearchEmisor(""); setIsEmisorOpen(false); }} className="px-6 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Cancelar</button>
+              <button onClick={handleGuardarNuevaNorma} disabled={cargandoNuevaNorma} className="px-8 py-2.5 bg-lgc-primary text-white font-bold rounded-lg uppercase text-xs shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">{cargandoNuevaNorma ? "Guardando..." : "Guardar Norma"}</button>
+            </div>
           </div>
         </div>
       )}
