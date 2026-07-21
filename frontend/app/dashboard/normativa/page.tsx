@@ -28,9 +28,13 @@ interface Norma {
   categorias?: string[];
 }
 
+// --- INTERFAZ DICCIONARIO MODIFICADA PARA SOPORTAR PROPIEDADES ADICIONALES ---
 interface Diccionario {
   id: string | number;
   descripcion: string;
+  label?: string;
+  id_jurisdiccion?: number | null;
+  jurisdiccion?: string;
 }
 
 interface Categoria {
@@ -38,22 +42,33 @@ interface Categoria {
   descripcion: string;
 }
 
-// --- NANO-COMPONENTES PARA FILTROS AVANZADOS (exactamente como estaban) ---
-const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
-  const [query, setQuery] = useState("");
+// --- NANO-COMPONENTES PARA FILTROS AVANZADOS ---
+const SearchableSelect = ({ options, value, onChange, placeholder, onCreateNew, createNewLabel, initialQuery }: any) => {
+  const [query, setQuery] = useState(initialQuery || "");
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sincronizar con initialQuery cuando cambie
   useEffect(() => {
-    if (value) {
+    if (initialQuery !== undefined) {
+      setQuery(initialQuery);
+    }
+  }, [initialQuery]);
+
+  // Sincronizar con value (ID) cuando cambie y options esté cargado
+  useEffect(() => {
+    if (value && options.length > 0) {
       const selected = options.find((o: any) => o.id === value);
-      if (selected) setQuery(selected.descripcion);
-      else setQuery("");
-    } else {
+      if (selected) {
+        setQuery(selected.label || selected.descripcion);
+      } else {
+        if (!initialQuery) setQuery("");
+      }
+    } else if (!value && !initialQuery) {
       setQuery("");
     }
-  }, [value, options]);
+  }, [value, options, initialQuery]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -65,8 +80,8 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = options.filter((o: any) => 
-    o.descripcion?.toLowerCase().includes(query.toLowerCase())
+  const filtered = options.filter((o: any) =>
+    (o.label || o.descripcion)?.toLowerCase().includes(query.toLowerCase())
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,11 +90,18 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
     if (!isOpen) setIsOpen(true);
   };
 
-  const selectOption = (id: number | string, desc: string) => {
-    setQuery(desc);
+  const selectOption = (id: number | string, desc: string, label?: string) => {
+    setQuery(label || desc);
     onChange(id);
     setIsOpen(false);
     inputRef.current?.focus();
+  };
+
+  const handleCreateNew = () => {
+    if (onCreateNew) {
+      onCreateNew();
+      setIsOpen(false);
+    }
   };
 
   return (
@@ -92,17 +114,30 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
         onFocus={() => setIsOpen(true)}
         onChange={handleChange}
       />
-      {isOpen && filtered.length > 0 && (
+      {isOpen && (
         <div className="absolute z-50 w-full bg-white border border-slate-200 shadow-xl rounded-lg max-h-40 overflow-y-auto mt-1">
-          {filtered.map((o: any) => (
-            <div 
-              key={o.id} 
-              className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100" 
-              onMouseDown={(e) => { e.preventDefault(); selectOption(o.id, o.descripcion); }}
+          {filtered.length > 0 ? (
+            filtered.map((o: any) => (
+              <div
+                key={o.id}
+                className="p-2 text-[11px] hover:bg-slate-50 text-slate-700 cursor-pointer border-b last:border-0 border-slate-100"
+                onMouseDown={(e) => { e.preventDefault(); selectOption(o.id, o.descripcion, o.label); }}
+              >
+                {o.label || o.descripcion}
+              </div>
+            ))
+          ) : (
+            <div className="p-2 text-[11px] text-slate-400">No se encontraron resultados</div>
+          )}
+          {onCreateNew && (
+            <div
+              className="p-2 text-[11px] text-lgc-primary font-bold hover:bg-slate-50 cursor-pointer border-t border-slate-200 flex items-center gap-2"
+              onMouseDown={(e) => { e.preventDefault(); handleCreateNew(); }}
             >
-              {o.descripcion}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              {createNewLabel || "+ Crear nuevo"}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -125,7 +160,7 @@ const MultiSelectCategorias = ({ options, selected, onChange, placeholder }: any
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = options.filter((o: any) => 
+  const filtered = options.filter((o: any) =>
     o.descripcion?.toLowerCase().includes(query.toLowerCase()) &&
     !selected.includes(o.descripcion)
   );
@@ -222,7 +257,7 @@ export default function NormativaOficialPage() {
   const confirm = useConfirm();
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
 
-  // --- ESTADOS (TODOS LOS QUE TENÍAS) ---
+  // --- ESTADOS ---
   const [normas, setNormas] = useState<Norma[]>([]);
   const [tipos, setTipos] = useState<Diccionario[]>([]);
   const [emisores, setEmisores] = useState<Diccionario[]>([]);
@@ -248,7 +283,7 @@ export default function NormativaOficialPage() {
     categorias: [] as string[]
   });
 
-  // Paginación (nuevo)
+  // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const pageSizeOptions = [10, 30, 50, 100];
@@ -268,6 +303,7 @@ export default function NormativaOficialPage() {
   };
 
   const [formData, setFormData] = useState(defaultForm);
+  const [searchEmisorNorma, setSearchEmisorNorma] = useState("");
 
   const [isCategoriasModalOpen, setIsCategoriasModalOpen] = useState(false);
   const [normaSeleccionada, setNormaSeleccionada] = useState<Norma | null>(null);
@@ -276,7 +312,16 @@ export default function NormativaOficialPage() {
   const [searchCat, setSearchCat] = useState("");
   const [savingCategorias, setSavingCategorias] = useState(false);
 
-  // Flechas flotantes (nuevo)
+  // --- Modal de nuevo emisor ---
+  const [showNuevoEmisorModal, setShowNuevoEmisorModal] = useState(false);
+  const [nuevoEmisorForm, setNuevoEmisorForm] = useState({
+    descripcion: "",
+    id_jurisdiccion: "",
+  });
+  const [cargandoNuevoEmisor, setCargandoNuevoEmisor] = useState(false);
+  const [jurisdiccionesParaEmisor, setJurisdiccionesParaEmisor] = useState<any[]>([]);
+
+  // Flechas flotantes
   const mainContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -286,13 +331,11 @@ export default function NormativaOficialPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // --- EFECTO INICIAL (igual que antes) ---
   useEffect(() => {
     const timer = setTimeout(() => setIsCheckingPerms(false), 100);
     return () => clearTimeout(timer);
   }, []);
 
-  // --- Carga de diccionarios (igual) ---
   const fetchDiccionarios = useCallback(async (token: string) => {
     try {
       const [resTipos, resEmisores, resEstados, resCat, resNiveles] = await Promise.all([
@@ -312,7 +355,20 @@ export default function NormativaOficialPage() {
       ]);
 
       setTipos(dataTipos.registros?.map((e:any) => ({ id: e.id_tipo_norma || e.id, descripcion: e.descripcion })) || []);
-      setEmisores(dataEmisores.registros?.map((e:any) => ({ id: e.id_emisor_norma || e.id, descripcion: e.descripcion })) || []);
+      
+      // Modificación: construir emisores con label que incluya la jurisdicción
+      setEmisores(dataEmisores.registros?.map((e:any) => {
+        const jurNombre = e.jurisdiccion_desc || 'Sin jurisdicción';
+        const label = `${jurNombre} - ${e.descripcion}`;
+        return {
+          id: e.id_emisor_norma || e.id,
+          descripcion: e.descripcion,
+          label: label,
+          jurisdiccion: jurNombre,
+          id_jurisdiccion: e.id_jurisdiccion || null,
+        };
+      }) || []);
+      
       setEstados(dataEstados.registros?.map((e:any) => ({ id: e.id_estado_norma || e.id, descripcion: e.descripcion })) || []);
       setCategoriasGlobales(dataCat.registros?.map((c:any) => ({ id: c.id_categoria || c.id, descripcion: c.descripcion })) || []);
       setNiveles(dataNiveles.registros?.map((e:any) => ({ id: e.id_nivel_jurisdiccion || e.id, descripcion: e.descripcion })) || []);
@@ -322,7 +378,20 @@ export default function NormativaOficialPage() {
     }
   }, [toast]);
 
-  // --- CARGA DE DATOS CON PAGINACIÓN SERVER-SIDE (NUEVO) ---
+  const fetchJurisdiccionesParaEmisor = useCallback(async () => {
+    const token = localStorage.getItem("sgml_token");
+    if (!token) return;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/leer.php?tabla=jurisdiccion`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setJurisdiccionesParaEmisor(data.registros || []);
+    } catch (err) {
+      console.error("Error cargando jurisdicciones", err);
+    }
+  }, []);
+
   const fetchData = useCallback(async (page?: number, limit?: number) => {
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
@@ -332,7 +401,9 @@ export default function NormativaOficialPage() {
 
     try {
       setLoading(true);
-      if (tipos.length === 0) await fetchDiccionarios(token);
+      if (tipos.length === 0 && token) {
+        await fetchDiccionarios(token);
+      }
 
       const params = new URLSearchParams();
       params.append('page', String(p));
@@ -367,27 +438,26 @@ export default function NormativaOficialPage() {
     }
   }, [currentPage, pageSize, searchTerm, filtros, fetchDiccionarios, toast, tipos.length, categoriasGlobales]);
 
-  // --- EFECTOS PARA CARGAR AL INICIAR Y CUANDO CAMBIAN FILTROS (actualizados) ---
   useEffect(() => {
     if (!isCheckingPerms && canRead("normativa")) {
       fetchData(1, pageSize);
     }
-  }, [isCheckingPerms, canRead]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isCheckingPerms, canRead]);
 
   useEffect(() => {
     if (!isCheckingPerms && canRead("normativa")) {
       setCurrentPage(1);
       fetchData(1, pageSize);
     }
-  }, [searchTerm, filtros, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchTerm, filtros, pageSize]);
 
   useEffect(() => {
     if (!isCheckingPerms && canRead("normativa") && currentPage > 1) {
       fetchData(currentPage, pageSize);
     }
-  }, [currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
-  // --- EFECTO PARA SCROLL (nuevo, mejorado) ---
+  // Efecto para scroll
   useEffect(() => {
     const container = mainContainerRef.current;
     if (!container) return;
@@ -401,9 +471,7 @@ export default function NormativaOficialPage() {
     };
 
     container.addEventListener('scroll', handleScroll);
-    // También calcular al cargar y al redimensionar
     window.addEventListener('resize', handleScroll);
-    // Ejecutar una vez al montar
     const timer = setTimeout(handleScroll, 200);
     return () => {
       container.removeEventListener('scroll', handleScroll);
@@ -415,7 +483,7 @@ export default function NormativaOficialPage() {
   const scrollToTop = () => { mainContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); };
   const scrollToBottom = () => { const container = mainContainerRef.current; if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' }); };
 
-  // --- TODAS LAS FUNCIONES DE MODALES Y MANEJADORES (exactamente como estaban) ---
+  // --- MANEJADORES DE MODALES ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit("normativa")) return;
@@ -429,6 +497,7 @@ export default function NormativaOficialPage() {
       });
       if (res.ok) {
         setIsModalOpen(false);
+        setSearchEmisorNorma("");
         fetchData(currentPage, pageSize);
         toast.showToast("Éxito", "Norma guardada correctamente.", "success");
       } else {
@@ -440,6 +509,49 @@ export default function NormativaOficialPage() {
       toast.showToast("Error", "Error de conexión al guardar.", "error");
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  const handleGuardarNuevoEmisor = async () => {
+    if (!nuevoEmisorForm.descripcion || !nuevoEmisorForm.id_jurisdiccion) {
+      toast.showToast("Atención", "Complete el nombre del emisor y la jurisdicción.", "warning");
+      return;
+    }
+    setCargandoNuevoEmisor(true);
+    const token = localStorage.getItem("sgml_token");
+    try {
+      const payload = {
+        tabla: "emisor_norma",
+        descripcion: nuevoEmisorForm.descripcion,
+        id_jurisdiccion: nuevoEmisorForm.id_jurisdiccion,
+      };
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/maestras/guardar.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.mensaje || "Error al crear el emisor.");
+      
+      // Recargar la lista de emisores
+      if (token) await fetchDiccionarios(token);
+      
+      // Buscar el emisor recién creado para seleccionarlo (usando descripcion y id_jurisdiccion)
+      const nuevoEmisor = emisores.find(e => 
+        e.descripcion === nuevoEmisorForm.descripcion && 
+        e.id_jurisdiccion === parseInt(nuevoEmisorForm.id_jurisdiccion)
+      );
+      if (nuevoEmisor) {
+        setFormData({...formData, id_emisor_norma: String(nuevoEmisor.id)});
+        setSearchEmisorNorma(nuevoEmisor.label || nuevoEmisor.descripcion);
+      }
+      
+      setShowNuevoEmisorModal(false);
+      toast.showToast("Éxito", "Emisor creado y seleccionado.", "success");
+    } catch (err: any) {
+      toast.showToast("Error", err.message, "error");
+    } finally {
+      setCargandoNuevoEmisor(false);
     }
   };
 
@@ -553,7 +665,7 @@ export default function NormativaOficialPage() {
     return Array.from(setJur).map((desc, i) => ({ id: desc, descripcion: desc }));
   }, [normas]);
 
-  // --- LÓGICA DE PAGINACIÓN (nueva) ---
+  // --- LÓGICA DE PAGINACIÓN ---
   const totalPages = Math.ceil(totalItems / pageSize);
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
@@ -615,7 +727,7 @@ export default function NormativaOficialPage() {
   return (
     <div className="space-y-6 font-sans animate-fade-in relative z-10 h-screen flex flex-col overflow-hidden">
       
-      {/* HEADER (sin cambios) */}
+      {/* HEADER */}
       <div className="bg-[#005F78] text-white p-6 rounded-2xl shadow-lg border border-[#004D62] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <Link href="/dashboard" className="flex items-center justify-center w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all group">
@@ -634,7 +746,11 @@ export default function NormativaOficialPage() {
           />
           {canEdit("normativa") && (
             <button 
-                onClick={() => { setFormData(defaultForm); setIsModalOpen(true); }}
+                onClick={() => { 
+                  setFormData(defaultForm); 
+                  setSearchEmisorNorma("");
+                  setIsModalOpen(true); 
+                }}
                 className="bg-white text-lgc-primary py-2.5 px-6 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-slate-100 transition-all shadow-md shrink-0 whitespace-nowrap"
             >
               + Alta Manual
@@ -643,7 +759,7 @@ export default function NormativaOficialPage() {
         </div>
       </div>
 
-      {/* FILTROS (sin cambios) */}
+      {/* FILTROS */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 transition-all overflow-hidden relative z-20 shrink-0">
          <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-transparent">
             <div className="flex items-center gap-3">
@@ -754,7 +870,27 @@ export default function NormativaOficialPage() {
                               <button onClick={() => abrirModalCategorias(norma)} className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Asignar Categorías">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
                               </button>
-                              <button onClick={() => { setFormData({ id_norma: norma.id_norma.toString(), id_tipo_norma: norma.id_tipo_norma?.toString() || "", id_emisor_norma: norma.id_emisor_norma?.toString() || "", numero: norma.numero || "", anio: norma.anio, fecha_publicacion: norma.fecha_publicacion || "", sintesis: norma.sintesis || "", url_norma: norma.url_norma || "", id_estado_norma: norma.id_estado_norma?.toString() || "1", origen_carga: norma.origen_carga }); setIsModalOpen(true); }} className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Editar Norma">
+                              <button 
+                                onClick={() => { 
+                                  setFormData({
+                                    id_norma: norma.id_norma.toString(),
+                                    id_tipo_norma: norma.id_tipo_norma?.toString() || "",
+                                    id_emisor_norma: norma.id_emisor_norma?.toString() || "",
+                                    numero: norma.numero || "",
+                                    anio: norma.anio,
+                                    fecha_publicacion: norma.fecha_publicacion || "",
+                                    sintesis: norma.sintesis || "",
+                                    url_norma: norma.url_norma || "",
+                                    id_estado_norma: norma.id_estado_norma?.toString() || "1",
+                                    origen_carga: norma.origen_carga
+                                  });
+                                  const emisorActual = emisores.find(e => e.id === norma.id_emisor_norma);
+                                  setSearchEmisorNorma(emisorActual?.label || emisorActual?.descripcion || "");
+                                  setIsModalOpen(true); 
+                                }}
+                                className="text-slate-400 hover:text-lgc-primary bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" 
+                                title="Editar Norma"
+                              >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               </button>
                               <button onClick={() => handleDeleteNorma(norma)} className="text-slate-400 hover:text-red-500 bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Eliminar Norma">
@@ -809,7 +945,7 @@ export default function NormativaOficialPage() {
         </button>
       )}
 
-      {/* MODALES (exactamente como estaban, sin cambios) */}
+      {/* MODAL DE ALTA / EDICIÓN DE NORMATIVA */}
       {isModalOpen && canEdit("normativa") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden my-8 border border-slate-200">
@@ -820,7 +956,10 @@ export default function NormativaOficialPage() {
                 </h2>
                 <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Gestión del repositorio oficial</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl transition-colors">&times;</button>
+              <button onClick={() => {
+                setIsModalOpen(false);
+                setSearchEmisorNorma("");
+              }} className="text-slate-400 hover:text-slate-600 text-2xl transition-colors">&times;</button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -845,10 +984,21 @@ export default function NormativaOficialPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <div className="md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Emisor / Jurisdicción *</label>
-                  <select required className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-lgc-primary text-[11px] font-bold shadow-sm cursor-pointer" value={formData.id_emisor_norma} onChange={e => setFormData({...formData, id_emisor_norma: e.target.value})}>
-                    <option value="">Seleccione...</option>
-                    {emisores.map(e => <option key={e.id} value={e.id} title={e.descripcion}>{e.descripcion}</option>)}
-                  </select>
+                  <SearchableSelect
+                    options={emisores}
+                    value={formData.id_emisor_norma}
+                    onChange={(val: string) => {
+                      setFormData({...formData, id_emisor_norma: val});
+                    }}
+                    placeholder="Buscar emisor..."
+                    onCreateNew={() => {
+                      setNuevoEmisorForm({ descripcion: "", id_jurisdiccion: "" });
+                      fetchJurisdiccionesParaEmisor();
+                      setShowNuevoEmisorModal(true);
+                    }}
+                    createNewLabel="+ Crear nuevo emisor"
+                    initialQuery={searchEmisorNorma}
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-2">Estado Normativo *</label>
@@ -875,7 +1025,16 @@ export default function NormativaOficialPage() {
               </div>
 
               <div className="flex gap-4 pt-6 mt-6 border-t border-slate-100">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Cancelar</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setSearchEmisorNorma("");
+                  }} 
+                  className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
                 <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md hover:bg-[#006A8A] transition-all disabled:opacity-50">
                   {formLoading ? 'Guardando...' : 'Confirmar y Guardar'}
                 </button>
@@ -885,6 +1044,50 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
+      {/* MODAL NUEVO EMISOR */}
+      {showNuevoEmisorModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">Crear nuevo emisor</h2>
+              <button onClick={() => setShowNuevoEmisorModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Nombre del Emisor *</label>
+                <input
+                  type="text"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
+                  value={nuevoEmisorForm.descripcion}
+                  onChange={(e) => setNuevoEmisorForm({...nuevoEmisorForm, descripcion: e.target.value})}
+                  placeholder="Ej: Ministerio de Economía"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest block mb-1">Jurisdicción *</label>
+                <select
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
+                  value={nuevoEmisorForm.id_jurisdiccion}
+                  onChange={(e) => setNuevoEmisorForm({...nuevoEmisorForm, id_jurisdiccion: e.target.value})}
+                >
+                  <option value="">Seleccione...</option>
+                  {jurisdiccionesParaEmisor.map((j) => (
+                    <option key={j.id_jurisdiccion} value={j.id_jurisdiccion}>{j.descripcion}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button onClick={() => setShowNuevoEmisorModal(false)} className="flex-1 py-2.5 text-xs uppercase font-bold text-slate-500 bg-white border border-slate-200 rounded-lg">Cancelar</button>
+                <button onClick={handleGuardarNuevoEmisor} disabled={cargandoNuevoEmisor} className="flex-1 bg-lgc-primary text-white py-2.5 rounded-lg text-xs uppercase font-bold shadow-md disabled:opacity-50">
+                  {cargandoNuevoEmisor ? "Guardando..." : "Crear Emisor"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) */}
       {isCategoriasModalOpen && normaSeleccionada && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
