@@ -113,7 +113,10 @@ HEADERS_WEB = {
                    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'),
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'es-AR,es;q=0.9,es-ES;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
+    # OJO: no fijar Accept-Encoding a mano. requests anuncia sólo los algoritmos
+    # que sabe descomprimir (gzip, deflate). Si le pedimos 'br' sin tener
+    # instalado el paquete brotli, el servidor responde comprimido con brotli,
+    # requests no puede descomprimirlo y el cuerpo queda ilegible.
     'Referer': PORTAL_BOLETIN,
     'Origin': PORTAL_BASE,
     'Connection': 'keep-alive',
@@ -231,7 +234,15 @@ def _describir_bloqueo(resp):
             pistas.append(f"{cabecera}={valor}")
     cuerpo = ''
     try:
-        cuerpo = limpiar_texto(re.sub(r'<[^>]+>', ' ', resp.text or ''))[:220]
+        crudo = resp.text or ''
+        # Un cuerpo con muchos caracteres de control no es texto útil (respuesta
+        # comprimida que no supimos descomprimir, o binario): no lo volcamos.
+        ilegibles = sum(1 for c in crudo[:400] if ord(c) < 32 and c not in '\r\n\t')
+        if crudo and ilegibles > len(crudo[:400]) * 0.1:
+            codificacion = resp.headers.get('Content-Encoding', '?')
+            cuerpo = f"(cuerpo ilegible, Content-Encoding={codificacion})"
+        else:
+            cuerpo = limpiar_texto(re.sub(r'<[^>]+>', ' ', crudo))[:220]
     except Exception:
         pass
     if resp.headers.get('CF-Ray') or 'cloudflare' in (resp.headers.get('Server', '')).lower():

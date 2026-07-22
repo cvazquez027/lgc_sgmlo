@@ -22,10 +22,11 @@ $tablas_permitidas = [
     'tipo_matriz' => ['id' => 'id_tipo_matriz', 'cols' => 'id_tipo_matriz, descripcion, vigente'],
     'especialidad_matriz' => ['id' => 'id_especialidad_matriz', 'cols' => 'id_especialidad_matriz, descripcion, vigente'],
     'estado_cumplimiento' => ['id' => 'id_estado_cumplimiento', 'cols' => 'id_estado_cumplimiento, descripcion, vigente'],
-    'tipo_modalidad' => ['id' => 'id_tipo_modalidad', 'cols' => 'id_tipo_modalidad, descripcion'],
+    'tipo_modalidad' => ['id' => 'id_tipo_modalidad', 'cols' => 'id_tipo_modalidad, descripcion'], // SIN vigente
     'nivel_jurisdiccion' => ['id' => 'id_nivel_jurisdiccion', 'cols' => 'id_nivel_jurisdiccion, descripcion, nivel, vigente'],
-    'emisor_norma' => ['id' => 'id_emisor_norma', 'cols' => 'id_emisor_norma, descripcion'],
-    'categoria' => ['id' => 'id_categoria', 'cols' => 'id_categoria, descripcion']
+    'emisor_norma' => ['id' => 'id_emisor_norma', 'cols' => 'id_emisor_norma, id_jurisdiccion, descripcion, clave_normalizada'],
+    'categoria' => ['id' => 'id_categoria', 'cols' => 'id_categoria, descripcion'],
+    'jurisdiccion' => ['id' => 'id_jurisdiccion', 'cols' => 'id_jurisdiccion, descripcion']
 ];
 
 $tabla_solicitada = isset($_GET['tabla']) ? preg_replace('/[^a-zA-Z_]/', '', $_GET['tabla']) : '';
@@ -41,9 +42,9 @@ $db = $database->getConnection();
 $config = $tablas_permitidas[$tabla_solicitada];
 
 try {
-    // CIRUGÍA: Si nos piden los emisores, cruzamos con jurisdicción
     if ($tabla_solicitada === 'emisor_norma') {
-        $query = "SELECT en.id_emisor_norma, CONCAT(COALESCE(j.descripcion, 'Sin Jurisdicción'), ' - ', en.descripcion) AS descripcion 
+        $query = "SELECT en.id_emisor_norma, en.id_jurisdiccion, en.descripcion, en.clave_normalizada,
+                         COALESCE(j.descripcion, 'Sin Jurisdicción') AS jurisdiccion_desc
                   FROM emisor_norma en 
                   LEFT JOIN jurisdiccion j ON en.id_jurisdiccion = j.id_jurisdiccion 
                   ORDER BY j.descripcion ASC, en.descripcion ASC";
