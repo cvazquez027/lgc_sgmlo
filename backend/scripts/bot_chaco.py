@@ -11,15 +11,7 @@ Modos de prueba (no tocan el backend):
     python bot_chaco.py 5 "..." --dry-run --pdf 26-06-26-11404.pdf
     python bot_chaco.py 5 "..." --dry-run --todas
     python bot_chaco.py 5 "..." --dry-run --no-ocr
-
--------------------------------------------------------------------------------
-DESCUBRIMIENTO
--------------------------------------------------------------------------------
-A diferencia de Catamarca (SPA), Chaco sirve la grilla de boletines como HTML
-plano desde el servidor, así que se lee directo con BeautifulSoup: es una tabla
-ordenada del más nuevo al más viejo, con el número, la fecha y el link al PDF en
-cada fila. Se toma la primera fila.
-
+    
 -------------------------------------------------------------------------------
 EXTRACCIÓN
 -------------------------------------------------------------------------------
