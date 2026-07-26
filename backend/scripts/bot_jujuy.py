@@ -409,15 +409,64 @@ RE_CARGO = re.compile(
     re.MULTILINE)
 
 
+def _cargo_a_organismo(cargo):
+    """
+    Convierte un cargo personal (Ministro, Secretario, Director, etc.)
+    en el nombre del organismo correspondiente (Ministerio, Secretaría, Dirección, etc.)
+    Reemplaza la primera palabra del cargo por el nombre del organismo,
+    manteniendo el resto del texto intacto.
+    """
+    texto = cargo.upper().strip()
+    # Mapeo de cargo -> nombre del organismo
+    mapeo = {
+        'MINISTRO': 'MINISTERIO',
+        'MINISTRA': 'MINISTERIO',
+        'SECRETARIO': 'SECRETARÍA',
+        'SECRETARIA': 'SECRETARÍA',
+        'DIRECTOR': 'DIRECCIÓN',
+        'DIRECTORA': 'DIRECCIÓN',
+        'SUBSECRETARIO': 'SUBSECRETARÍA',
+        'SUBSECRETARIA': 'SUBSECRETARÍA',
+        'COORDINADOR': 'COORDINACIÓN',
+        'COORDINADORA': 'COORDINACIÓN',
+        'JEFE': 'JEFATURA',
+        'JEFA': 'JEFATURA',
+        'PRESIDENTE': 'PRESIDENCIA',
+        'PRESIDENTA': 'PRESIDENCIA',
+        'GERENTE': 'GERENCIA',
+        'ADMINISTRADOR': 'ADMINISTRACIÓN',
+        'ADMINISTRADORA': 'ADMINISTRACIÓN',
+        'INTENDENTE': 'INTENDENCIA',
+    }
+    for cargo_palabra, org_base in mapeo.items():
+        # Si el texto comienza con el cargo (con límite de palabra)
+        if texto.startswith(cargo_palabra + ' ') or texto == cargo_palabra:
+            # Reemplazar la primera palabra por el nombre del organismo
+            resto = texto[len(cargo_palabra):].lstrip()
+            return (org_base + ' ' + resto).strip()
+    return None  # no se pudo transformar
+
+
 def detectar_organismo(texto, sigla=''):
+    """
+    Extrae el organismo emisor a partir del texto que precede a DECRETA:/RESUELVE:.
+    Si encuentra un cargo personal (Ministro, Secretario, etc.) lo convierte en
+    el nombre del organismo correspondiente.
+    Si no, usa la sigla del código (tabla SIGLAS) como respaldo.
+    """
     m = RE_CARGO.search(texto or '')
     if m:
         cargo = _compacto(m.group('cargo'))
         cargo = re.sub(r'^(EL|LA)\s+', '', cargo, flags=re.IGNORECASE).strip(' .,-')
         if cargo and len(cargo) > 4:
+            # Intentar convertir el cargo a organismo
+            org = _cargo_a_organismo(cargo)
+            if org:
+                return org
+            # Fallback: devolver el cargo tal cual (puede ser "GOBERNADOR DE LA PROVINCIA")
             return cargo.upper()
+    # Si no hay cargo, o no se pudo convertir, usar la sigla
     clave = re.sub(r'[^A-Z0-9]', '', _sin_acentos(sigla or '').upper())
-    # Siglas compuestas tipo E-JUJ-MPEM: vale la última parte significativa.
     if clave in SIGLAS:
         return SIGLAS[clave]
     for parte in reversed(re.split(r'[-]', _sin_acentos(sigla or '').upper())):
