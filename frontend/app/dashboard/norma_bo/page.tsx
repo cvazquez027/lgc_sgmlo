@@ -53,13 +53,17 @@ export default function BoletinOficialPage() {
   const [normasScraping, setNormasScraping] = useState<NormaScraping[]>([]);
   const [totalRegistros, setTotalRegistros] = useState<number>(0);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [selectAllMode, setSelectAllMode] = useState<boolean>(false); // <-- NUEVO
+  const [selectAllMode, setSelectAllMode] = useState<boolean>(false);
+
+  // Estados de Interfaz
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState<boolean>(false);
+  const [normaSeleccionada, setNormaSeleccionada] = useState<NormaScraping | null>(null);
 
   // Filtros existentes
   const [selectedJurId, setSelectedJurId] = useState<string>("");
   const [soloCategorizadas, setSoloCategorizadas] = useState<boolean>(false);
 
-  // Nuevos filtros (igual que Normativa)
+  // Nuevos filtros
   const [searchText, setSearchText] = useState<string>("");
   const [filtroTipo, setFiltroTipo] = useState<string>("");
   const [filtroEmisor, setFiltroEmisor] = useState<string>("");
@@ -85,7 +89,6 @@ export default function BoletinOficialPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Cargar maestras (tipos, emisores, categorías)
   const fetchMaestras = useCallback(async () => {
     const token = localStorage.getItem("sgml_token");
     if (!token) return;
@@ -163,9 +166,6 @@ export default function BoletinOficialPage() {
       const data = await res.json();
       setNormasScraping(data.registros || []);
       setTotalRegistros(data.total || 0);
-      // No reseteamos selectedIds ni selectAllMode aquí para que el usuario pueda mantener selección si cambia de página
-      // pero si recarga con nuevos filtros, conviene resetear.
-      // Lo haremos en los efectos que disparan la recarga.
       setCurrentPage(data.page || p);
     } catch (error) {
       console.error("Error trayendo scraping", error);
@@ -175,7 +175,6 @@ export default function BoletinOficialPage() {
     }
   }, [selectedJurId, soloCategorizadas, currentPage, itemsPerPage, searchText, filtroTipo, filtroEmisor, filtroCategoria, fechaDesde, fechaHasta, toast]);
 
-  // Carga inicial
   useEffect(() => {
     if (!isCheckingPerms && canRead("boletin")) {
       fetchJurisdicciones();
@@ -184,7 +183,6 @@ export default function BoletinOficialPage() {
     }
   }, [isCheckingPerms, canRead]);
 
-  // Recargar cuando cambian filtros o itemsPerPage, y resetear selección
   useEffect(() => {
     if (!isCheckingPerms && canRead("boletin")) {
       setCurrentPage(1);
@@ -194,7 +192,6 @@ export default function BoletinOficialPage() {
     }
   }, [selectedJurId, soloCategorizadas, searchText, filtroTipo, filtroEmisor, filtroCategoria, fechaDesde, fechaHasta, itemsPerPage]);
 
-  // Cambio de página
   useEffect(() => {
     if (currentPage > 1 && !loadingData) {
       fetchScrapingData(currentPage, itemsPerPage);
@@ -203,12 +200,11 @@ export default function BoletinOficialPage() {
 
   const selectedJur = jurisdicciones.find(j => j.id_jurisdiccion.toString() === selectedJurId);
   const totalPages = Math.ceil(totalRegistros / itemsPerPage);
+  const hasActiveFilters = searchText || filtroTipo || filtroEmisor || filtroCategoria.length > 0 || fechaDesde || fechaHasta;
 
-  // ---- NUEVO: manejo de selección "todos" ----
   const handleSelectAll = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const checked = e.target.checked;
     if (checked) {
-      // Si se marca "seleccionar todos", obtenemos el total de registros filtrados
       const token = localStorage.getItem("sgml_token");
       if (!token) return;
       try {
@@ -233,7 +229,6 @@ export default function BoletinOficialPage() {
         const data = await res.json();
         const total = data.total || 0;
         setSelectAllMode(true);
-        // También seleccionamos los IDs de la página actual para que el checkbox se vea marcado
         setSelectedIds(normasScraping.map(n => n.id_norma_bo));
         toast.showToast("Selección", `Se seleccionarán TODAS las ${total} normas que cumplen los filtros.`, "info");
       } catch (error) {
@@ -248,9 +243,7 @@ export default function BoletinOficialPage() {
 
   const handleSelectOne = (id: number) => {
     if (selectAllMode) {
-      // Si estamos en modo "todos", al desmarcar uno salimos del modo
       setSelectAllMode(false);
-      // Y marcamos todos los de la página excepto el que se desmarcó
       const allIds = normasScraping.map(n => n.id_norma_bo);
       setSelectedIds(allIds.filter(pid => pid !== id));
     } else {
@@ -260,10 +253,8 @@ export default function BoletinOficialPage() {
     }
   };
 
-  // Verificar si todos los de la página están seleccionados
   const isAllSelected = normasScraping.length > 0 && (selectAllMode || (selectedIds.length === normasScraping.length && !selectAllMode));
 
-  // ---- NUEVO: handleBulkAction con soporte para "todos" ----
   const handleBulkAction = async (accion: 'promover' | 'descartar') => {
     if (!canEdit("boletin")) return;
     if (selectedIds.length === 0 && !selectAllMode) {
@@ -273,7 +264,7 @@ export default function BoletinOficialPage() {
 
     let totalSeleccionadas = selectedIds.length;
     if (selectAllMode) {
-      totalSeleccionadas = totalRegistros; // total de la consulta filtrada
+      totalSeleccionadas = totalRegistros;
     }
 
     const confirmMsg = accion === 'descartar'
@@ -303,7 +294,6 @@ export default function BoletinOficialPage() {
           fecha_desde: fechaDesde || undefined,
           fecha_hasta: fechaHasta || undefined
         };
-        // Limpiar propiedades undefined
         Object.keys(payload.filtros).forEach(key => {
           if (payload.filtros[key] === undefined || payload.filtros[key] === '') {
             delete payload.filtros[key];
@@ -319,7 +309,6 @@ export default function BoletinOficialPage() {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
-        // Recargar la tabla completa para reflejar cambios
         fetchScrapingData(currentPage, itemsPerPage);
         setSelectedIds([]);
         setSelectAllMode(false);
@@ -353,32 +342,6 @@ export default function BoletinOficialPage() {
       const mensaje = err instanceof Error ? err.message : "Error desconocido";
       toast.showToast("Error", `Error al actualizar: ${mensaje}`, "error");
       throw new Error(mensaje);
-    }
-  };
-
-  const ejecutarTodosScrapers = async () => {
-    const jurConScraper = jurisdicciones.filter(j => j.tiene_scraper === 1);
-    if (jurConScraper.length === 0) {
-      toast.showToast("Info", "No hay jurisdicciones con scraper habilitado.", "info");
-      return;
-    }
-    setIsScraping(true);
-    let errores = 0;
-    for (const jur of jurConScraper) {
-      try {
-        await ejecutarScraperPorJurisdiccion(jur.id_jurisdiccion);
-        toast.showToast("Éxito", `Boletín de ${jur.descripcion} actualizado.`, "success");
-      } catch (err: unknown) {
-        errores++;
-        const mensaje = err instanceof Error ? err.message : "Error desconocido";
-        toast.showToast("Error", `Falló la actualización de ${jur.descripcion}: ${mensaje}`, "error");
-      }
-    }
-    setIsScraping(false);
-    if (errores === 0) {
-      toast.showToast("Éxito", "Todos los boletines fueron actualizados.", "success");
-    } else {
-      toast.showToast("Atención", `Se completó con ${errores} error(es). Revisa la consola.`, "warning");
     }
   };
 
@@ -447,100 +410,118 @@ export default function BoletinOficialPage() {
         </div>
       </div>
 
-      {/* FILTROS */}
-      <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center gap-2 shrink-0">
-        <input
-          type="text"
-          placeholder="Buscar por número, año o síntesis..."
-          value={searchText}
-          onChange={(e) => {
-            setSearchText(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="flex-1 min-w-37.5 p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
-        />
-
-        <select
-          value={filtroTipo}
-          onChange={(e) => {
-            setFiltroTipo(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
+      {/* FILTROS PLEGABLES */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 shrink-0 overflow-hidden">
+        <div 
+          className="px-4 py-2.5 flex justify-between items-center cursor-pointer bg-slate-50/50 hover:bg-slate-100/50 transition-colors"
+          onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}
         >
-          <option value="">Todos los tipos</option>
-          {tiposNorma.map((t) => (
-            <option key={t.id_tipo_norma} value={t.id_tipo_norma}>
-              {t.descripcion}
-            </option>
-          ))}
-        </select>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest">Filtros de Búsqueda</span>
+            {hasActiveFilters && (
+              <span className="bg-lgc-primary text-white text-[9px] px-2 py-0.5 rounded-full ml-2 font-bold shadow-sm">Activos</span>
+            )}
+          </div>
+          <svg className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${filtrosAbiertos ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </div>
 
-        <select
-          value={filtroEmisor}
-          onChange={(e) => {
-            setFiltroEmisor(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
-        >
-          <option value="">Todos los emisores</option>
-          {emisoresNorma.map((e) => (
-            <option key={e.id_emisor_norma} value={e.id_emisor_norma}>
-              {e.descripcion}
-            </option>
-          ))}
-        </select>
+        {filtrosAbiertos && (
+          <div className="p-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por número, año o síntesis..."
+              value={searchText}
+              onChange={(e) => {
+                setSearchText(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="flex-1 min-w-37.5 p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm"
+            />
 
-        <select
-          multiple
-          value={filtroCategoria}
-          onChange={(e) => {
-            const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-            setFiltroCategoria(selectedOptions);
-            setCurrentPage(1);
-          }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-45 max-h-25"
-          size={4}
-        >
-          <option value="">Todas las categorías</option>
-          {categorias.map((c) => (
-            <option key={c.id_categoria} value={String(c.id_categoria)}>
-              {c.descripcion}
-            </option>
-          ))}
-        </select>
+            <select
+              value={filtroTipo}
+              onChange={(e) => {
+                setFiltroTipo(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
+            >
+              <option value="">Todos los tipos</option>
+              {tiposNorma.map((t) => (
+                <option key={t.id_tipo_norma} value={t.id_tipo_norma}>
+                  {t.descripcion}
+                </option>
+              ))}
+            </select>
 
-        <input
-          type="date"
-          placeholder="Fecha desde"
-          value={fechaDesde}
-          onChange={(e) => {
-            setFechaDesde(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
-        />
+            <select
+              value={filtroEmisor}
+              onChange={(e) => {
+                setFiltroEmisor(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-32.5"
+            >
+              <option value="">Todos los emisores</option>
+              {emisoresNorma.map((e) => (
+                <option key={e.id_emisor_norma} value={e.id_emisor_norma}>
+                  {e.descripcion}
+                </option>
+              ))}
+            </select>
 
-        <span className="text-slate-400 text-sm">a</span>
+            <select
+              multiple
+              value={filtroCategoria}
+              onChange={(e) => {
+                const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                setFiltroCategoria(selectedOptions);
+                setCurrentPage(1);
+              }}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm min-w-45 max-h-25"
+              size={4}
+            >
+              <option value="">Todas las categorías</option>
+              {categorias.map((c) => (
+                <option key={c.id_categoria} value={String(c.id_categoria)}>
+                  {c.descripcion}
+                </option>
+              ))}
+            </select>
 
-        <input
-          type="date"
-          placeholder="Fecha hasta"
-          value={fechaHasta}
-          onChange={(e) => {
-            setFechaHasta(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
-        />
+            <input
+              type="date"
+              placeholder="Fecha desde"
+              value={fechaDesde}
+              onChange={(e) => {
+                setFechaDesde(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
+            />
 
-        <button
-          onClick={limpiarFiltros}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors shrink-0"
-        >
-          Limpiar filtros
-        </button>
+            <span className="text-slate-400 text-sm font-bold">a</span>
+
+            <input
+              type="date"
+              placeholder="Fecha hasta"
+              value={fechaHasta}
+              onChange={(e) => {
+                setFechaHasta(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="p-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm w-35"
+            />
+
+            <button
+              onClick={limpiarFiltros}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors shrink-0"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        )}
       </div>
 
       {/* BARRA DE ACCIONES */}
@@ -564,7 +545,7 @@ export default function BoletinOficialPage() {
         </div>
       </div>
 
-      {/* TABLA */}
+      {/* TABLA REDUCIDA */}
       <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-auto relative">
         {loadingData ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-20">
@@ -585,7 +566,7 @@ export default function BoletinOficialPage() {
           <table className="w-full text-left border-collapse text-[11px]">
             <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
               <tr>
-                <th className="py-2 px-3 w-8 text-center">
+                <th className="py-1.5 px-2 w-8 text-center">
                   <input
                     type="checkbox"
                     className="rounded text-lgc-primary w-3 h-3 cursor-pointer"
@@ -593,14 +574,14 @@ export default function BoletinOficialPage() {
                     onChange={handleSelectAll}
                   />
                 </th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-20">Jurisdicción</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-24">Tipo / Nro</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-32">Emisor</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-16">Fecha</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase">Síntesis</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-40">Categorías</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-12 text-center">Ver</th>
-                <th className="py-2 px-2 font-bold text-slate-500 uppercase w-16 text-center">Estado</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-20">Jurisdicción</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-24">Tipo / Nro</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-32">Emisor</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-16">Fecha</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase">Síntesis</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-40">Categorías</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-10 text-center">Ver</th>
+                <th className="py-1.5 px-1.5 font-bold text-slate-500 uppercase w-16 text-center">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -608,8 +589,12 @@ export default function BoletinOficialPage() {
                 const isSelected = selectedIds.includes(norma.id_norma_bo);
                 const hasMatch = norma.categorias_detectadas && norma.categorias_detectadas.trim() !== "";
                 return (
-                  <tr key={norma.id_norma_bo} className={`transition-colors ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}`}>
-                    <td className="py-1.5 px-3 text-center">
+                  <tr 
+                    key={norma.id_norma_bo} 
+                    onClick={() => setNormaSeleccionada(norma)}
+                    className={`transition-colors cursor-pointer ${isSelected ? 'bg-blue-50' : hasMatch ? 'bg-orange-400/5' : 'hover:bg-slate-50'}`}
+                  >
+                    <td className="py-1 px-2 text-center" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         className="rounded text-lgc-primary w-3 h-3 cursor-pointer"
@@ -617,17 +602,35 @@ export default function BoletinOficialPage() {
                         onChange={() => handleSelectOne(norma.id_norma_bo)}
                       />
                     </td>
-                    <td className="py-1.5 px-2 font-bold text-slate-700 uppercase">{norma.jurisdiccion_desc}</td>
-                    <td className="py-1.5 px-2 font-medium">
+                    <td className="py-1 px-1.5 font-bold text-slate-700 uppercase leading-tight">{norma.jurisdiccion_desc}</td>
+                    <td className="py-1 px-1.5 font-medium leading-tight">
                       <span className="text-slate-900">{norma.tipo_norma_desc}</span><br/>
                       <span className="text-slate-400">N° {norma.numero}/{norma.anio}</span>
                     </td>
-                    <td className="py-1.5 px-2 text-slate-500 italic truncate max-w-30" title={norma.emisor_desc}>{norma.emisor_desc}</td>
-                    <td className="py-1.5 px-2 whitespace-nowrap text-slate-500">{norma.fecha_publicacion ? norma.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}</td>
-                    <td className="py-1.5 px-2 text-slate-600 leading-tight"><div className="line-clamp-2 hover:line-clamp-none transition-all cursor-default">{norma.sintesis}</div></td>
-                    <td className="py-1.5 px-2"><div className="flex flex-wrap gap-1">{norma.categorias_detectadas?.split(',').map((cat, idx) => (<span key={idx} className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase">{cat.trim()}</span>))}</div></td>
-                    <td className="py-1.5 px-2 text-center">{norma.url_norma && (<a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="text-lgc-primary hover:text-lgc-hover inline-block"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg></a>)}</td>
-                    <td className="py-1.5 px-2 text-center"><span className={`font-bold px-2 py-0.5 rounded text-[9px] ${norma.id_estado_norma === 1 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{norma.id_estado_norma === 1 ? 'VIGENTE' : 'OTRO'}</span></td>
+                    <td className="py-1 px-1.5 text-slate-500 italic truncate max-w-32 leading-tight" title={norma.emisor_desc}>{norma.emisor_desc}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap text-slate-500 leading-tight">{norma.fecha_publicacion ? norma.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}</td>
+                    <td className="py-1 px-1.5 text-slate-600 leading-tight">
+                      <div className="line-clamp-2">{norma.sintesis}</div>
+                    </td>
+                    <td className="py-1 px-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {norma.categorias_detectadas?.split(',').map((cat, idx) => (
+                          <span key={idx} className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase">{cat.trim()}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-1 px-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      {norma.url_norma && (
+                        <a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="text-lgc-primary hover:text-lgc-hover inline-block">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        </a>
+                      )}
+                    </td>
+                    <td className="py-1 px-1.5 text-center">
+                      <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${norma.id_estado_norma === 1 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {norma.id_estado_norma === 1 ? 'VIGENTE' : 'OTRO'}
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
@@ -659,6 +662,86 @@ export default function BoletinOficialPage() {
           </div>
         </div>
       </div>
+
+      {/* MODAL DE DETALLE DE NORMA */}
+      {normaSeleccionada && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in" 
+          onClick={() => setNormaSeleccionada(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden transform transition-all" 
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start p-6 border-b border-slate-100 bg-slate-50">
+              <div className="pr-4">
+                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-2 leading-none">
+                  {normaSeleccionada.tipo_norma_desc} N° {normaSeleccionada.numero}/{normaSeleccionada.anio}
+                </h2>
+                <h3 className="text-sm font-bold text-lgc-primary uppercase tracking-widest">
+                  {normaSeleccionada.emisor_desc}
+                </h3>
+                {/* Jurisdicción agregada aquí */}
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
+                  {normaSeleccionada.jurisdiccion_desc}
+                </h4>
+              </div>
+              <div className="flex flex-col items-end gap-3 shrink-0">
+                <button 
+                  onClick={() => setNormaSeleccionada(null)} 
+                  className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-1.5 rounded-full transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-200/50 px-2.5 py-1 rounded-md">
+                  Publicado: {normaSeleccionada.fecha_publicacion ? normaSeleccionada.fecha_publicacion.split(' ')[0].split('-').reverse().join('/') : ''}
+                </span>
+              </div>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {normaSeleccionada.sintesis}
+              </p>
+              
+              {normaSeleccionada.categorias_detectadas && (
+                <div className="mt-6 pt-5 border-t border-slate-100">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Categorías Detectadas</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {normaSeleccionada.categorias_detectadas.split(',').map((cat, idx) => (
+                      <span key={idx} className="bg-orange-50 text-orange-600 border border-orange-100 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">
+                        {cat.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">
+              <button 
+                onClick={() => setNormaSeleccionada(null)}
+                className="px-5 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
+              >
+                Cerrar
+              </button>
+              {normaSeleccionada.url_norma && (
+                <a 
+                  href={normaSeleccionada.url_norma} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="bg-lgc-primary hover:bg-[#004D62] text-white px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-widest shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  Ver Documento Original
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
