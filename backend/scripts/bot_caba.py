@@ -15,25 +15,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# 1. ESTO ES CLAVE: Obliga a webdriver-manager a instalar el driver en la carpeta actual, 
-# evitando problemas de permisos en la carpeta /home o /root del servidor web.
-os.environ['WDM_LOCAL'] = '1' 
-
-opts = Options()
-opts.add_argument("--headless=new")
-opts.add_argument("--no-sandbox")
-opts.add_argument("--disable-dev-shm-usage")
-opts.add_argument("--disable-gpu")
-opts.add_argument("--window-size=1920,1080")
-
-# 2. Le indicamos la ruta exacta del binario de Chrome (ruta estándar en Ubuntu/Debian)
-opts.binary_location = "/usr/bin/google-chrome" 
-
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()),
-    options=opts
-)
-
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -61,20 +42,6 @@ URL_GUARDAR_NORMAS = os.getenv('URL_GUARDAR_NORMAS', 'http://localhost/lgc_sgmlo
 MAX_TEXTO_COMPLETO = 20000
 # Espera máxima (segundos) por cada página de detalle.
 TIMEOUT_DETALLE = 20
-
-# ============================================================================
-# NOTA DE ARQUITECTURA
-# ----------------------------------------------------------------------------
-# Este bot ya NO categoriza ni pide el diccionario de categorías.
-# Toda la inteligencia (dedup de emisores por clave normalizada, categorización
-# sobre texto completo) vive en el backend PHP (NormativaHelper.php).
-# El bot solo:
-#   1. Scrapea las normas del día (Selenium, porque el sitio bloquea requests).
-#   2. Aísla el EMISOR limpio (texto antes del <a> del título de la norma).
-#   3. Descarga el TEXTO COMPLETO de cada norma reutilizando el mismo navegador.
-#   4. Manda todo crudo al backend.
-# ============================================================================
-
 
 # --- Funciones auxiliares ---
 def salida(status, message, total=None):
@@ -113,16 +80,29 @@ def registrar_boletin_procesado(fecha_boletin, cantidad):
 
 
 def crear_driver():
-    """Crea e inicializa un Chrome headless reutilizable."""
+    """Crea e inicializa un Chrome headless reutilizable y blindado para VPS."""
+    # 1. Fuerza a webdriver-manager a descargar en la carpeta actual
+    os.environ['WDM_LOCAL'] = '1' 
+
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
+    
+    # 2. EL TRUCO PARA EL VPS: Le decimos que guarde su caché y perfiles en /tmp
+    # Esto evita el error de permisos cuando www-data intenta escribir en el /home
+    chrome_options.add_argument("--user-data-dir=/tmp/chrome-data")
+    chrome_options.add_argument("--data-path=/tmp/chrome-data")
+    chrome_options.add_argument("--disk-cache-dir=/tmp/chrome-data/cache")
+    
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # 3. Ruta estándar del binario de Chrome en Ubuntu/Debian
+    chrome_options.binary_location = "/usr/bin/google-chrome"
+    
     service = Service(ChromeDriverManager().install())
-    opts.binary_location = "/usr/bin/google-chrome"
     return webdriver.Chrome(service=service, options=chrome_options)
 
 
