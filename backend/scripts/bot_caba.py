@@ -7,7 +7,6 @@ import sys
 import json
 import time
 import unicodedata
-import tempfile
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -15,6 +14,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+
+opts = Options()
+opts.add_argument("--headless=new")
+opts.add_argument("--no-sandbox")
+opts.add_argument("--disable-dev-shm-usage")
+opts.add_argument("--window-size=1920,1080")
+
+# Si usás Chromium del sistema, descomentá y ajustá:
+# opts.binary_location = "/usr/bin/chromium"
+
+driver = webdriver.Chrome(
+    service=Service(ChromeDriverManager().install()),
+    options=opts
+)
 
 try:
     from dotenv import load_dotenv
@@ -43,6 +56,20 @@ URL_GUARDAR_NORMAS = os.getenv('URL_GUARDAR_NORMAS', 'http://localhost/lgc_sgmlo
 MAX_TEXTO_COMPLETO = 20000
 # Espera máxima (segundos) por cada página de detalle.
 TIMEOUT_DETALLE = 20
+
+# ============================================================================
+# NOTA DE ARQUITECTURA
+# ----------------------------------------------------------------------------
+# Este bot ya NO categoriza ni pide el diccionario de categorías.
+# Toda la inteligencia (dedup de emisores por clave normalizada, categorización
+# sobre texto completo) vive en el backend PHP (NormativaHelper.php).
+# El bot solo:
+#   1. Scrapea las normas del día (Selenium, porque el sitio bloquea requests).
+#   2. Aísla el EMISOR limpio (texto antes del <a> del título de la norma).
+#   3. Descarga el TEXTO COMPLETO de cada norma reutilizando el mismo navegador.
+#   4. Manda todo crudo al backend.
+# ============================================================================
+
 
 # --- Funciones auxiliares ---
 def salida(status, message, total=None):
@@ -81,32 +108,14 @@ def registrar_boletin_procesado(fecha_boletin, cantidad):
 
 
 def crear_driver():
-    """Crea e inicializa un Chrome headless reutilizable y blindado para VPS."""
-    os.environ['WDM_LOCAL'] = '1' 
-
-    # Genera una carpeta temporal única para esta ejecución (evita choques de permisos)
-    temp_dir = tempfile.mkdtemp()
-
+    """Crea e inicializa un Chrome headless reutilizable."""
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-software-rasterizer") # Previene crashes gráficos en VPS
     chrome_options.add_argument("--window-size=1920,1080")
-    
-    # Asignamos la carpeta temporal única
-    chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-    chrome_options.add_argument(f"--data-path={temp_dir}")
-    chrome_options.add_argument(f"--disk-cache-dir={temp_dir}/cache")
-    
-    # Este flag suele solucionar el "session not created" en entornos sin interfaz gráfica
-    chrome_options.add_argument("--remote-debugging-port=9222") 
-    
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    chrome_options.binary_location = "/usr/bin/google-chrome"
-    
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
