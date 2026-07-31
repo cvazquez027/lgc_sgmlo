@@ -7,6 +7,7 @@ import sys
 import json
 import time
 import unicodedata
+import tempfile
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -81,25 +82,29 @@ def registrar_boletin_procesado(fecha_boletin, cantidad):
 
 def crear_driver():
     """Crea e inicializa un Chrome headless reutilizable y blindado para VPS."""
-    # 1. Fuerza a webdriver-manager a descargar en la carpeta actual
     os.environ['WDM_LOCAL'] = '1' 
+
+    # Genera una carpeta temporal única para esta ejecución (evita choques de permisos)
+    temp_dir = tempfile.mkdtemp()
 
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-software-rasterizer") # Previene crashes gráficos en VPS
     chrome_options.add_argument("--window-size=1920,1080")
     
-    # 2. EL TRUCO PARA EL VPS: Le decimos que guarde su caché y perfiles en /tmp
-    # Esto evita el error de permisos cuando www-data intenta escribir en el /home
-    chrome_options.add_argument("--user-data-dir=/tmp/chrome-data")
-    chrome_options.add_argument("--data-path=/tmp/chrome-data")
-    chrome_options.add_argument("--disk-cache-dir=/tmp/chrome-data/cache")
+    # Asignamos la carpeta temporal única
+    chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+    chrome_options.add_argument(f"--data-path={temp_dir}")
+    chrome_options.add_argument(f"--disk-cache-dir={temp_dir}/cache")
+    
+    # Este flag suele solucionar el "session not created" en entornos sin interfaz gráfica
+    chrome_options.add_argument("--remote-debugging-port=9222") 
     
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # 3. Ruta estándar del binario de Chrome en Ubuntu/Debian
     chrome_options.binary_location = "/usr/bin/google-chrome"
     
     service = Service(ChromeDriverManager().install())
