@@ -15,14 +15,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+# 1. ESTO ES CLAVE: Obliga a webdriver-manager a instalar el driver en la carpeta actual, 
+# evitando problemas de permisos en la carpeta /home o /root del servidor web.
+os.environ['WDM_LOCAL'] = '1' 
+
 opts = Options()
 opts.add_argument("--headless=new")
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
+opts.add_argument("--disable-gpu")
 opts.add_argument("--window-size=1920,1080")
 
-# Si usás Chromium del sistema, descomentá y ajustá:
-# opts.binary_location = "/usr/bin/chromium"
+# 2. Le indicamos la ruta exacta del binario de Chrome (ruta estándar en Ubuntu/Debian)
+opts.binary_location = "/usr/bin/google-chrome" 
 
 driver = webdriver.Chrome(
     service=Service(ChromeDriverManager().install()),
