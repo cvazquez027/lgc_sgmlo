@@ -19,6 +19,7 @@ Río Negro utiliza una mezcla de formatos en sus encabezados de normas:
 
 Se ignora el sumario saltando hasta la segunda aparición de 'SECCIÓN 
 ADMINISTRATIVA' y se frena la lectura al llegar a 'FALLOS' o 'EDICTOS'.
+El emisor se atrapa con lógica de estado, rastreando los encabezados.
 """
 
 import os
@@ -204,19 +205,6 @@ RE_ARTICULO1 = re.compile(
     r'(?P<texto>[\s\S]{0,1200}?)(?=ART[ÍI]?CULO\s*(?:N[º°]\s*)?2(?!\d)|\Z)',
     re.IGNORECASE)
 
-def _organismo_precedente(cuerpo, pos_header):
-    antes = cuerpo[:pos_header]
-    lineas = antes.split('\n')
-    encontradas = []
-    for linea in reversed(lineas[-6:]):
-        t = linea.strip()
-        if not t or t in ['VISTO:', 'CONSIDERANDO:', 'DECRETOS', 'RESOLUCIONES', 'DECRETOS SINTETIZADOS']: break
-        if t.isupper() and len(t) > 3:
-            encontradas.insert(0, t)
-        elif encontradas:
-            break
-    return _compacto(' '.join(encontradas))
-
 def extraer_normas(cuerpo_completo, fecha_boletin, anio_boletin):
     # Saltamos el sumario buscando la segunda aparición de 'SECCIÓN ADMINISTRATIVA'
     idx_sumario = cuerpo_completo.find('SECCIÓN ADMINISTRATIVA')
@@ -264,21 +252,73 @@ def extraer_normas(cuerpo_completo, fecha_boletin, anio_boletin):
             numeros_vistos.add(m[3])
     
     normas = []
+    emisor_actual = 'PODER EJECUTIVO'  # Memoria inicial
+    
     for i, (ini, fin_cab, tipo, numero) in enumerate(marcas_filtradas):
         fin_bloque = marcas_filtradas[i+1][0] if i+1 < len(marcas_filtradas) else len(bloque_normas)
         bloque = bloque_normas[fin_cab:fin_bloque]
         
-        # Limpieza cosmética del bloque para mejorar la extracción de la síntesis si no hay Artículo 1°
+        # --- DETERMINACIÓN PRECISA DEL EMISOR CON ESTADO ---
+        if i == 0:
+            texto_intermedio = bloque_normas[:ini]
+        else:
+            prev_fin_cab = marcas_filtradas[i-1][1]
+            texto_intermedio = bloque_normas[prev_fin_cab:ini]
+            
+        lineas_todas = texto_intermedio.split('\n')
+        # Analizamos solo las últimas 30 líneas para no arrastrar basura del cuerpo de la norma anterior
+        lineas = lineas_todas[-30:]
+        
+        nuevo_emisor = ''
+        idx_ancla = -1
+        # Buscamos la última aparición de "Provincia de Río Negro" que actúa como ancla
+        for idx, linea in enumerate(lineas):
+            if 'provincia de rio negro' in _sin_acentos(linea).lower():
+                idx_ancla = idx
+                
+        if idx_ancla != -1:
+            encontradas = []
+            for j in range(idx_ancla + 1, len(lineas)):
+                t = lineas[j].strip()
+                if not t: 
+                    continue
+                    
+                # Cortes de seguridad (separadores tipo --0--, resoluciones o acciones de decreto)
+                if re.fullmatch(r'[-–—_0oO]+', t) or re.match(r'^(RESOL|DECTO|DISPO|LEY)', t, re.I) or t in ['VISTO:', 'CONSIDERANDO:', 'RESUELVE:', 'DECRETA:', 'DISPONE:']:
+                    break
+                    
+                # Si es mayúscula, pertenece al organismo (Ej: MINISTERIO DE HACIENDA)
+                if t.isupper() and len(t) > 3:
+                    encontradas.append(t)
+                elif encontradas:
+                    # Si ya juntamos mayúsculas y aparece una línea normal, cortamos (esto ignora subsecretarías en minúscula y se queda con el Ministerio primario)
+                    break
+                    
+            if encontradas:
+                candidato = _compacto(' '.join(encontradas))
+                if candidato not in ['DECRETOS', 'RESOLUCIONES', 'FALLOS', 'EDICTOS', 'LICITACIONES', 'COMUNICADOS', 'ANEXO', 'ANEXO I', 'ANEXO II']:
+                    nuevo_emisor = candidato
+
+        # Actualizamos la memoria si encontramos un organismo nuevo y válido
+        if nuevo_emisor:
+            emisor_actual = nuevo_emisor
+            
+        # Asignación final
+        if tipo == 'DECRETO':
+            emisor_final = 'PODER EJECUTIVO'
+        elif tipo == 'LEY':
+            emisor_final = 'PODER LEGISLATIVO'
+        else:
+            emisor_final = emisor_actual if emisor_actual else 'PODER EJECUTIVO'
+        
+        # --- SÍNTESIS ---
+        # Limpieza cosmética del bloque para mejorar la extracción si no hay Art 1
         bloque_limpio = re.sub(r'^[\s\n]*-RNE[\s\n]*', '', bloque)
         bloque_limpio = re.sub(r'^[ \t]*Viedma,.*?\n', '', bloque_limpio)
         
         m_art1 = RE_ARTICULO1.search(bloque)
         sintesis = _compacto(m_art1.group('texto')) if m_art1 else _compacto(bloque_limpio[:400])
         
-        emisor = _organismo_precedente(bloque_normas, ini)
-        if not emisor:
-            emisor = 'PODER EJECUTIVO' if tipo == 'DECRETO' else 'PODER EJECUTIVO'
-            
         normas.append({
             'tipo': tipo,
             'numero': numero,
@@ -286,7 +326,7 @@ def extraer_normas(cuerpo_completo, fecha_boletin, anio_boletin):
             'sintesis': sintesis,
             'texto_completo': bloque,
             'fecha_publicacion': fecha_boletin,
-            'emisor': emisor,
+            'emisor': emisor_final,
         })
         
     return normas
