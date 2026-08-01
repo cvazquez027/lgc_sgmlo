@@ -77,25 +77,32 @@ try {
     $stmt_cat = $db->prepare($q_cat);
 
     // Combinaciones existentes (para evitar duplicados)
+    //
+    // OJO: el chequeo de duplicados es SÓLO por clave_unica (tipo + número +
+    // año + emisor), que es la identidad real de una norma. Antes había
+    // también un chequeo por url_norma, pero se sacó (ver más abajo) porque
+    // algunos sitios (San Luis, y parcialmente San Juan) no tienen un link
+    // propio por norma: San Luis manda la MISMA url_norma (la del boletín
+    // completo) para TODAS las normas de una edición, y San Juan manda
+    // "...#page=N" que se repite cuando dos normas caen en la misma página
+    // del PDF. Con el chequeo por URL, la primera norma de la tanda marcaba
+    // esa URL como "ya vista" y todas las que compartían esa misma URL se
+    // descartaban como si fueran duplicados de ESA norma -- aunque fueran
+    // normas totalmente distintas. Confirmado real: San Luis mandó 83
+    // normas generales de la edición 16.126 y sólo se insertó 1 (todas
+    // comparten la URL de .../VerBoletin/16126, la primera "ganó" la URL y
+    // las otras 82 quedaron como omitidas).
     $combinaciones_existentes = [];
     $stmt_comb = $db->prepare("
-        SELECT CONCAT(id_tipo_norma, '|', numero, '|', anio, '|', id_emisor_norma) as clave 
-        FROM norma_bo 
-        UNION 
-        SELECT CONCAT(id_tipo_norma, '|', numero, '|', anio, '|', id_emisor_norma) as clave 
+        SELECT CONCAT(id_tipo_norma, '|', numero, '|', anio, '|', id_emisor_norma) as clave
+        FROM norma_bo
+        UNION
+        SELECT CONCAT(id_tipo_norma, '|', numero, '|', anio, '|', id_emisor_norma) as clave
         FROM norma
     ");
     $stmt_comb->execute();
     while ($row = $stmt_comb->fetchColumn()) {
         $combinaciones_existentes[$row] = true;
-    }
-
-    // URLs existentes para dedup
-    $urls_existentes = [];
-    $stmt_urls = $db->prepare("SELECT url_norma FROM norma_bo UNION SELECT url_norma FROM norma");
-    $stmt_urls->execute();
-    while ($row = $stmt_urls->fetch(PDO::FETCH_ASSOC)) {
-        $urls_existentes[$row['url_norma']] = true;
     }
 
     $id_jurisdiccion = null;
@@ -155,13 +162,9 @@ try {
             $sintesis = isset($norma['sintesis']) ? htmlspecialchars(strip_tags($norma['sintesis'])) : '';
             $texto_completo = isset($norma['texto_completo']) ? (string)$norma['texto_completo'] : '';
 
-            // --- Verificación de duplicados por URL ---
-            if (!empty($url) && isset($urls_existentes[$url])) {
-                $omitidas++;
-                continue;
-            }
-
-            // --- Verificar combinación única ---
+            // --- Verificar combinación única (tipo + número + año + emisor) ---
+            // Único chequeo de duplicados. No se chequea por url_norma: ver
+            // el comentario junto a $combinaciones_existentes más arriba.
             $clave_unica = "{$id_tipo}|{$numero}|{$anio}|{$id_emisor_final}";
             if (isset($combinaciones_existentes[$clave_unica])) {
                 $omitidas++;
@@ -194,9 +197,6 @@ try {
             $procesadas++;
 
             // Marcar como ya visto
-            if (!empty($url)) {
-                $urls_existentes[$url] = true;
-            }
             $combinaciones_existentes[$clave_unica] = true;
 
             // Insertar categorías
