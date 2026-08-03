@@ -72,6 +72,31 @@ _leer_estado/_escribir_estado + verificar_boletin_procesado contra el
 backend, ambas preexistentes y sin cambios) sigue siendo la que decide,
 sobre esa última edición real, si hace falta procesarla de nuevo o no.
 
+CONFIGURACIÓN VÍA .env (backend) — bug real de VPS, corregido
+-------------------------------------------------------------------------------
+Bug real en el VPS de Hostinger (/var/www/matrizonline/backend/scripts):
+una corrida manual (`python bot_tierradelfuego.py 24 --todas` en una shell
+interactiva, sin las variables ya exportadas) mandó las normas a
+"https://localhost/lgc_sgmlo/backend/api/boletin/ingresar_scraping.php" y
+reventó con SSLError ("Hostname mismatch, certificate is not valid for
+'localhost'") -- ese path/host es el default pensado para el XAMPP local
+del usuario, no la URL real de este VPS. El motivo: el módulo nunca cargaba
+un .env propio, dependía de que quien lo invoque ya tenga
+API_KEY_BACKEND/URL_HISTORIAL/URL_GUARDAR_NORMAS exportadas en el entorno
+de esa shell puntual.
+
+El usuario pasó bot_nacion.py (otro bot de la familia, confirmado andando
+bien en este mismo VPS) como referencia: ese script hace
+`from dotenv import load_dotenv; load_dotenv()` al importar, ANTES de leer
+ninguna variable -- así siempre lee el .env real del servidor sin importar
+si la shell puntual las tiene exportadas o no. Corregido acá igual (mismo
+try/except ImportError por si python-dotenv no está instalado, para no
+romper si falta el paquete). El resto de la familia (Salta, San Juan, San
+Luis, Santa Cruz, Santa Fe, Misiones, Santiago del Estero) probablemente
+comparte este mismo hueco -- no se tocó en esta sesión por no tener esos
+archivos a mano, pero vale revisarlos con el mismo criterio antes de
+correrlos manualmente en este VPS.
+
 TAMAÑO Y VARIABILIDAD DE LOS PDF — CONFIRMADO REAL
 -------------------------------------------------------------------------------
 El usuario reportó pesos "como 300 MB" y confirmó real que la edición del
@@ -490,6 +515,17 @@ try:
     import fitz  # PyMuPDF
 except ImportError:
     fitz = None
+
+# BUG REAL (VPS Hostinger, ver docstring "CONFIGURACIÓN VÍA .env"): sin esto,
+# una corrida manual en una shell interactiva (sin las variables ya
+# exportadas) cae en los defaults de abajo (pensados para XAMPP local) en
+# vez de leer el .env real del servidor -- mismo mecanismo que usa
+# bot_nacion.py, que el usuario confirmó que anda ok en ese VPS.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 # ===========================================================================
