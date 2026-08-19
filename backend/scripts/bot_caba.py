@@ -14,6 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.os_manager import ChromeType
 
 try:
     from dotenv import load_dotenv
@@ -106,11 +107,15 @@ def crear_driver():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    # Si en el VPS el navegador no está en la ruta estándar (o hay más de una
-    # versión instalada), descomentá y ajustá la ruta real:
-    # chrome_options.binary_location = "/usr/bin/google-chrome"
+    # El servidor tiene "chromium" (paquete apt), no "google-chrome". Si no
+    # se lo aclaramos, ChromeDriverManager a veces no detecta bien la
+    # versión instalada y baja el chromedriver "latest" en vez del que
+    # coincide con este binario -> "session not created: this version of
+    # ChromeDriver only supports Chrome version X". chrome_type=CHROMIUM
+    # + binary_location explícito evitan ese desajuste.
+    chrome_options.binary_location = "/usr/bin/chromium"
 
-    service = Service(ChromeDriverManager().install())
+    service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
 

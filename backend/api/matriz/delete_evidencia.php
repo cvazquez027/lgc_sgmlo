@@ -49,13 +49,14 @@ if (!$id_usuario) {
 }
 
 $data = json_decode(file_get_contents("php://input"));
-if (empty($data->id_documentacion)) {
+if (empty($data->id_documentacion) || empty($data->id_item_matriz)) {
     http_response_code(400);
-    echo json_encode(["mensaje" => "Falta id_documentacion."]);
+    echo json_encode(["mensaje" => "Faltan id_documentacion e id_item_matriz."]);
     exit();
 }
 
 $id_documentacion = (int)$data->id_documentacion;
+$id_item_matriz = (int)$data->id_item_matriz;
 
 $database = new Database();
 $db = $database->getConnection();
@@ -85,15 +86,54 @@ try {
     // Iniciar transacción
     $db->beginTransaction();
 
-    // 1. Eliminar la relación en doc_item_matriz
-    $stmt_rel = $db->prepare("DELETE FROM doc_item_matriz WHERE id_documentacion = :id_doc");
-    $stmt_rel->execute([':id_doc' => $id_documentacion]);
+    // 1. Eliminar SOLO la relación puntual de este ítem (no todas las de este documento:
+    //    el mismo adjunto puede estar compartido con otras versiones de la matriz)
+    $stmt_rel = $db->prepare("DELETE FROM doc_item_matriz WHERE id_documentacion = :id_doc AND id_item_matriz = :id_item");
+    $stmt_rel->execute([':id_doc' => $id_documentacion, ':id_item' => $id_item_matriz]);
 
-    // 2. Eliminar el registro de documentación
+    if ($stmt_rel->rowCount() === 0) {
+        $db->rollBack();
+        http_response_code(404);
+        echo json_encode(["mensaje" => "El documento no estaba vinculado a ese ítem."]);
+        exit();
+    }
+
+    // 2. Verificar si el archivo sigue en uso por otra matriz Publicada (2) o Archivada (3).
+    //    Si es así, NO se borra el archivo físico ni la fila de documentacion: solo se
+    //    quitó el vínculo del ítem actual, y el adjunto sigue disponible para esas matrices.
+    $stmt_uso = $db->prepare(
+        "SELECT COUNT(*) FROM doc_item_matriz dim
+         INNER JOIN item_matriz im ON dim.id_item_matriz = im.id_item_matriz
+         INNER JOIN matriz m ON im.id_matriz = m.id_matriz
+         WHERE dim.id_documentacion = :id_doc AND m.id_estado_matriz IN (2, 3)"
+    );
+    $stmt_uso->execute([':id_doc' => $id_documentacion]);
+    $usado_en_publicada_o_archivada = (int)$stmt_uso->fetchColumn() > 0;
+
+    if ($usado_en_publicada_o_archivada) {
+        $db->commit();
+        http_response_code(200);
+        echo json_encode(["mensaje" => "Vínculo eliminado. El archivo se conserva porque está en uso en una matriz Publicada o Archivada."]);
+        exit();
+    }
+
+    // 3. Si nadie más lo usa, verificar que tampoco queden otros vínculos sueltos
+    //    (por ejemplo otro ítem de un borrador) antes de borrar de verdad.
+    $stmt_otros = $db->prepare("SELECT COUNT(*) FROM doc_item_matriz WHERE id_documentacion = :id_doc");
+    $stmt_otros->execute([':id_doc' => $id_documentacion]);
+    $quedan_otros_vinculos = (int)$stmt_otros->fetchColumn() > 0;
+
+    if ($quedan_otros_vinculos) {
+        $db->commit();
+        http_response_code(200);
+        echo json_encode(["mensaje" => "Vínculo eliminado. El archivo se conserva porque sigue vinculado a otro ítem."]);
+        exit();
+    }
+
+    // 4. Nadie más lo usa: recién ahora se borra la fila de documentacion y el archivo físico
     $stmt_doc = $db->prepare("DELETE FROM documentacion WHERE id_documentacion = :id_doc");
     $stmt_doc->execute([':id_doc' => $id_documentacion]);
 
-    // 3. Eliminar el archivo físico
     $ruta_archivo = '../../' . $doc['path_archivos'];
     if (file_exists($ruta_archivo)) {
         unlink($ruta_archivo);

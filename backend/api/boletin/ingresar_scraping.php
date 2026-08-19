@@ -54,16 +54,12 @@ try {
     $db->beginTransaction();
 
     // --- Cachés ---
+    // resolverEmisor() y resolverTipoNorma() dedupean por clave_normalizada
+    // (mayúscula/minúscula y tildes no importan), así que da igual si los
+    // ~20 bots mandan "Resolucion", "RESOLUCION" o "RESOLUCIÓN": todos
+    // resuelven al mismo id_tipo_norma. Ver NormativaHelper.php.
     $cache_emisores = [];
     $cache_tipos = [];
-
-    // Pre-cargar tipos existentes
-    $stmt_tipos_existentes = $db->prepare("SELECT id_tipo_norma, UPPER(descripcion) as tipo_desc FROM tipo_norma");
-    $stmt_tipos_existentes->execute();
-    while ($row = $stmt_tipos_existentes->fetch(PDO::FETCH_ASSOC)) {
-        $cache_tipos[$row['tipo_desc']] = $row['id_tipo_norma'];
-    }
-    $stmt_ins_tipo = $db->prepare("INSERT INTO tipo_norma (descripcion, vigente) VALUES (:desc, 1)");
 
     // Categorías precompiladas
     $categorias_compiladas = NormativaHelper::cargarCategorias($db);
@@ -131,14 +127,7 @@ try {
             }
 
             // --- TIPO ---
-            $tipo_norma_desc = strtoupper(trim($norma['tipo_norma_desc']));
-            if (isset($cache_tipos[$tipo_norma_desc])) {
-                $id_tipo = $cache_tipos[$tipo_norma_desc];
-            } else {
-                $stmt_ins_tipo->execute([':desc' => $tipo_norma_desc]);
-                $id_tipo = $db->lastInsertId();
-                $cache_tipos[$tipo_norma_desc] = $id_tipo;
-            }
+            $id_tipo = NormativaHelper::resolverTipoNorma($db, $norma['tipo_norma_desc'], $cache_tipos);
 
             // --- EMISOR ---
             $id_jur = isset($norma['id_jurisdiccion']) ? (int)$norma['id_jurisdiccion'] : $id_jurisdiccion;

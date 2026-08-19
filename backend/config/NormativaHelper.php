@@ -151,6 +151,76 @@ class NormativaHelper
     }
 
     /**
+     * Resuelve (encuentra o crea) el id_tipo_norma para una descripción dada,
+     * deduplicando por clave normalizada. Calco de resolverEmisor(), pero sin
+     * partición por jurisdicción: tipo_norma es una lista global compartida
+     * por todos los bots.
+     *
+     * Requiere que exista un índice único sobre `clave_normalizada` en
+     * tipo_norma (lo crea la migración migrar_normalizacion.php) para que el
+     * ON DUPLICATE KEY funcione como protección ante condiciones de carrera.
+     *
+     * Usa un cache pasado por referencia para evitar consultas repetidas
+     * dentro de una misma corrida (clave de cache = clave_normalizada).
+     *
+     * @param PDO    $db
+     * @param string $descripcion_cruda  El tipo tal cual lo manda el bot
+     *                                   ("Resolucion", "RESOLUCIÓN", etc).
+     * @param array  $cache              Cache por referencia.
+     * @return int   id_tipo_norma
+     */
+    public static function resolverTipoNorma(PDO $db, $descripcion_cruda, array &$cache)
+    {
+        $descripcion = trim((string)$descripcion_cruda);
+        if ($descripcion === '') {
+            $descripcion = 'SIN TIPO';
+        }
+        // Igual que el resto de tipo_norma: se guarda en mayúsculas (con tildes).
+        $descripcion_mayus = mb_strtoupper($descripcion, 'UTF-8');
+
+        $clave = self::normalizarClave($descripcion_mayus);
+
+        if (isset($cache[$clave])) {
+            return $cache[$clave];
+        }
+
+        // 1) Buscar por clave normalizada (no por descripción cruda).
+        $stmt = $db->prepare(
+            "SELECT id_tipo_norma FROM tipo_norma WHERE clave_normalizada = :clave LIMIT 1"
+        );
+        $stmt->execute([':clave' => $clave]);
+        $id = $stmt->fetchColumn();
+
+        if ($id) {
+            $cache[$clave] = (int)$id;
+            return (int)$id;
+        }
+
+        // 2) No existe: insertar. ON DUPLICATE KEY protege contra otro proceso
+        //    que haya insertado la misma clave en paralelo entre el SELECT y
+        //    el INSERT (dos bots corriendo al mismo tiempo, por ejemplo).
+        $stmt_ins = $db->prepare(
+            "INSERT INTO tipo_norma (descripcion, vigente, clave_normalizada)
+             VALUES (:desc, 1, :clave)
+             ON DUPLICATE KEY UPDATE id_tipo_norma = LAST_INSERT_ID(id_tipo_norma)"
+        );
+        $stmt_ins->execute([
+            ':desc'  => $descripcion_mayus,
+            ':clave' => $clave,
+        ]);
+
+        $id_final = (int)$db->lastInsertId();
+
+        if ($id_final === 0) {
+            $stmt->execute([':clave' => $clave]);
+            $id_final = (int)$stmt->fetchColumn();
+        }
+
+        $cache[$clave] = $id_final;
+        return $id_final;
+    }
+
+    /**
      * Carga las categorías vigentes y precompila un patrón regex por cada una.
      *
      * Cada categoría:

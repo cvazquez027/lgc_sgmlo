@@ -1086,17 +1086,19 @@ export default function WorkspaceMatrizPage() {
   };
 
   const handleBorrarEvidencia = async (id_doc: number) => {
+    if (!itemEvidencia) return;
     const token = localStorage.getItem("sgml_token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/matriz/delete_evidencia.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ id_documentacion: id_doc })
+        body: JSON.stringify({ id_documentacion: id_doc, id_item_matriz: itemEvidencia.id_item_matriz })
       });
-      if (!res.ok) throw new Error("Error al eliminar");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.mensaje || "Error al eliminar");
       await recargarItemEvidencia();
       await fetchItems();
-      toast.showToast("Éxito", "Archivo eliminado correctamente.", "success");
+      toast.showToast("Éxito", data?.mensaje || "Archivo eliminado correctamente.", "success");
     } catch (err) {
       console.error(err);
       toast.showToast("Error", "Error al eliminar el archivo.", "error");
