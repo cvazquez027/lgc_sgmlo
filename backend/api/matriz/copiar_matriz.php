@@ -150,6 +150,20 @@ try {
         "INSERT INTO item_matriz_norma (id_item_matriz, id_norma) VALUES (:id_item, :id_norma)"
     );
 
+    // Adjuntos (evidencia): mismo patrón que las normas. Solo se copia el vínculo
+    // en doc_item_matriz, reutilizando el id_documentacion existente; el archivo
+    // físico y la fila de "documentacion" no se duplican. Se excluyen los adjuntos
+    // dados de baja (vigente = 0), igual que hace leer_items.php al mostrarlos.
+    $stmt_leer_docs = $db->prepare(
+        "SELECT dim.id_documentacion
+         FROM doc_item_matriz dim
+         INNER JOIN documentacion d ON dim.id_documentacion = d.id_documentacion
+         WHERE dim.id_item_matriz = :id_item AND d.vigente = 1"
+    );
+    $stmt_ins_doc = $db->prepare(
+        "INSERT INTO doc_item_matriz (id_documentacion, id_item_matriz) VALUES (:id_doc, :id_item)"
+    );
+
     foreach ($items as $item) {
         $stmt_ins_item->execute([
             ':id_matriz'                    => $id_nueva,
@@ -175,6 +189,13 @@ try {
         $normas = $stmt_leer_normas->fetchAll(PDO::FETCH_COLUMN);
         foreach ($normas as $id_norma) {
             $stmt_ins_norma->execute([':id_item' => $id_nuevo_item, ':id_norma' => $id_norma]);
+        }
+
+        // Copiar adjuntos (evidencia) vinculados
+        $stmt_leer_docs->execute([':id_item' => $item['id_item_matriz']]);
+        $docs = $stmt_leer_docs->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($docs as $id_documentacion) {
+            $stmt_ins_doc->execute([':id_doc' => $id_documentacion, ':id_item' => $id_nuevo_item]);
         }
     }
 
