@@ -33,6 +33,30 @@ const COLUMN_LABELS: Record<string, string> = {
   'adjuntos': 'Evidencia (Archivos)',
 };
 
+// Convierte una URL de imagen a Data URL base64 (para incrustar logos en el PDF).
+// Si la imagen no puede descargarse (ej. CORS del backend) devuelve null y el
+// PDF se genera igual, simplemente sin ese logo.
+async function urlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Detecta el formato (PNG/JPEG) a partir del Data URL, requerido por jsPDF.addImage
+function dataUrlFormat(dataUrl: string): "PNG" | "JPEG" {
+  return dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+}
+
 export default function PreviewMatrizPage() {
   const router = useRouter();
   const params = useParams();
@@ -49,6 +73,7 @@ export default function PreviewMatrizPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [cumplimientoTotal, setCumplimientoTotal] = useState<number>(0);
   const [estadosCumplimiento, setEstadosCumplimiento] = useState<any[]>([]);
 
@@ -345,6 +370,141 @@ export default function PreviewMatrizPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Exportar a PDF generando el documento por código (jsPDF + autoTable).
+  // Ya no depende del diálogo de impresión del navegador: la orientación y el
+  // ancho de columnas se calculan acá, así que ninguna columna queda cortada.
+  const exportToPDF = async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      // Más de 6 columnas -> horizontal, igual criterio que se usaba para @page print
+      const orientation: "landscape" | "portrait" = config.length > 6 ? "landscape" : "portrait";
+      const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 10;
+      let cursorY = margin;
+
+      // --- Encabezado corporativo ---
+      const [logoDataUrl, lgcLogoDataUrl] = await Promise.all([
+        headerInfo?.logo_path
+          ? urlToDataUrl(`${process.env.NEXT_PUBLIC_IMG_URL}/${headerInfo.logo_path}`)
+          : Promise.resolve(null),
+        urlToDataUrl(`${window.location.origin}/logo_lgc.png`),
+      ]);
+
+      if (logoDataUrl) {
+        try {
+          doc.addImage(logoDataUrl, dataUrlFormat(logoDataUrl), margin, cursorY, 20, 20, undefined, "FAST");
+        } catch (e) {
+          console.warn("No se pudo insertar el logo del cliente en el PDF", e);
+        }
+      }
+
+      const textX = margin + (logoDataUrl ? 26 : 0);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text(String(headerInfo?.nombre_fantasia || headerInfo?.razon_social || ""), textX, cursorY + 6);
+
+      doc.setFontSize(9);
+      doc.setTextColor(217, 119, 6); // acento
+      doc.text(String(headerInfo?.establecimiento_desc || ""), textX, cursorY + 12);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text(
+        `Esp: ${headerInfo?.especialidad_matriz_desc || "-"}     Tipo: ${headerInfo?.tipo_matriz_desc || "-"}     Versión: ${headerInfo?.version ?? "-"}.0`,
+        textX,
+        cursorY + 17
+      );
+
+      if (lgcLogoDataUrl) {
+        try {
+          doc.addImage(lgcLogoDataUrl, dataUrlFormat(lgcLogoDataUrl), pageWidth - margin - 26, cursorY, 26, 9, undefined, "FAST");
+        } catch (e) {
+          console.warn("No se pudo insertar el logo de LGC en el PDF", e);
+        }
+      }
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text("EMITIDO POR", pageWidth - margin, cursorY + 15, { align: "right" });
+
+      cursorY += 24;
+
+      if (headerInfo?.mostrar_cumplimiento && headerInfo?.id_tipo_matriz === 2) {
+        doc.setFontSize(8);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Cumplimiento: ${cumplimientoTotal}%`, margin, cursorY);
+        cursorY += 6;
+      }
+
+      doc.setDrawColor(11, 61, 92);
+      doc.setLineWidth(0.8);
+      doc.line(margin, cursorY, pageWidth - margin, cursorY);
+      cursorY += 4;
+
+      // --- Tabla de datos (reutiliza getPlainTextContent, ya usado en la exportación a Excel) ---
+      const head = [["#", ...config.map((c: any) => c.label || COLUMN_LABELS[c.id] || c.id)]];
+      const body =
+        items.length === 0
+          ? [[{ content: "No hay ítems registrados en esta matriz.", colSpan: config.length + 1, styles: { halign: "center" as const, textColor: [148, 163, 184] as [number, number, number] } }]]
+          : items.map((item, idx) => [String(idx + 1), ...config.map((c: any) => getPlainTextContent(item, c.id))]);
+
+      autoTable(doc, {
+        head,
+        body,
+        startY: cursorY,
+        margin: { left: margin, right: margin, bottom: 14 },
+        styles: {
+          font: "helvetica",
+          fontSize: 7,
+          cellPadding: 2,
+          overflow: "linebreak", // el texto se ajusta dentro de la columna en vez de cortarse
+          valign: "top",
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1,
+        },
+        headStyles: {
+          fillColor: [241, 245, 249],
+          textColor: [51, 65, 85],
+          fontStyle: "bold",
+          fontSize: 7,
+        },
+        columnStyles: {
+          0: { cellWidth: 8, halign: "center" },
+        },
+        theme: "grid",
+        showHead: "everyPage",
+        // autoTable recalcula el ancho de cada columna para que la tabla completa
+        // entre siempre dentro del ancho de página disponible (nunca se corta a la derecha)
+        tableWidth: "auto",
+      });
+
+      // Pie de página con numeración total (se agrega al final porque recién ahí se sabe cuántas páginas hay)
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`© ${new Date().getFullYear()} Lamas Global Consulting`, margin, pageHeight - 6);
+        doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: "right" });
+      }
+
+      doc.save(`matriz_${idMatriz}_${new Date().toISOString().slice(0, 19)}.pdf`);
+    } catch (err) {
+      console.error(err);
+      toast.showToast("Error", "No se pudo generar el PDF.", "error");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   if (loading) return <div className="py-20 text-center animate-pulse text-lgc-primary font-bold tracking-widest uppercase">Cargando Documento...</div>;
 
   const isLandscape = config.length > 6;
@@ -429,9 +589,9 @@ export default function PreviewMatrizPage() {
               </button>
             )}
 
-            <button onClick={() => window.print()} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
+            <button onClick={exportToPDF} disabled={isExportingPdf} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              Exportar a PDF
+              {isExportingPdf ? 'Generando PDF...' : 'Exportar a PDF'}
             </button>
             
             <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2">
