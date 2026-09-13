@@ -1,4 +1,5 @@
 import os
+import shutil
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -94,6 +95,36 @@ def registrar_boletin_procesado(fecha_boletin, cantidad):
         pass
 
 
+def _detectar_chromium():
+    """
+    Encuentra el binario real de Chromium/Chrome en este servidor.
+
+    Antes esto era un valor fijo ("/usr/bin/chromium"), y se rompió en
+    producción el 18/08 cuando el servidor pasó a tener Chromium instalado
+    por snap en vez de por apt (confirmado real por el usuario: "chromium
+    --version" devuelve "... snap", "/usr/bin/chromium" ya no existe, y
+    "which chromium" da "/snap/bin/chromium"). Selenium fallaba con
+    "session not created" porque intentaba arrancar un binario que ya no
+    estaba en esa ruta -- no era un desajuste de versión con el chromedriver
+    (esos se venían actualizando solos bien, según la caché de webdriver_manager).
+
+    Se prueba primero por PATH (`shutil.which`), y si no aparece -- puede
+    pasar en cron, que a veces arranca con un PATH más chico que el de una
+    sesión interactiva por SSH y no incluye /snap/bin -- se prueba una
+    lista de rutas conocidas directamente por si el PATH no alcanza.
+    """
+    encontrado = (shutil.which('chromium') or shutil.which('chromium-browser')
+                 or shutil.which('google-chrome') or shutil.which('google-chrome-stable'))
+    if encontrado:
+        return encontrado
+    for candidato in ('/snap/bin/chromium', '/usr/bin/chromium',
+                      '/usr/bin/chromium-browser', '/usr/bin/google-chrome',
+                      '/usr/bin/google-chrome-stable'):
+        if os.path.isfile(candidato) and os.access(candidato, os.X_OK):
+            return candidato
+    return None
+
+
 def crear_driver():
     """Crea e inicializa un Chrome headless reutilizable."""
     chrome_options = Options()
@@ -107,14 +138,20 @@ def crear_driver():
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    # El servidor tiene "chromium" (paquete apt), no "google-chrome". Si no
-    # se lo aclaramos, ChromeDriverManager a veces no detecta bien la
-    # versión instalada y baja el chromedriver "latest" en vez del que
-    # coincide con este binario -> "session not created: this version of
-    # ChromeDriver only supports Chrome version X". chrome_type=CHROMIUM
-    # + binary_location explícito evitan ese desajuste.
-    chrome_options.binary_location = "/usr/bin/chromium"
+    binario = _detectar_chromium()
+    if not binario:
+        raise RuntimeError(
+            "No se encontró el binario de Chromium/Chrome en este servidor "
+            "(se probó el PATH y las rutas conocidas /snap/bin/chromium, "
+            "/usr/bin/chromium, /usr/bin/chromium-browser, /usr/bin/google-chrome, "
+            "/usr/bin/google-chrome-stable). Instalarlo o revisar el PATH.")
+    log_info(f"Usando binario de Chromium: {binario}")
+    chrome_options.binary_location = binario
 
+    # chrome_type=CHROMIUM (en vez de dejar que ChromeDriverManager adivine)
+    # evita que baje el chromedriver "latest" en vez del que corresponde a
+    # este binario puntual -> "session not created: this version of
+    # ChromeDriver only supports Chrome version X".
     service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
