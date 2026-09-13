@@ -3,13 +3,15 @@ frontend/node_modules/
 frontend/.next/
 
 # Variables de entorno e info sensible
+.ENV
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-backend/config/database.php
+backend/config/Database.php
 backend/config/config.php
+backend/uploads/
 
 # Logs de error
 npm-debug.log*

@@ -41,8 +41,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setUserFullName(nombre);
           setUserInitials(nombre.charAt(0).toUpperCase());
         } else {
-          // Fallback: buscar en sgml_user
-          const userStr = localStorage.getItem("sgml_user");
+          // Fallback: buscar en sgml_usuario
+          const userStr = localStorage.getItem("sgml_usuario");
+          let datosEncontrados = false; // Variable local de control
+
           if (userStr) {
             try {
               const userObj = JSON.parse(userStr);
@@ -51,14 +53,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               if (nombre2 && apellido2) {
                 setUserFullName(`${nombre2} ${apellido2}`);
                 setUserInitials((nombre2.charAt(0) + apellido2.charAt(0)).toUpperCase());
+                datosEncontrados = true; // Marcamos como éxito
               } else if (nombre2) {
                 setUserFullName(nombre2);
                 setUserInitials(nombre2.charAt(0).toUpperCase());
+                datosEncontrados = true; // Marcamos como éxito
               }
             } catch (err) {}
           }
-          // Si aún no hay, usar email
-          if (!userFullName && email) {
+          
+          // Ahora verificamos la variable local, NO el estado de React
+          if (!datosEncontrados && email) {
             setUserInitials(email.charAt(0).toUpperCase());
           }
         }

@@ -264,6 +264,7 @@ export default function NormativaOficialPage() {
   const [niveles, setNiveles] = useState<Diccionario[]>([]);
   const [estados, setEstados] = useState<Diccionario[]>([]);
   const [categoriasGlobales, setCategoriasGlobales] = useState<Diccionario[]>([]);
+  const [normaDetalle, setNormaDetalle] = useState<Norma | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -273,6 +274,7 @@ export default function NormativaOficialPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filtros, setFiltros] = useState({
     tipo: '', 
+    nro_anio: '',
     nro: '', 
     anio: '', 
     sintesis: '', 
@@ -408,10 +410,19 @@ export default function NormativaOficialPage() {
       const params = new URLSearchParams();
       params.append('page', String(p));
       params.append('limit', String(l));
+      
       if (searchTerm) params.append('buscar', searchTerm);
       if (filtros.tipo) params.append('tipo', filtros.tipo);
-      if (filtros.nro) params.append('nro', filtros.nro);
-      if (filtros.anio) params.append('anio', filtros.anio);
+      
+      if (filtros.nro_anio) {
+        const parts = filtros.nro_anio.split('/');
+        if (parts[0]) params.append('nro', parts[0].trim());
+        if (parts[1]) params.append('anio', parts[1].trim());
+      } else {
+        if (filtros.nro) params.append('nro', filtros.nro);
+        if (filtros.anio) params.append('anio', filtros.anio);
+      }
+      
       if (filtros.sintesis) params.append('sintesis', filtros.sintesis);
       if (filtros.id_emisor) params.append('id_emisor', filtros.id_emisor);
       if (filtros.nivel) params.append('nivel', filtros.nivel);
@@ -736,11 +747,29 @@ export default function NormativaOficialPage() {
           <div className="h-8 w-px bg-white/30 hidden md:block"></div>
           <h1 className="text-2xl font-heading uppercase tracking-tight">Base Actualizada de Normativa</h1>
         </div>
-        <div className="flex gap-3 w-full md:w-auto shrink-0">
+        
+        <div className="flex gap-3 w-full md:w-auto shrink-0 flex-wrap md:flex-nowrap">
+          <select 
+            className="w-full md:w-40 p-2.5 text-sm bg-white/10 text-white border border-white/20 rounded-lg outline-none focus:ring-2 focus:ring-white transition-all shadow-inner [&>option]:text-slate-900 cursor-pointer"
+            value={filtros.tipo}
+            onChange={e => { setFiltros({...filtros, tipo: e.target.value}); setCurrentPage(1); }}
+          >
+            <option value="">Tipo (Todos)</option>
+            {tipos.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
+          </select>
+
+          <input 
+            type="text" 
+            placeholder="Nro/Año (Ej: 220/1999)" 
+            className="w-full md:w-48 p-2.5 text-sm bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-lg focus:ring-2 focus:ring-white outline-none transition-all shadow-inner"
+            value={filtros.nro_anio || ''}
+            onChange={e => { setFiltros({...filtros, nro_anio: e.target.value}); setCurrentPage(1); }}
+          />
+
           <input 
             type="text" 
             placeholder="Búsqueda rápida..." 
-            className="w-full md:w-72 p-2.5 text-sm bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-lg focus:ring-2 focus:ring-white outline-none transition-all shadow-inner"
+            className="w-full md:w-64 p-2.5 text-sm bg-white/10 text-white placeholder-white/50 border border-white/20 rounded-lg focus:ring-2 focus:ring-white outline-none transition-all shadow-inner"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
           />
@@ -774,14 +803,6 @@ export default function NormativaOficialPage() {
             <div className="p-6 border-t border-slate-200 bg-white space-y-6">
                 <div className="space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <select className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" value={filtros.tipo} onChange={e => setFiltros({...filtros, tipo: e.target.value})}>
-                       <option value="">Tipo Norma (Todos)</option>
-                       {tipos.map(t => <option key={t.id} value={t.descripcion}>{t.descripcion}</option>)}
-                    </select>
-                    <input type="text" placeholder="Nro de Norma" className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.nro} onChange={e => setFiltros({...filtros, nro: e.target.value})} />
-                    <input type="text" placeholder="Año" maxLength={4} className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors" value={filtros.anio} onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''); }} onChange={e => setFiltros({...filtros, anio: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <select className="text-[11px] p-2.5 border border-slate-200 rounded-lg outline-none focus:border-lgc-primary bg-slate-50 hover:bg-white transition-colors cursor-pointer" value={filtros.nivel} onChange={e => setFiltros({...filtros, nivel: e.target.value})}>
                       <option value="">Nivel de Jurisdicción (Todos)</option>
                       {niveles.map(n => <option key={n.id} value={n.descripcion}>{n.descripcion}</option>)}
@@ -797,7 +818,7 @@ export default function NormativaOficialPage() {
                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded border border-slate-200 shadow-inner">
                      Resultados: <span className="text-lgc-primary font-black text-xs">{totalItems}</span> normas encontradas
                    </div>
-                   <button onClick={() => setFiltros({ tipo: '', nro: '', anio: '', sintesis: '', emisor: '', id_emisor: '', nivel: '', jurisdiccion: '', categorias: [] })} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors shadow-sm whitespace-nowrap">
+                   <button onClick={() => setFiltros({ tipo: '', nro_anio: '', nro: '', anio: '', sintesis: '', emisor: '', id_emisor: '', nivel: '', jurisdiccion: '', categorias: [] })} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors shadow-sm whitespace-nowrap">
                       Limpiar Filtros
                    </button>
                 </div>
@@ -827,7 +848,11 @@ export default function NormativaOficialPage() {
                     <tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">No se encontraron normativas con los filtros aplicados.</td></tr>
                   ) : (
                     normas.map(norma => (
-                      <tr key={norma.id_norma} className="hover:bg-slate-50/80 transition-colors align-top group">
+                      <tr 
+                        key={norma.id_norma} 
+                        onClick={() => setNormaDetalle(norma)}
+                        className="hover:bg-slate-50/80 transition-colors align-top group cursor-pointer"
+                      >
                         <td className="p-5">
                           <div className="font-bold text-slate-700 text-sm group-hover:text-lgc-primary transition-colors">
                             {norma.tipo_norma_desc} {norma.numero}
@@ -853,7 +878,7 @@ export default function NormativaOficialPage() {
                             </div>
                           )}
                           {norma.url_norma && (
-                            <a href={norma.url_norma} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-[10px] text-lgc-accent font-bold uppercase tracking-widest hover:underline">
+                            <a href={norma.url_norma} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-[10px] text-lgc-accent font-bold uppercase tracking-widest hover:underline">
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                               Ver Doc. Original
                             </a>
@@ -867,11 +892,12 @@ export default function NormativaOficialPage() {
                         <td className="p-5 text-right">
                           {canEdit("normativa") && (
                             <div className="flex justify-end gap-2">
-                              <button onClick={() => abrirModalCategorias(norma)} className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Asignar Categorías">
+                              <button onClick={(e) => { e.stopPropagation(); abrirModalCategorias(norma); }} className="text-slate-400 hover:text-[#006A8A] bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Asignar Categorías">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
                               </button>
                               <button 
-                                onClick={() => { 
+                                onClick={(e) => { 
+                                  e.stopPropagation();
                                   setFormData({
                                     id_norma: norma.id_norma.toString(),
                                     id_tipo_norma: norma.id_tipo_norma?.toString() || "",
@@ -893,7 +919,7 @@ export default function NormativaOficialPage() {
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               </button>
-                              <button onClick={() => handleDeleteNorma(norma)} className="text-slate-400 hover:text-red-500 bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Eliminar Norma">
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteNorma(norma); }} className="text-slate-400 hover:text-red-500 bg-white border border-slate-200 p-2 rounded transition-all shadow-sm group-hover:shadow-md" title="Eliminar Norma">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>
                             </div>
@@ -1087,7 +1113,7 @@ export default function NormativaOficialPage() {
         </div>
       )}
 
-      {/* MODAL ASIGNACIÓN DE CATEGORÍAS (sin cambios) */}
+      {/* MODAL ASIGNACIÓN DE CATEGORÍAS */}
       {isCategoriasModalOpen && normaSeleccionada && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
@@ -1199,6 +1225,90 @@ export default function NormativaOficialPage() {
                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Guardar Categorización</>
                  )}
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE DETALLE DE NORMA */}
+      {normaDetalle && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in" 
+          onClick={() => setNormaDetalle(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden transform transition-all" 
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start p-6 border-b border-slate-100 bg-slate-50">
+              <div className="pr-4">
+                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-2 leading-none">
+                  {normaDetalle.tipo_norma_desc} N° {normaDetalle.numero}/{normaDetalle.anio}
+                </h2>
+                <h3 className="text-sm font-bold text-lgc-primary uppercase tracking-widest">
+                  {normaDetalle.emisor_desc}
+                </h3>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
+                  {normaDetalle.jurisdiccion_desc || 'Jurisdicción no especificada'}
+                </h4>
+              </div>
+              <div className="flex flex-col items-end gap-3 shrink-0">
+                <button 
+                  onClick={() => setNormaDetalle(null)} 
+                  className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-1.5 rounded-full transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-200/50 px-2.5 py-1 rounded-md">
+                    Publicado: {normaDetalle.fecha_publicacion ? normaDetalle.fecha_publicacion.split('-').reverse().join('/') : '-'}
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest border ${normaDetalle.estado_desc?.includes('Vigente') ? 'bg-green-50 text-green-700 border-green-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                    {normaDetalle.estado_desc || 'SIN ESTADO'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                {normaDetalle.sintesis || 'Sin síntesis registrada.'}
+              </p>
+              
+              {normaDetalle.categorias && normaDetalle.categorias.length > 0 && (
+                <div className="mt-6 pt-5 border-t border-slate-100">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Categorías Asignadas</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {normaDetalle.categorias.map((cat, idx) => (
+                      <span key={idx} className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase shadow-sm tracking-widest">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">
+              <button 
+                onClick={() => setNormaDetalle(null)}
+                className="px-5 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
+              >
+                Cerrar
+              </button>
+              {normaDetalle.url_norma && (
+                <a 
+                  href={normaDetalle.url_norma} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="bg-lgc-primary hover:bg-[#006A8A] text-white px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-widest shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  Ver Documento Original
+                </a>
+              )}
             </div>
           </div>
         </div>

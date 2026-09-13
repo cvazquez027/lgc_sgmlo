@@ -57,6 +57,22 @@ function dataUrlFormat(dataUrl: string): "PNG" | "JPEG" {
   return dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
 }
 
+// Calcula el ancho/alto final de una imagen para que entre dentro de una caja
+// máxima (maxWidth x maxHeight, en mm) conservando su relación de aspecto
+// original — equivalente a "object-fit: contain" en CSS. Evita que los logos
+// se vean estirados o achatados dentro del PDF.
+function getContainedSize(naturalWidth: number, naturalHeight: number, maxWidth: number, maxHeight: number) {
+  if (!naturalWidth || !naturalHeight) return { width: maxWidth, height: maxHeight };
+  const ratio = naturalWidth / naturalHeight;
+  let width = maxWidth;
+  let height = width / ratio;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * ratio;
+  }
+  return { width, height };
+}
+
 export default function PreviewMatrizPage() {
   const router = useRouter();
   const params = useParams();
@@ -397,15 +413,22 @@ export default function PreviewMatrizPage() {
         urlToDataUrl(`${window.location.origin}/logo_lgc.png`),
       ]);
 
+      // Logo del cliente (izquierda): se ajusta dentro de una caja máxima de
+      // 40x20mm conservando su relación de aspecto original (como el
+      // "object-contain" del front), en vez de forzarlo a un cuadrado 20x20.
+      let clientLogoWidth = 0;
       if (logoDataUrl) {
         try {
-          doc.addImage(logoDataUrl, dataUrlFormat(logoDataUrl), margin, cursorY, 20, 20, undefined, "FAST");
+          const props = doc.getImageProperties(logoDataUrl);
+          const { width: clientLogoW, height: clientLogoH } = getContainedSize(props.width, props.height, 40, 20);
+          clientLogoWidth = clientLogoW;
+          doc.addImage(logoDataUrl, dataUrlFormat(logoDataUrl), margin, cursorY, clientLogoW, clientLogoH, undefined, "FAST");
         } catch (e) {
           console.warn("No se pudo insertar el logo del cliente en el PDF", e);
         }
       }
 
-      const textX = margin + (logoDataUrl ? 26 : 0);
+      const textX = margin + (clientLogoWidth > 0 ? clientLogoWidth + 6 : 0);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(14);
       doc.setTextColor(30, 41, 59); // slate-800
@@ -424,16 +447,22 @@ export default function PreviewMatrizPage() {
         cursorY + 17
       );
 
+      // Logo LGC (derecha): mismo orden que en el front (arriba "EMITIDO POR",
+      // abajo el logo) y con su relación de aspecto conservada dentro de una
+      // caja máxima de 32x9mm, en vez de forzarlo a 26x9.
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text("EMITIDO POR  ", pageWidth - margin, cursorY + 4, { align: "right" });
+
       if (lgcLogoDataUrl) {
         try {
-          doc.addImage(lgcLogoDataUrl, dataUrlFormat(lgcLogoDataUrl), pageWidth - margin - 26, cursorY, 26, 9, undefined, "FAST");
+          const lgcProps = doc.getImageProperties(lgcLogoDataUrl);
+          const { width: lgcLogoW, height: lgcLogoH } = getContainedSize(lgcProps.width, lgcProps.height, 64, 18);
+          doc.addImage(lgcLogoDataUrl, dataUrlFormat(lgcLogoDataUrl), pageWidth - margin - lgcLogoW, cursorY + 4, lgcLogoW, lgcLogoH, undefined, "FAST");
         } catch (e) {
           console.warn("No se pudo insertar el logo de LGC en el PDF", e);
         }
       }
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.text("EMITIDO POR", pageWidth - margin, cursorY + 15, { align: "right" });
 
       cursorY += 24;
 
@@ -589,7 +618,7 @@ export default function PreviewMatrizPage() {
               </button>
             )}
 
-            <button onClick={exportToPDF} disabled={isExportingPdf} className="bg-lgc-primary hover:bg-lgc-hover text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
+            <button onClick={exportToPDF} disabled={isExportingPdf} className="bg-lgc-primary hover:bg-lgc-primary/60 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-md text-[10px] uppercase tracking-widest flex items-center gap-2 disabled:opacity-50">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               {isExportingPdf ? 'Generando PDF...' : 'Exportar a PDF'}
             </button>
@@ -627,7 +656,7 @@ export default function PreviewMatrizPage() {
           </div>
           
           <div className="text-right flex flex-col items-end gap-2">
-             {headerInfo?.mostrar_cumplimiento && headerInfo?.id_tipo_matriz === 2 && (
+             {headerInfo?.mostrar_cumplimiento && headerInfo?.id_tipo_matriz === 2 ? (
                 <div className="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1">
                   <span className="text-[10px] font-bold uppercase text-slate-600">Cumplimiento:</span>
                   <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -635,9 +664,9 @@ export default function PreviewMatrizPage() {
                   </div>
                   <span className="text-xs font-bold text-lgc-accent">{cumplimientoTotal}%</span>
                 </div>
-             )}
+             ) : null}
              <div className="text-[10px] print:text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1">Emitido por</div>
-             <img src="/logo_lgc.png" alt="Lamas Global Consulting" className="h-10 print:h-6 w-auto opacity-80" onError={(e) => e.currentTarget.style.display = 'none'} />
+             <img src="/logo_lgc.png" alt="Lamas Global Consulting" className="h-16 print:h-12 w-auto opacity-80" onError={(e) => e.currentTarget.style.display = 'none'} />
           </div>
         </div>
 

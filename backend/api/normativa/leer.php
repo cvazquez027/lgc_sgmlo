@@ -64,8 +64,8 @@ try {
         $params[':tipo'] = "%$tipo%";
     }
     if (!empty($nro)) {
-        $sql .= " AND n.numero LIKE :nro";
-        $params[':nro'] = "%$nro%";
+        $sql .= " AND n.numero = :nro";
+        $params[':nro'] = $nro;
     }
     if (!empty($anio)) {
         $sql .= " AND n.anio = :anio";
@@ -73,7 +73,16 @@ try {
     }
     if (!empty($buscar)) {
         $like = "%$buscar%";
-        $sql .= " AND (tn.descripcion LIKE :buscar1 OR n.numero LIKE :buscar2 OR n.anio LIKE :buscar3 OR en.descripcion LIKE :buscar4)";
+        $sql .= " AND (
+                    en.descripcion LIKE :buscar1 
+                    OR j.descripcion LIKE :buscar2 
+                    OR n.sintesis LIKE :buscar3 
+                    OR EXISTS (
+                        SELECT 1 FROM categoria_norma cn 
+                        JOIN categoria c ON cn.id_categoria = c.id_categoria 
+                        WHERE cn.id_norma = n.id_norma AND c.descripcion LIKE :buscar4
+                    )
+                  )";
         $params[':buscar1'] = $like;
         $params[':buscar2'] = $like;
         $params[':buscar3'] = $like;

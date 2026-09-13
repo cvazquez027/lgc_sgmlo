@@ -15,7 +15,6 @@ include_once dirname(__FILE__) . '/../../config/JwtHandler.php';
 $jwt = new JwtHandler();
 $token = null;
 
-// Extraer token
 $headers = getallheaders();
 if (isset($headers['Authorization'])) {
     $token = trim(str_ireplace('Bearer', '', $headers['Authorization']));
@@ -36,34 +35,27 @@ if (!$payload) {
     exit();
 }
 
-// Intentar obtener id_cliente desde el payload (puede ser objeto o array)
-if (is_object($payload)) {
-    $id_cliente = $payload->id_cliente ?? null;
-} elseif (is_array($payload)) {
-    $id_cliente = $payload['id_cliente'] ?? null;
-} else {
-    $id_cliente = null;
-}
-
-// Si aún es null, intentar con 'cliente_id' o 'idCliente' (por si acaso)
-if ($id_cliente === null && is_object($payload)) {
-    $id_cliente = $payload->cliente_id ?? $payload->idCliente ?? null;
-} elseif ($id_cliente === null && is_array($payload)) {
-    $id_cliente = $payload['cliente_id'] ?? $payload['idCliente'] ?? null;
-}
-
-if (!$id_cliente) {
-    // No hay cliente asociado al usuario (ej. superadmin)
-    echo json_encode(["total" => 0]);
-    exit();
-}
+$payload_array = (array) $payload;
+$id_cliente = $payload_array['id_cliente'] ?? $payload_array['cliente_id'] ?? $payload_array['idCliente'] ?? null;
+$id_usuario = $payload_array['id_usuario'] ?? null;
 
 $database = new Database();
 $db = $database->getConnection();
 
-$query = "SELECT COUNT(*) AS total FROM alerta WHERE id_cliente = :id_cliente AND leido = 0";
-$stmt = $db->prepare($query);
-$stmt->bindParam(':id_cliente', $id_cliente, PDO::PARAM_INT);
+if ($id_cliente) {
+    // Cliente normal
+    $query = "SELECT COUNT(*) AS total FROM alerta WHERE id_cliente = :id_cliente AND leido = 0";
+    $stmt = $db->prepare($query);
+    $stmt->bindParam(':id_cliente', $id_cliente, PDO::PARAM_INT);
+} else {
+    // Administrador (LGC) - Cuenta las alertas de los clientes a los que está suscrito
+    $query = "SELECT COUNT(*) AS total FROM alerta a 
+              JOIN usuario_suscripcion_cliente s ON a.id_cliente = s.id_cliente 
+              WHERE s.id_usuario = :id_usuario AND a.leido = 0";
+    $stmt = $db->prepare($query);
+    $stmt->bindParam(':id_usuario', $id_usuario, PDO::PARAM_INT);
+}
+
 $stmt->execute();
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
