@@ -71,11 +71,12 @@ try {
                          AND id_estado_matriz = 2 
                          AND id_matriz != :id_matriz";
     $stmt_archivar = $db->prepare($query_archivar);
-    $stmt_archivar->bindParam(":est", $matriz_actual['id_cliente_establecimiento'], PDO::PARAM_INT);
-    $stmt_archivar->bindParam(":tipo", $matriz_actual['id_tipo_matriz'], PDO::PARAM_INT);
-    $stmt_archivar->bindParam(":especialidad", $matriz_actual['id_especialidad_matriz'], PDO::PARAM_INT);
-    $stmt_archivar->bindParam(":id_matriz", $id_matriz, PDO::PARAM_INT);
-    $stmt_archivar->execute();
+    $stmt_archivar->execute([
+        ':est' => $matriz_actual['id_cliente_establecimiento'],
+        ':tipo' => $matriz_actual['id_tipo_matriz'],
+        ':especialidad' => $matriz_actual['id_especialidad_matriz'],
+        ':id_matriz' => $id_matriz
+    ]);
 
     // 3. Publicar la nueva matriz
     $query_publicar = "UPDATE matriz 

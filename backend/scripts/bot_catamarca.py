@@ -697,19 +697,62 @@ def leer_lineas_pdf(origen):
     return lineas
 
 
-def _rango_seccion_oficial(lineas):
+def _detectar_fuente_titulo(lineas):
+    """
+    FUENTE_TITULO es sólo el índice de subseteo que el generador de PDF le
+    puso a la fuente de títulos -- un número arbitrario, no algo que la
+    maqueta garantice entre ediciones. Confirmado real: la Edición Nº 73 se
+    generó con "Microsoft: Print To PDF" (Producer distinto al habitual) y
+    ese mismo rol visual, en ESA edición, quedó en CIDFont+F2 en vez de
+    CIDFont+F10 -- con la constante fija, `_rango_seccion_oficial` no
+    encontraba nada y el bot reportaba cero normas pese a que el PDF tenía
+    contenido normal.
+
+    En vez de perseguir el número cada vez que el generador cambia, se
+    detecta la fuente real por edición: se busca qué fuente usan las líneas
+    que literalmente empiezan con "SECCIÓN " (el ancla más específica y
+    estable que hay — nada más en un Boletín arranca un renglón así). Si no
+    se encuentra ninguna, se cae al valor por defecto (ediciones normales
+    igual lo hubieran resuelto a lo mismo por este camino).
+    """
+    candidatos = {}
+    for l in lineas:
+        t = l['texto'].strip().upper()
+        if t.startswith('SECCIÓN ') and len(l['fuentes']) == 1:
+            fuente = next(iter(l['fuentes']))
+            candidatos[fuente] = candidatos.get(fuente, 0) + 1
+    if not candidatos:
+        return FUENTE_TITULO
+    return max(candidatos, key=candidatos.get)
+
+
+def _rango_seccion_oficial(lineas, fuente_titulo=None):
+    fuente_titulo = fuente_titulo or _detectar_fuente_titulo(lineas)
     inicio = fin = None
+    candidatos = []
     for i, l in enumerate(lineas):
-        if FUENTE_TITULO in l['fuentes'] and l['tam'] >= TAM_SECCION:
+        if fuente_titulo in l['fuentes'] and l['tam'] >= TAM_SECCION:
             titulo = l['texto'].strip().upper()
+            candidatos.append((l.get('pagina'), l['tam'], titulo))
             if titulo == 'SECCIÓN OFICIAL' and inicio is None:
                 inicio = i
             elif inicio is not None and titulo.startswith('SECCIÓN'):
                 fin = i
                 break
     if inicio is None:
-        return None, None
-    return inicio, (fin if fin is not None else len(lineas))
+        print(f"Aviso: no se encontró el título exacto 'SECCIÓN OFICIAL' "
+              f"(fuente de título detectada para esta edición: {fuente_titulo!r}). "
+              f"Títulos de tamaño >={TAM_SECCION}pt vistos en el PDF (pág, tamaño, texto):",
+              file=sys.stderr)
+        if candidatos:
+            for pag, tam, titulo in candidatos[:15]:
+                print(f"  pág {pag}: {tam}pt {titulo!r}", file=sys.stderr)
+        else:
+            print("  (ninguno — no se encontró NINGÚN título de ese tamaño con "
+                  "la fuente detectada; puede que esta edición use otra "
+                  "maqueta por completo).", file=sys.stderr)
+        return None, None, fuente_titulo
+    return inicio, (fin if fin is not None else len(lineas)), fuente_titulo
 
 
 def _es_titulo_emisor(linea):
@@ -752,7 +795,7 @@ def parsear_normas(origen_pdf):
     ya clasificadas. No filtra: eso lo decide el llamador.
     """
     lineas = leer_lineas_pdf(origen_pdf)
-    inicio, fin = _rango_seccion_oficial(lineas)
+    inicio, fin, fuente_titulo = _rango_seccion_oficial(lineas)
     if inicio is None:
         return []
 
@@ -767,7 +810,7 @@ def parsear_normas(origen_pdf):
         if not t or RE_ENCABEZADO_PAGINA.match(t):
             continue
 
-        if FUENTE_TITULO in linea['fuentes'] and linea['tam'] < TAM_SECCION:
+        if fuente_titulo in linea['fuentes'] and linea['tam'] < TAM_SECCION:
             # La última norma de la subsección que se cierra termina acá; si no,
             # se comería los EDICTOS / TRIBUNAL DE CUENTAS / SENADO que siguen.
             # Sólo la primera vez: los títulos posteriores no deben correr el tope.
@@ -831,7 +874,7 @@ def parsear_normas(origen_pdf):
             t = linea['texto'].strip()
             if not t or RE_ENCABEZADO_PAGINA.match(t):
                 continue
-            if FUENTE_TITULO in linea['fuentes']:
+            if fuente_titulo in linea['fuentes']:
                 continue
             if _es_titulo_emisor(linea):
                 continue
