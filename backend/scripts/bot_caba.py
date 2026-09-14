@@ -103,23 +103,34 @@ def _detectar_chromium():
     producción el 18/08 cuando el servidor pasó a tener Chromium instalado
     por snap en vez de por apt (confirmado real por el usuario: "chromium
     --version" devuelve "... snap", "/usr/bin/chromium" ya no existe, y
-    "which chromium" da "/snap/bin/chromium"). Selenium fallaba con
-    "session not created" porque intentaba arrancar un binario que ya no
-    estaba en esa ruta -- no era un desajuste de versión con el chromedriver
-    (esos se venían actualizando solos bien, según la caché de webdriver_manager).
+    "which chromium" da "/snap/bin/chromium"). Ese Chromium por snap además
+    resultó no funcionar con Selenium corriendo como root -- "session not
+    created: DevToolsActivePort file doesn't exist", el error típico del
+    confinamiento de snap (AppArmor / mount namespace propio) chocando con
+    automatización -- confirmado real en este mismo servidor. Por eso, si
+    hay un Google Chrome real instalado (recomendado: el .deb oficial, sin
+    snap), se prefiere por sobre Chromium.
 
-    Se prueba primero por PATH (`shutil.which`), y si no aparece -- puede
-    pasar en cron, que a veces arranca con un PATH más chico que el de una
-    sesión interactiva por SSH y no incluye /snap/bin -- se prueba una
-    lista de rutas conocidas directamente por si el PATH no alcanza.
+    1) Si está seteada la variable de entorno CHROME_BINARY, se usa esa ruta
+       tal cual, sin más preguntas -- para fijar a mano un binario conocido
+       si el auto-detectado alguna vez vuelve a fallar.
+    2) Si no, se busca primero Google Chrome (no confinado por snap), y
+       recién si no está, Chromium -- primero por PATH (`shutil.which`), y
+       si no aparece -- puede pasar en cron, que a veces arranca con un PATH
+       más chico que el de una sesión interactiva por SSH y no incluye
+       /snap/bin -- se prueba una lista de rutas conocidas directamente.
     """
-    encontrado = (shutil.which('chromium') or shutil.which('chromium-browser')
-                 or shutil.which('google-chrome') or shutil.which('google-chrome-stable'))
+    override = os.getenv('CHROME_BINARY')
+    if override:
+        return override.strip().strip('"').strip("'")
+
+    encontrado = (shutil.which('google-chrome') or shutil.which('google-chrome-stable')
+                 or shutil.which('chromium') or shutil.which('chromium-browser'))
     if encontrado:
         return encontrado
-    for candidato in ('/snap/bin/chromium', '/usr/bin/chromium',
-                      '/usr/bin/chromium-browser', '/usr/bin/google-chrome',
-                      '/usr/bin/google-chrome-stable'):
+    for candidato in ('/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+                      '/snap/bin/chromium', '/usr/bin/chromium',
+                      '/usr/bin/chromium-browser'):
         if os.path.isfile(candidato) and os.access(candidato, os.X_OK):
             return candidato
     return None
@@ -142,17 +153,19 @@ def crear_driver():
     if not binario:
         raise RuntimeError(
             "No se encontró el binario de Chromium/Chrome en este servidor "
-            "(se probó el PATH y las rutas conocidas /snap/bin/chromium, "
-            "/usr/bin/chromium, /usr/bin/chromium-browser, /usr/bin/google-chrome, "
-            "/usr/bin/google-chrome-stable). Instalarlo o revisar el PATH.")
+            "(se probó CHROME_BINARY, el PATH y las rutas conocidas "
+            "/usr/bin/google-chrome, /usr/bin/google-chrome-stable, "
+            "/snap/bin/chromium, /usr/bin/chromium, /usr/bin/chromium-browser). "
+            "Instalarlo o fijar CHROME_BINARY en el .env.")
     log_info(f"Usando binario de Chromium: {binario}")
     chrome_options.binary_location = binario
 
-    # chrome_type=CHROMIUM (en vez de dejar que ChromeDriverManager adivine)
-    # evita que baje el chromedriver "latest" en vez del que corresponde a
-    # este binario puntual -> "session not created: this version of
-    # ChromeDriver only supports Chrome version X".
-    service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+    # El tipo tiene que coincidir con el binario real para que
+    # ChromeDriverManager baje el chromedriver que corresponde -- si no,
+    # "session not created: this version of ChromeDriver only supports
+    # Chrome version X".
+    tipo = ChromeType.GOOGLE if 'chrome' in os.path.basename(binario).lower() else ChromeType.CHROMIUM
+    service = Service(ChromeDriverManager(chrome_type=tipo).install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
 
