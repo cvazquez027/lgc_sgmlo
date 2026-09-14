@@ -12,7 +12,7 @@ interface Usuario {
   nombre_completo: string;
   email: string;
   rol_nombre: string;
-  id_cliente: number | null;
+  id_clientes: string[]; // Ahora es un array
   razon_social: string | null;
   vigente: number;
 }
@@ -51,7 +51,7 @@ export default function UsuariosPage() {
   const { canRead, canEdit } = usePermissions();
   const canViewAudit = canRead("auditoria");
   const toast = useToast();
-  const confirm = useConfirm(); // reservado para futuras acciones destructivas
+  const confirm = useConfirm();
 
   const [isCheckingPerms, setIsCheckingPerms] = useState(true);
   const [selectedAuditLog, setSelectedAuditLog] = useState<AuditoriaLog | null>(null);
@@ -73,7 +73,7 @@ export default function UsuariosPage() {
     email: "",
     password: "",
     id_rol: "",
-    id_cliente: "",
+    clientes: [] as number[], // Estado actualizado a array
     vigente: 1
   });
 
@@ -148,7 +148,7 @@ export default function UsuariosPage() {
       return;
     }
     setModalMode("crear");
-    setFormData({ id_usuario: "", nombre: "", apellido: "", email: "", password: "", id_rol: "", id_cliente: "", vigente: 1 });
+    setFormData({ id_usuario: "", nombre: "", apellido: "", email: "", password: "", id_rol: "", clientes: [], vigente: 1 });
     setIsModalOpen(true);
   };
 
@@ -168,18 +168,23 @@ export default function UsuariosPage() {
       email: user.email,
       password: "", 
       id_rol: rolId,
-      id_cliente: user.id_cliente?.toString() || "",
+      clientes: user.id_clientes ? user.id_clientes.map(Number) : [],
       vigente: user.vigente
     });
     setIsModalOpen(true);
   };
 
+  const handleClienteToggle = (idCliente: number, checked: boolean) => {
+    if (checked) {
+      setFormData(prev => ({ ...prev, clientes: [...prev.clientes, idCliente] }));
+    } else {
+      setFormData(prev => ({ ...prev, clientes: prev.clientes.filter(id => id !== idCliente) }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit("usuarios")) {
-      toast.showToast("Permiso denegado", "No tienes permiso para realizar esta acción", "warning");
-      return;
-    }
+    if (!canEdit("usuarios")) return;
 
     setFormLoading(true);
     const token = localStorage.getItem("sgml_token");
@@ -187,10 +192,7 @@ export default function UsuariosPage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/guardar.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(formData),
       });
 
@@ -216,30 +218,14 @@ export default function UsuariosPage() {
     }
   };
 
-  if (isCheckingPerms) {
-    return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
-  }
-
-  if (!canRead("usuarios")) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100">
-        <div className="text-red-500 text-6xl mb-4">🔒</div>
-        <h2 className="text-2xl font-heading text-slate-800 uppercase tracking-tight mb-2">Acceso Denegado</h2>
-        <p className="text-slate-500 font-sans">Su perfil no cuenta con los privilegios necesarios para visualizar este módulo.</p>
-      </div>
-    );
-  }
+  if (isCheckingPerms) return <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Verificando credenciales de seguridad...</div>;
+  if (!canRead("usuarios")) return <div className="flex flex-col items-center justify-center py-32 bg-white rounded-xl shadow-sm border border-red-100"><div className="text-red-500 text-6xl mb-4">🔒</div><h2 className="text-2xl font-heading text-slate-800 uppercase tracking-tight mb-2">Acceso Denegado</h2></div>;
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* HEADER UNIFICADO (estilo Matrices) */}
       <div className="bg-[#005F78] text-white flex flex-col md:flex-row justify-between items-center gap-4 px-5 py-4 border-b border-[#004D62] rounded-t-xl">
         <div className="flex items-center gap-4">
-          <Link 
-            href="/dashboard" 
-            className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group"
-            title="Volver al inicio"
-          >
+          <Link href="/dashboard" className="flex items-center justify-center w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all shadow-sm group">
             <svg className="w-5 h-5 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -251,45 +237,26 @@ export default function UsuariosPage() {
         </div>
         
         {activeTab === "usuarios" && canEdit("usuarios") && (
-          <button 
-            onClick={openCrearModal}
-            className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2"
-          >
+          <button onClick={openCrearModal} className="bg-white text-lgc-primary hover:bg-slate-50 font-bold py-2.5 px-6 rounded-lg transition-all shadow-md text-xs uppercase tracking-widest flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
             Nuevo Usuario
           </button>
         )}
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-slate-200 bg-white rounded-t-xl">
         <nav className="flex space-x-6 px-6" aria-label="Tabs">
-          <button
-            onClick={() => setActiveTab("usuarios")}
-            className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "usuarios"
-                ? "border-lgc-primary text-lgc-primary"
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-            }`}
-          >
+          <button onClick={() => setActiveTab("usuarios")} className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === "usuarios" ? "border-lgc-primary text-lgc-primary" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"}`}>
             Usuarios del Sistema
           </button>
           {canViewAudit && (
-            <button
-              onClick={() => setActiveTab("auditoria")}
-              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "auditoria"
-                  ? "border-lgc-primary text-lgc-primary"
-                  : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-              }`}
-            >
+            <button onClick={() => setActiveTab("auditoria")} className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === "auditoria" ? "border-lgc-primary text-lgc-primary" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"}`}>
               Auditoría de Cambios
             </button>
           )}
         </nav>
       </div>
 
-      {/* Contenido de la pestaña Usuarios */}
       {activeTab === "usuarios" && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           {loading ? (
@@ -299,7 +266,7 @@ export default function UsuariosPage() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 text-[10px] uppercase tracking-[0.2em]">
                   <th className="p-5 font-bold">Identidad</th>
-                  <th className="p-5 font-bold">Empresa / Cliente</th>
+                  <th className="p-5 font-bold w-1/3">Empresa(s) / Cliente(s)</th>
                   <th className="p-5 font-bold">Rol</th>
                   <th className="p-5 font-bold">Estado</th>
                   <th className="p-5 font-bold text-right">Acciones</th>
@@ -312,11 +279,15 @@ export default function UsuariosPage() {
                       <div className="font-bold text-slate-700">{user.nombre_completo}</div>
                       <div className="text-xs text-slate-400">{user.email}</div>
                     </td>
-                    <td className="p-5 text-sm text-slate-600 font-medium">
+                    <td className="p-5 text-xs text-slate-600 font-medium">
                       {user.razon_social ? (
-                         <span>{user.razon_social}</span>
+                         <div className="flex flex-col gap-1">
+                            {user.razon_social.split(' | ').map((rs, idx) => (
+                               <span key={idx} className="bg-slate-100 px-2 py-1 rounded inline-block w-fit">{rs}</span>
+                            ))}
+                         </div>
                       ) : (
-                         <span className="text-xs font-bold text-lgc-primary uppercase tracking-widest bg-lgc-primary/10 px-2 py-1 rounded">Usuario Interno</span>
+                         <span className="text-[10px] font-bold text-lgc-primary uppercase tracking-widest bg-lgc-primary/10 px-2 py-1 rounded">Usuario Interno</span>
                       )}
                     </td>
                     <td className="p-5 text-xs">
@@ -348,177 +319,163 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Contenido de la pestaña Auditoría */}
-      {activeTab === "auditoria" && (
-        canViewAudit ? (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
-            {loading ? (
-              <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Cargando historial de auditoría...</div>
-            ) : logs.length === 0 ? (
-              <div className="py-20 text-center text-slate-400">No se encontraron registros de auditoría.</div>
-            ) : (
-              <table className="w-full text-left font-sans text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-wider">
-                    <th className="p-3">Fecha</th>
-                    <th className="p-3">Usuario</th>
-                    <th className="p-3">Tabla</th>
-                    <th className="p-3">Acción</th>
-                    <th className="p-3">ID Registro</th>
-                    <th className="p-3">IP Origen</th>
-                    <th className="p-3">Detalle</th>
+      {/* Auditoría */}
+      {activeTab === "auditoria" && canViewAudit && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+          {loading ? (
+            <div className="py-20 text-center text-lgc-primary font-heading animate-pulse">Cargando historial de auditoría...</div>
+          ) : logs.length === 0 ? (
+            <div className="py-20 text-center text-slate-400">No se encontraron registros de auditoría.</div>
+          ) : (
+            <table className="w-full text-left font-sans text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase tracking-wider">
+                  <th className="p-3">Fecha</th>
+                  <th className="p-3">Usuario</th>
+                  <th className="p-3">Tabla</th>
+                  <th className="p-3">Acción</th>
+                  <th className="p-3">ID Registro</th>
+                  <th className="p-3">IP Origen</th>
+                  <th className="p-3">Detalle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {logs.map((log) => (
+                  <tr key={log.id_auditoria} className="hover:bg-slate-50/50">
+                    <td className="p-3 whitespace-nowrap text-xs">{new Date(log.fecha_evento).toLocaleString()}</td>
+                    <td className="p-3 text-xs font-medium">{log.usuario_nombre || `Usuario #${log.id_usuario}`}</td>
+                    <td className="p-3 text-xs font-mono">{log.tabla_afectada}</td>
+                    <td className="p-3">{getAccionBadge(log.accion)}</td>
+                    <td className="p-3 text-xs">{log.id_registro}</td>
+                    <td className="p-3 text-xs font-mono">{log.ip_origen || '-'}</td>
+                    <td className="p-3">
+                      <button onClick={() => { setSelectedAuditLog(log); setIsAuditModalOpen(true); }} className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest">
+                        Ver JSON
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {logs.map((log) => (
-                    <tr key={log.id_auditoria} className="hover:bg-slate-50/50">
-                      <td className="p-3 whitespace-nowrap text-xs">
-                        {new Date(log.fecha_evento).toLocaleString()}
-                      </td>
-                      <td className="p-3 text-xs font-medium">
-                        {log.usuario_nombre || `Usuario #${log.id_usuario}`}
-                      </td>
-                      <td className="p-3 text-xs font-mono">
-                        {log.tabla_afectada}
-                      </td>
-                      <td className="p-3">
-                        {getAccionBadge(log.accion)}
-                      </td>
-                      <td className="p-3 text-xs">
-                        {log.id_registro}
-                      </td>
-                      <td className="p-3 text-xs font-mono">
-                        {log.ip_origen || '-'}
-                      </td>
-                      <td className="p-3">
-                        <button
-                          onClick={() => {
-                            setSelectedAuditLog(log);
-                            setIsAuditModalOpen(true);
-                          }}
-                          className="text-lgc-primary hover:text-lgc-accent text-xs font-bold uppercase tracking-widest"
-                        >
-                          Ver JSON
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white p-12 text-center rounded-xl shadow-sm border border-red-100">
-            <div className="text-red-500 text-4xl mb-2">🔒</div>
-            <p className="text-slate-500">No tienes permiso para ver la auditoría.</p>
-          </div>
-        )
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
 
-      {/* Modal de creación/edición de usuarios */}
+      {/* Modal Creación/Edición */}
       {isModalOpen && canEdit("usuarios") && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
-            <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
               <h2 className="text-xl font-heading text-lgc-primary uppercase tracking-tight">
                 {modalMode === "crear" ? "Registrar Usuario" : "Modificar Perfil"}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-8 space-y-5">
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Nombre</label>
-                  <input required type="text" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none" />
+            <div className="overflow-y-auto p-8 custom-scrollbar">
+              <form onSubmit={handleSubmit} className="space-y-5" id="user-form">
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Nombre</label>
+                    <input required type="text" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Apellido</label>
+                    <input type="text" value={formData.apellido} onChange={(e) => setFormData({...formData, apellido: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Apellido</label>
-                  <input type="text" value={formData.apellido} onChange={(e) => setFormData({...formData, apellido: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none" />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Email Corporativo</label>
-                  <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none" />
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Email Corporativo</label>
+                    <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Contraseña</label>
+                    <input 
+                      type="password" 
+                      placeholder={modalMode === "crear" ? "Obligatoria" : "Opcional (solo si cambia)"}
+                      required={modalMode === "crear"} 
+                      value={formData.password} 
+                      onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                      className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none text-sm" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Contraseña</label>
-                  <input 
-                    type="password" 
-                    placeholder={modalMode === "crear" ? "Obligatoria" : "Opcional (solo si cambia)"}
-                    required={modalMode === "crear"} 
-                    value={formData.password} 
-                    onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                    className="w-full px-4 py-3 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-lgc-primary outline-none" 
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-5">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Asignar Cliente/Empresa</label>
-                  <select 
-                    value={formData.id_cliente} 
-                    onChange={(e) => setFormData({...formData, id_cliente: e.target.value})}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg outline-none focus:border-lgc-primary font-sans"
-                  >
-                    <option value="">Seleccione Cliente (Opcional)...</option>
-                    {clientes.map(c => (
-                      <option key={c.id_cliente} value={c.id_cliente}>{c.razon_social}</option>
-                    ))}
-                  </select>
+                <div className="border-t border-slate-100 pt-5 space-y-5">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Rol Asignado *</label>
+                    <select 
+                      required 
+                      value={formData.id_rol} 
+                      onChange={(e) => setFormData({...formData, id_rol: e.target.value})}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg outline-none focus:border-lgc-primary font-sans text-sm"
+                    >
+                      <option value="">Seleccione Rol...</option>
+                      {roles.map(r => (
+                        <option key={r.id_rol} value={r.id_rol}>{r.descripcion}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <div className="flex justify-between items-end mb-2">
+                       <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold">Asignar Clientes / Empresas</label>
+                       <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                          {formData.clientes.length} seleccionados
+                       </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3 bg-slate-50 custom-scrollbar">
+                      {clientes.map(c => (
+                        <label key={c.id_cliente} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer hover:bg-white p-2 rounded transition-colors border border-transparent hover:border-slate-200 hover:shadow-sm">
+                          <input 
+                            type="checkbox" 
+                            className="rounded text-lgc-primary focus:ring-lgc-primary w-4 h-4 cursor-pointer"
+                            checked={formData.clientes.includes(c.id_cliente)}
+                            onChange={(e) => handleClienteToggle(c.id_cliente, e.target.checked)}
+                          />
+                          <span className="truncate">{c.razon_social}</span>
+                        </label>
+                      ))}
+                      {clientes.length === 0 && (
+                         <div className="col-span-full text-xs text-slate-400 italic text-center p-4">No hay clientes registrados.</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Rol Asignado *</label>
-                  <select 
-                    required 
-                    value={formData.id_rol} 
-                    onChange={(e) => setFormData({...formData, id_rol: e.target.value})}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg outline-none focus:border-lgc-primary font-sans"
-                  >
-                    <option value="">Seleccione Rol...</option>
-                    {roles.map(r => (
-                      <option key={r.id_rol} value={r.id_rol}>{r.descripcion}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              </form>
+            </div>
 
-              <div className="pt-6 flex gap-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 transition-colors">Cancelar</button>
-                <button type="submit" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg text-xs uppercase tracking-widest font-bold shadow-lg hover:bg-lgc-accent transition-all">
-                  {formLoading ? "Procesando..." : "Guardar Cambios"}
-                </button>
-              </div>
-            </form>
+            <div className="p-6 bg-slate-50 border-t flex gap-4 shrink-0">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-xs uppercase tracking-widest font-bold text-slate-400 hover:text-slate-600 border border-slate-200 bg-white rounded-lg transition-colors shadow-sm">Cancelar</button>
+              <button type="submit" form="user-form" disabled={formLoading} className="flex-1 bg-lgc-primary text-white py-3 rounded-lg text-xs uppercase tracking-widest font-bold shadow-lg hover:bg-[#004D62] transition-all">
+                {formLoading ? "Procesando..." : "Guardar Cambios"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal para visualizar JSON de auditoría */}
+      {/* Modal JSON Auditoría */}
       {isAuditModalOpen && selectedAuditLog && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200">
-            <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-slate-50 border-b flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-lg font-heading text-lgc-primary uppercase tracking-tight">
                   Detalle del cambio - {selectedAuditLog.tabla_afectada} #{selectedAuditLog.id_registro}
                 </h2>
-                <p className="text-xs text-slate-500 mb-2">
-                  Contenido del registro afectado ({selectedAuditLog.tabla_afectada} ID {selectedAuditLog.id_registro}):
-                </p>
               </div>
               <button onClick={() => setIsAuditModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
             </div>
-            <div className="p-6 max-h-[70vh] overflow-auto">
-              <pre className="text-xs bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto">
+            <div className="p-6 overflow-auto custom-scrollbar">
+              <pre className="text-xs bg-slate-900 text-slate-100 p-4 rounded-lg">
                 {JSON.stringify(selectedAuditLog.datos_json, null, 2)}
               </pre>
             </div>
-            <div className="p-4 bg-slate-50 border-t flex justify-end">
-              <button onClick={() => setIsAuditModalOpen(false)} className="px-5 py-2 bg-lgc-primary text-white rounded-lg text-xs uppercase tracking-widest hover:bg-lgc-accent transition-all">Cerrar</button>
+            <div className="p-4 bg-slate-50 border-t flex justify-end shrink-0">
+              <button onClick={() => setIsAuditModalOpen(false)} className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs uppercase tracking-widest font-bold hover:bg-slate-100 shadow-sm transition-all">Cerrar</button>
             </div>
           </div>
         </div>

@@ -7,10 +7,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePermissions } from "../hooks/usePermissions";
 import NotificationBell from "../components/NotificationBell";
+import { useConfirm } from "../providers/ConfirmProvider";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(true);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -18,21 +20,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [userInitials, setUserInitials] = useState("US");
   const [userFullName, setUserFullName] = useState("");
+  const [isMultiClient, setIsMultiClient] = useState(false);
+  const [currentClientName, setCurrentClientName] = useState(""); // NUEVO ESTADO
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  // Protección de Ruta Básica y carga de Iniciales
   useEffect(() => {
     const token = localStorage.getItem("sgml_token");
     if (!token) {
       router.push("/");
     } else {
       setIsLoading(false);
-      // Decodificar Token JWT para extraer datos del usuario
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         let nombre = payload.nombre || payload.name || payload.usuario || '';
         let apellido = payload.apellido || payload.lastname || '';
         let email = payload.email || '';
+
+        // Determinamos si es multi-cliente y buscamos el nombre del entorno actual
+        const misClientesStr = localStorage.getItem("sgml_mis_clientes");
+        if (misClientesStr) {
+            try {
+                const misClientes = JSON.parse(misClientesStr);
+                if (Array.isArray(misClientes) && misClientes.length > 1) {
+                    setIsMultiClient(true);
+                    
+                    // Extraer nombre del entorno actual
+                    if (payload.id_cliente) {
+                        const current = misClientes.find((c: any) => c.id_cliente === payload.id_cliente);
+                        if (current) {
+                            setCurrentClientName(current.nombre_fantasia || current.razon_social);
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
 
         if (nombre && apellido) {
           setUserFullName(`${nombre} ${apellido}`);
@@ -41,9 +62,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setUserFullName(nombre);
           setUserInitials(nombre.charAt(0).toUpperCase());
         } else {
-          // Fallback: buscar en sgml_usuario
           const userStr = localStorage.getItem("sgml_usuario");
-          let datosEncontrados = false; // Variable local de control
+          let datosEncontrados = false; 
 
           if (userStr) {
             try {
@@ -53,23 +73,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               if (nombre2 && apellido2) {
                 setUserFullName(`${nombre2} ${apellido2}`);
                 setUserInitials((nombre2.charAt(0) + apellido2.charAt(0)).toUpperCase());
-                datosEncontrados = true; // Marcamos como éxito
+                datosEncontrados = true; 
               } else if (nombre2) {
                 setUserFullName(nombre2);
                 setUserInitials(nombre2.charAt(0).toUpperCase());
-                datosEncontrados = true; // Marcamos como éxito
+                datosEncontrados = true; 
               }
             } catch (err) {}
           }
           
-          // Ahora verificamos la variable local, NO el estado de React
           if (!datosEncontrados && email) {
             setUserInitials(email.charAt(0).toUpperCase());
           }
         }
       } catch(e) {
         console.error("Error decoding token", e);
-        // Fallback final
         setUserInitials("US");
       }
     }
@@ -93,7 +111,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = () => {
     localStorage.removeItem("sgml_token");
+    localStorage.removeItem('sgml_usuario');
+    localStorage.removeItem('sgml_permisos');
+    localStorage.removeItem('sgml_cliente_id');
+    localStorage.removeItem('sgml_mis_clientes');
+    localStorage.removeItem('sgml_change_env');
     router.push("/");
+  };
+
+  const handleCambiarEntorno = async () => {
+      const ok = await confirm({
+        title: "Alternar Entorno",
+        message: "¿Deseas volver a la pantalla de selección para trabajar con otra empresa?",
+        confirmText: "Cambiar de empresa",
+        cancelText: "Permanecer aquí"
+      });
+
+      if(!ok) {
+        setIsProfileMenuOpen(false);
+        return;
+      }
+
+      localStorage.setItem("sgml_change_env", "true");
+      router.push("/");
   };
 
   if (isLoading) {
@@ -104,7 +144,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // DICCIONARIO DE MENÚ (sin cambios)
   const menuItems = [
     { 
       name: "Inicio", 
@@ -262,6 +301,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* AVATAR Y MENÚ DESPLEGABLE DE PERFIL */}
           <div className="flex items-center gap-4 relative">
+            
+            {/* INDICADOR DE ENTORNO MULTI-CLIENTE */}
+            {isMultiClient && currentClientName && (
+               <div className="hidden md:flex flex-col items-end justify-center mr-1 border-r border-slate-700/60 pr-5">
+                 <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Entorno Activo</span>
+                 <span className="text-xs font-bold text-lgc-accent tracking-wide truncate max-w-[180px]" title={currentClientName}>
+                   {currentClientName}
+                 </span>
+               </div>
+            )}
+
             <NotificationBell />
             <div 
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
@@ -291,6 +341,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       Mi Perfil
                    </Link>
+
+                   {isMultiClient && (
+                     <button 
+                       onClick={handleCambiarEntorno} 
+                       className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-lgc-primary transition-colors text-left"
+                     >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                        Cambiar Empresa
+                     </button>
+                   )}
+
                    <button 
                      onClick={handleLogout} 
                      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors text-left border-t border-slate-100"

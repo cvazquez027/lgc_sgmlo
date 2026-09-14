@@ -37,8 +37,7 @@ if ($num > 0) {
             "nombre_completo" => html_entity_decode($nombre . " " . $apellido),
             "email" => $email,
             "rol_nombre" => isset($rol_nombre) ? $rol_nombre : "Sin Rol",
-            // Agregamos estos dos campos (asegurate que tu SELECT los traiga)
-            "id_cliente" => isset($id_cliente) ? $id_cliente : null,
+            "id_clientes" => isset($id_clientes) && $id_clientes ? explode(',', $id_clientes) : [],
             "razon_social" => isset($razon_social) ? $razon_social : null,
             "ultimo_login" => isset($ultimo_login) ? $ultimo_login : null,
             "vigente" => $vigente
